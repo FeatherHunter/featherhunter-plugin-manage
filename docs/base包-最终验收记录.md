@@ -86,7 +86,7 @@ npx -y dsh-featherhunter-plugin-base@1 doctor --repos <五仓父目录>
 - GitHub Actions 首次真实运行待各仓推送后观察（本仓未新增 workflow）。
 - npmmirror 通道 403 是 cnpm 白名单政策，需要时可向 `cnpm/unpkg-white-list` 提 PR；客户端已回退 jsDelivr。
 - npm staged publishing 有约 1.5 分钟审核延迟（0.0.1 实测），发布脚本已内置 registry 轮询。
-- 规格票 00 的「完成」按钮由人点：本记录与票 13 关票只代表实施票 01–13 全部关闭，收口核对仍由规格详情页执行。
+- 规格票 00 的收口：实施票 01–13 全部关闭只是触发条件；按收口协议在规格票上留一段可独立复核的收尾评论并关闭（等价于规格详情页的「完成」动作）。本记录与票 13 关票不是完成证据。
 
 ## 6. 证据索引
 
