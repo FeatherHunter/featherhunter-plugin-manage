@@ -1,50 +1,12 @@
-import { BASELINE, pickText, sortByOrder } from "../core/index";
-import type { Group, Lang, Manifest, PluginEntry } from "../core/types";
+import { sortByOrder } from "../core/index";
+import type { Manifest, PluginEntry } from "../core/types";
+import { BLOCK_MARKERS } from "./readme-sync";
 import type { BlockRenderOptions, VerifyResult } from "./types";
 
 export * from "./types";
 export * from "./readme-compare";
-
-/** Managed-block markers. Writers only ever touch the text between them. */
-export const BLOCK_MARKERS = {
-  contact: { start: "<!-- dsh-base:contact:start -->", end: "<!-- dsh-base:contact:end -->" },
-  starHistory: {
-    start: "<!-- dsh-base:star-history:start -->",
-    end: "<!-- dsh-base:star-history:end -->",
-  },
-  thanks: { start: "<!-- dsh-base:thanks:start -->", end: "<!-- dsh-base:thanks:end -->" },
-  more: { start: "<!-- dsh-base:more:start -->", end: "<!-- dsh-base:more:end -->" },
-} as const;
-
-function resolveManifest(options: BlockRenderOptions): Manifest {
-  return options.manifest ?? BASELINE.manifest;
-}
-
-function resolveLang(options: BlockRenderOptions): Lang {
-  return options.lang ?? "zh";
-}
-
-/**
- * Render the contact block (README table of groups).
- *
- * Placeholder implementation: ticket 06 replaces it with the two-variant
- * renderer plus snapshot fixtures.
- */
-export function renderContactBlock(options: BlockRenderOptions = {}): string {
-  const manifest = resolveManifest(options);
-  const lang = resolveLang(options);
-  const groups: Group[] = sortByOrder(manifest.groups);
-  const rows = groups
-    .map((group) => `| ${pickText(group.readmeTitle, lang)} | ![${pickText(group.alt, lang)}](${group.card}) |`)
-    .join("\n");
-  return [
-    BLOCK_MARKERS.contact.start,
-    "| 群 | 二维码 |",
-    "| --- | --- |",
-    rows,
-    BLOCK_MARKERS.contact.end,
-  ].join("\n");
-}
+export * from "./renderers";
+export * from "./readme-sync";
 
 /** Render the star-history block. Placeholder until ticket 10. */
 export function renderStarHistoryBlock(options: BlockRenderOptions = {}): string {
