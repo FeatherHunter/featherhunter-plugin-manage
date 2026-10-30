@@ -1,6 +1,8 @@
 import type * as ReactNamespace from "react";
-import { BASELINE, formatValidity, resolveLang, sortByOrder } from "../core/index";
+import { BASELINE, pickText, resolveLang, sortByOrder } from "../core/index";
 import type { Group, Lang, PluginEntry } from "../core/types";
+import { mountContactModal, type ContactModalHandle } from "./modal";
+import { resolveText, type TextOverrides } from "./texts";
 import type {
   AuthorPluginsProps,
   BaseUI,
@@ -9,39 +11,60 @@ import type {
   ContactRowProps,
   OpenContactModalOptions,
 } from "./types";
-import { ensureBaseStyles } from "./styles";
 
 export type * from "./types";
 
-const TEXTS = {
-  zh: {
-    contact: "联系我们",
-    contactHint: "加入交流群",
-    modalTitle: "联系作者",
-    close: "关闭",
-    expired: "二维码已过期，请点击下方链接加入",
-    fallback: "二维码过期或无法显示？点此加入",
-    plugins: "作者的其他插件",
-  },
-  en: {
-    contact: "Contact us",
-    contactHint: "Join the community",
-    modalTitle: "Contact the author",
-    close: "Close",
-    expired: "This QR code has expired. Use the link below.",
-    fallback: "QR code expired or not showing? Join here",
-    plugins: "More plugins by the author",
-  },
-} as const;
+/** Hard ceiling of the contact grid, independent of the data and the caller. */
+const MAX_COLUMNS = 4;
 
-type TextKey = keyof (typeof TEXTS)["zh"];
+/**
+ * Only one contact dialog may exist per document, even when the host builds
+ * several UI instances (one per settings page, language, ...). Module-level on
+ * purpose: the modal owns the top layer and the body scroll lock.
+ */
+let sharedModal: ContactModalHandle | null = null;
 
-interface RuntimeOptions extends BaseUIOptions {
-  lang: Lang;
+/**
+ * Language chain: explicit setting -> page html lang -> navigator.languages ->
+ * zh. Evaluated per render / per open so a late <html lang> change is honoured.
+ */
+function detectLang(explicit?: string | null): Lang {
+  return resolveLang({
+    explicit: explicit ?? null,
+    htmlLang: typeof document === "undefined" ? null : document.documentElement.lang,
+    navigatorLanguages: typeof navigator === "undefined" ? null : navigator.languages,
+  });
+}
+
+/**
+ * Resolve the grid column count: the caller may ask for anything, the grid is
+ * clamped to 1..4; without an explicit request every group gets a column, up to
+ * the ceiling.
+ */
+function clampColumns(requested: number | undefined, groupCount: number): number {
+  if (typeof requested === "number" && Number.isFinite(requested)) {
+    return Math.min(MAX_COLUMNS, Math.max(1, Math.floor(requested)));
+  }
+  return Math.max(1, Math.min(MAX_COLUMNS, groupCount));
+}
+
+/** Default QR source: bundled baseline data URI. Remote resolution is ticket 05. */
+function resolveBaselineQr(group: Group): string | null {
+  if (group.qr.kind !== "bundled") return null;
+  return BASELINE.qr[group.qr.key] ?? null;
 }
 
 function pluginUrl(plugin: PluginEntry): string {
-  return plugin.url ?? `https://github.com/${plugin.repo}`;
+  return plugin.url ?? "https://github.com/" + plugin.repo;
+}
+
+function mergeTexts(overrides?: TextOverrides, extra?: TextOverrides): TextOverrides | undefined {
+  if (!overrides && !extra) return undefined;
+  return { ...overrides, ...extra };
+}
+
+function classes(base: string, extra?: string): string {
+  return extra ? base + " " + extra : base;
 }
 
 /**
@@ -51,180 +74,145 @@ function pluginUrl(plugin: PluginEntry): string {
  * package shares the host's reconciler and context.
  */
 export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOptions = {}): BaseUI {
-  const runtime: RuntimeOptions = { ...options, lang: resolveLang({ explicit: options.lang }) };
-  let activeDialog: HTMLDialogElement | null = null;
-  let activeTrigger: HTMLElement | null = null;
+  let active: ContactModalHandle | null = null;
 
-  function text(key: TextKey, override?: Partial<Record<string, string>>): string {
-    const custom = override?.[key];
-    if (typeof custom === "string" && custom.length > 0) return custom;
-    return TEXTS[runtime.lang][key];
+  function widgetText(key: Parameters<typeof resolveText>[0]): string {
+    return resolveText(key, detectLang(options.lang), options.texts);
+  }
+
+  function closeActive(restoreFocus: boolean): void {
+    const handle = active;
+    active = null;
+    if (!handle) return;
+    if (sharedModal === handle) sharedModal = null;
+    handle.close(restoreFocus);
   }
 
   function closeContactModal(): void {
-    if (!activeDialog) return;
-    const dialog = activeDialog;
-    activeDialog = null;
-    if (typeof dialog.close === "function") dialog.close();
-    dialog.remove();
-    if (activeTrigger && typeof activeTrigger.focus === "function") {
-      activeTrigger.focus();
-    }
-    activeTrigger = null;
+    closeActive(true);
   }
 
-  function buildDialog(opts: OpenContactModalOptions): HTMLDialogElement {
-    const lang = opts.lang ?? runtime.lang;
-    const doc = document;
-    const dialog = doc.createElement("dialog");
-    dialog.className = "dsh-base-modal";
-    const panel = doc.createElement("div");
-    panel.className = "dsh-base-modal__panel";
-    const header = doc.createElement("div");
-    header.className = "dsh-base-modal__header";
-    const title = doc.createElement("h2");
-    title.className = "dsh-base-modal__title";
-    title.textContent = text("modalTitle", opts.texts);
-    const close = doc.createElement("button");
-    close.type = "button";
-    close.className = "dsh-base-modal__close";
-    close.setAttribute("aria-label", text("close", opts.texts));
-    close.textContent = "×";
-    close.addEventListener("click", () => closeContactModal());
-    header.append(title, close);
-
-    const body = doc.createElement("div");
-    body.className = "dsh-base-modal__body";
-    const grid = doc.createElement("div");
-    grid.className = "dsh-base-modal__grid";
-    const groups: Group[] = opts.groups ?? BASELINE.manifest.groups;
-    for (const group of sortByOrder(groups)) {
-      const card = doc.createElement("div");
-      card.className = "dsh-base-modal__card";
-      card.dataset.groupId = group.id;
-      const cardTitle = doc.createElement("h3");
-      cardTitle.className = "dsh-base-modal__card-title";
-      cardTitle.textContent = group.title[lang] ?? group.title.zh;
-      card.append(cardTitle);
-      if (group.subtitle) {
-        const subtitle = doc.createElement("span");
-        subtitle.className = "dsh-base-modal__card-subtitle";
-        subtitle.textContent = group.subtitle[lang] ?? group.subtitle.zh;
-        card.append(subtitle);
-      }
-      const validity = formatValidity(group.validUntil, { lang });
-      if (validity) {
-        const note = doc.createElement("span");
-        note.className = "dsh-base-modal__card-note";
-        note.textContent = validity;
-        card.append(note);
-      } else if (group.validUntil) {
-        const expired = doc.createElement("span");
-        expired.className = "dsh-base-modal__card-expired";
-        expired.textContent = text("expired", opts.texts);
-        card.append(expired);
-      } else if (group.note) {
-        const note = doc.createElement("span");
-        note.className = "dsh-base-modal__card-note";
-        note.textContent = group.note[lang] ?? group.note.zh;
-        card.append(note);
-      }
-      grid.append(card);
-    }
-    body.append(grid);
-
-    const footer = doc.createElement("div");
-    footer.className = "dsh-base-modal__footer";
-    const link = doc.createElement("a");
-    link.href = opts.fallbackUrl ?? BASELINE.manifest.fallbackUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = text("fallback", opts.texts);
-    footer.append(link);
-
-    panel.append(header, body, footer);
-    dialog.append(panel);
-    return dialog;
-  }
-
-  function openContactModal(opts: OpenContactModalOptions = {}): () => void {
+  function openContactModal(callOptions: OpenContactModalOptions = {}): () => void {
     if (typeof document === "undefined") return () => {};
-    closeContactModal();
-    ensureBaseStyles(document);
-    const dialog = buildDialog(opts);
-    activeDialog = dialog;
-    activeTrigger = opts.trigger ?? null;
-    dialog.addEventListener("click", (event) => {
-      if (event.target === dialog) closeContactModal();
+    // Replace whatever dialog is open, without bouncing focus back and forth.
+    const previous = sharedModal;
+    sharedModal = null;
+    active = null;
+    if (previous) previous.close(false);
+
+    const groups =
+      callOptions.groups && callOptions.groups.length > 0
+        ? callOptions.groups
+        : BASELINE.manifest.groups;
+    const lang = detectLang(callOptions.lang ?? options.lang);
+    const candidate = callOptions.trigger ?? document.activeElement;
+    const trigger =
+      candidate && typeof (candidate as HTMLElement).focus === "function"
+        ? (candidate as HTMLElement)
+        : null;
+    const resolver = callOptions.resolveQr ?? options.resolveQr ?? resolveBaselineQr;
+    const handle = mountContactModal({
+      doc: document,
+      lang,
+      groups,
+      columns: clampColumns(callOptions.columns ?? options.columns, groups.length),
+      trigger,
+      fallbackUrl:
+        callOptions.fallbackUrl ?? options.fallbackUrl ?? BASELINE.manifest.fallbackUrl,
+      texts: mergeTexts(options.texts, callOptions.texts),
+      resolveQr: (group: Group) => resolver(group) ?? null,
+      now: callOptions.now,
     });
-    dialog.addEventListener("close", () => {
-      if (activeDialog === dialog) {
-        activeDialog = null;
-        dialog.remove();
-        if (activeTrigger && typeof activeTrigger.focus === "function") {
-          activeTrigger.focus();
-        }
-        activeTrigger = null;
-      }
+    active = handle;
+    sharedModal = handle;
+    handle.dialog.addEventListener("close", () => {
+      if (active === handle) active = null;
+      if (sharedModal === handle) sharedModal = null;
     });
-    document.body.append(dialog);
-    if (typeof dialog.showModal === "function") {
-      dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-    return closeContactModal;
+    return () => {
+      if (active === handle) active = null;
+      if (sharedModal === handle) sharedModal = null;
+      handle.close();
+    };
   }
 
-  function ContactButton(props: ContactButtonProps) {
+  function ContactButton(props: ContactButtonProps): ReactNamespace.ReactElement {
     const h = React.createElement;
-    const label = props.title ?? text("contact");
+    const label = props.title ?? widgetText("contact");
+    const size = props.size ?? 16;
+    const icon = h(
+      "svg",
+      {
+        width: size,
+        height: size,
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 2,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        "aria-hidden": "true",
+        focusable: "false",
+      },
+      h("path", { d: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", key: "body" }),
+      h("circle", { cx: 9, cy: 7, r: 4, key: "head" }),
+      h("path", { d: "M23 21v-2a4 4 0 0 0-3-3.87", key: "arm" }),
+      h("path", { d: "M16 3.13a4 4 0 0 1 0 7.75", key: "arm2" }),
+    );
     return h(
       "button",
       {
         type: "button",
-        className: ["dsh-base-contact-button", props.className].filter(Boolean).join(" "),
+        className: classes("dsh-base-contact-button", props.className),
         title: label,
         "aria-label": label,
         onClick: (event: ReactNamespace.MouseEvent<HTMLButtonElement>) => {
           openContactModal({ trigger: event.currentTarget });
         },
       },
-      h("span", { className: "dsh-base-contact-button__icon", "aria-hidden": "true" }, "👥"),
-      props.iconOnly ? null : h("span", { className: "dsh-base-contact-button__label" }, label),
+      h("span", { className: "dsh-base-contact-button__icon", key: "icon" }, icon),
+      props.iconOnly
+        ? null
+        : h("span", { className: "dsh-base-contact-button__label", key: "label" }, label),
     );
   }
 
-  function ContactRow(props: ContactRowProps) {
+  function ContactRow(props: ContactRowProps): ReactNamespace.ReactElement {
     const h = React.createElement;
     return h(
       "div",
-      { className: ["dsh-base-contact-row", props.className].filter(Boolean).join(" ") },
+      { className: classes("dsh-base-contact-row", props.className) },
       h(
         "span",
-        { className: "dsh-base-contact-row__label" },
-        props.label ?? text("contact"),
-        props.hint ? h("span", { className: "dsh-base-contact-row__hint" }, ` · ${props.hint}`) : null,
+        { className: "dsh-base-contact-row__label", key: "label" },
+        props.label ?? widgetText("contact"),
+        props.hint
+          ? h("span", { className: "dsh-base-contact-row__hint", key: "hint" }, " · " + props.hint)
+          : null,
       ),
-      h(ContactButton, { title: text("contact") }),
+      h(ContactButton, { title: props.label ?? widgetText("contact"), key: "button" }),
     );
   }
 
-  function AuthorPlugins(props: AuthorPluginsProps) {
+  function AuthorPlugins(props: AuthorPluginsProps): ReactNamespace.ReactElement | null {
     const h = React.createElement;
-    const lang = props.lang ?? runtime.lang;
-    const selfId = props.selfId ?? runtime.selfId;
-    const maxRows = props.maxRows ?? runtime.maxRows ?? 4;
+    const lang = props.lang ?? detectLang(options.lang);
+    const selfId = props.selfId ?? options.selfId;
+    const maxRows = props.maxRows ?? options.maxRows ?? 4;
     const all = sortByOrder(props.plugins ?? BASELINE.manifest.plugins);
     const visible = all.filter((plugin) => plugin.id !== selfId).slice(0, Math.max(1, maxRows));
     if (visible.length === 0) return null;
     return h(
       "div",
-      { className: ["dsh-base-plugins", props.className].filter(Boolean).join(" ") },
-      h("h3", { className: "dsh-base-plugins__title" }, props.title ?? text("plugins")),
+      { className: classes("dsh-base-plugins", props.className) },
+      h(
+        "h3",
+        { className: "dsh-base-plugins__title", key: "title" },
+        props.title ?? resolveText("plugins", lang, options.texts),
+      ),
       h(
         "ul",
-        { className: "dsh-base-plugins__list" },
+        { className: "dsh-base-plugins__list", key: "list" },
         visible.map((plugin) =>
           h(
             "li",
@@ -236,10 +224,11 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
                 href: pluginUrl(plugin),
                 target: "_blank",
                 rel: "noopener noreferrer",
+                key: "name",
               },
               plugin.name,
             ),
-            h("span", { className: "dsh-base-plugins__desc" }, plugin.desc[lang] ?? plugin.desc.zh),
+            h("span", { className: "dsh-base-plugins__desc", key: "desc" }, pickText(plugin.desc, lang)),
           ),
         ),
       ),
@@ -259,3 +248,8 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
     preloadContent,
   };
 }
+
+// Re-export the style helpers so hosts can pre-inject the stylesheet.
+export { BASE_CSS, BASE_STYLE_ID, ensureBaseStyles } from "./styles";
+export { MESSAGES, resolveText } from "./texts";
+export type { TextKey, TextOverrides } from "./texts";
