@@ -1,7 +1,7 @@
 # base 包最终验收记录
 
 适用范围：规格 `.scratch/base-package/spec.md`（票 00），实施票 01–13。
-验收时间：2026-10-31（Asia/Shanghai）；分支 `feat/base-package`，HEAD `a85ebab`。
+验收时间：2026-10-31（Asia/Shanghai）；长期分支 `main`，HEAD `1fd97558d83bd42664fbefc93c832fccff1180a3`（集成分支 `feat/base-package` 以 fast-forward 合入后删除；该提交已推送 `origin/main`，远端 tip 相同）。
 结论：**自动部分 7/7 全绿**；人工项（HUMAN-GATE）逐条列出，**待各仓仓主确认**，代理不自判。
 
 ## 1. 自动验收（7/7 PASS）
@@ -15,7 +15,7 @@
 | build | `npm run build` | build ok: core, client, node |
 | three-entry-import | `node --input-type=module -e "import(...)"` | core=8 client=18 node=56 个导出，三入口均非空 |
 | demo-build | `npm run build:demo` | demo/dist 构建成功 |
-| packlist | `npm pack --dry-run --json` | files=32、size=324189；含 package.json / README.md / LICENSE / data/manifest.json / dist 三入口 |
+| packlist | `npm pack --dry-run --json` | files=32、size=324201；含 package.json / README.md / LICENSE / data/manifest.json / dist 三入口 |
 | real-repos-unchanged | 运行前后对比五仓 HEAD + `git status --porcelain` | 5 repos unchanged during the run |
 
 补充说明：
@@ -56,7 +56,7 @@
 - 最终验收脚本在运行前后各取一次五仓 HEAD + `git status --porcelain` 快照，结果一致（`real-repos-unchanged` PASS）。
 - 五仓当前的未提交改动与 HEAD 变化均属仓主并发工作，不是本次实施产生：
   deck 在验收期间由仓主推进 HEAD（`1901ff9` → `9a09d98`）并新增未跟踪 mp4 / research 文档；prompt 同理
-  （`2602f5d` → `6bad40c`，`scripts/real/*` 改动）；im 的 `docs/research/*` 与 ilife 的 README/package.json/tooling
+  （`2602f5d` → `6bad40c` → `0e63b25`，`.github/workflows/check.yml`、README 与 `docs/*` 改动）；im 的 `docs/research/*` 与 ilife 的 README/package.json/tooling
   改动在本次实施开始前就存在；palette 保持干净。
 - **本仓不包含五仓的代码改动**；README 的实际落地与 HUMAN-GATE 由各仓主按交接文档自行执行。
 
@@ -96,5 +96,5 @@ npx -y dsh-featherhunter-plugin-base@1 doctor --repos <五仓父目录>
 | `docs/base包-发布演练记录.md` | 两次真实发布演练、三通道耗时、jsDelivr 图片头、README 改写结果、HUMAN-GATE 清单 |
 | `.tmp/drill-rewrite.log` / `.tmp/drill-before` / `.tmp/drill-repos` | README 全量同步演练日志与前后快照 |
 | `.tmp/real-repos-baseline.json` | 五仓基线快照（HEAD + porcelain） |
-| `.tmp/release-*.json` | 发布脚本每次运行的机器可读报告 |
+| `packages/base/scripts/release.ts` | 发布脚本每次运行写 `.tmp/release-<version>.json` 机器可读报告（演练后未保留报告文件；耗时与通道结果见发布演练记录） |
 | `.tmp/drill-init.log` / `.tmp/drill-sync.log` / `.tmp/drill-check.log` / `.tmp/drill-doctor.log` | 票 11 的 init/sync/check/doctor 演练输出 |
