@@ -7,6 +7,12 @@ import { build } from "esbuild";
 const root = dirname(fileURLToPath(import.meta.url));
 const dist = resolve(root, "dist");
 const withDemo = process.argv.includes("--demo");
+const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+
+// Version banner: the only supported way to tell which build a repository has
+// inlined (deck / palette inline the client bundle into their own source).
+// `doctor` greps for it, so keep the exact shape "<name> v<version>".
+const banner = { js: "/*! " + pkg.name + " v" + pkg.version + " */" };
 
 rmSync(dist, { recursive: true, force: true });
 
@@ -30,6 +36,7 @@ await build({
 await build({
   ...shared,
   platform: "neutral",
+  banner,
   entryPoints: { "client/index": resolve(root, "src/client/index.ts") },
   outdir: dist,
 });
@@ -37,6 +44,7 @@ await build({
 await build({
   ...shared,
   platform: "node",
+  banner,
   entryPoints: { "node/index": resolve(root, "src/node/index.ts") },
   outdir: dist,
 });
