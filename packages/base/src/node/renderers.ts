@@ -8,7 +8,12 @@
  */
 import { BASELINE, pickText, sortByOrder } from "../core/index";
 import type { Group, Lang, Manifest, PluginEntry } from "../core/types";
-import type { BlockRenderOptions } from "./types";
+import type {
+  BlockRenderOptions,
+  StarHistoryData,
+  ThanksAuthor,
+  ThanksData,
+} from "./types";
 
 /** jsDelivr base of the published data package (exact-version images). */
 export const DEFAULT_CDN_BASE = "https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base";
@@ -222,3 +227,186 @@ export function renderMoreBlock(options: BlockRenderOptions = {}): string {
     "</div>",
   ].join("\n");
 }
+
+/** Default alt text of the star-history chart image. */
+export const STAR_HISTORY_DEFAULT_ALT = "Star History Chart";
+
+/** Minute-level version query string shape (YYYYMMDDHHmm). */
+const STAR_HISTORY_VERSION = /^\d{12}$/;
+
+/** Branch / repository shapes accepted in a raw GitHub image URL. */
+const GITHUB_REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+/** Fixed parts of the thanks table. */
+export const THANKS_TEXT = {
+  header: {
+    zh: "| 贡献者 | 致敬 | 贡献 |",
+    en: "| Contributor | Tribute | Contributions |",
+  },
+  separator: "| --- | --- | --- |",
+} as const;
+
+/** Roses/medals of the thanks table, highest tier first. */
+const THANKS_TIERS: ReadonlyArray<readonly [number, string]> = [
+  [10000, "💎"],
+  [1000, "👑"],
+  [100, "🏆"],
+  [10, "💐"],
+  [1, "🌹"],
+];
+
+function requireRepo(repo: string, block: string): string {
+  if (!GITHUB_REPO.test(repo)) {
+    throw new Error(block + ' data needs an "owner/repo" repository (got "' + repo + '")');
+  }
+  return repo;
+}
+
+function rawImageUrl(repo: string, branch: string, path: string, version: string): string {
+  const cleanPath = path.replace(/^\/+/, "");
+  if (cleanPath === "" || /\s/.test(branch) || /\s/.test(cleanPath)) {
+    throw new Error('invalid star-history chart path or branch ("' + branch + '", "' + path + '")');
+  }
+  return "https://raw.githubusercontent.com/" + repo + "/" + branch + "/" + cleanPath + "?v=" + version;
+}
+
+/**
+ * Render the star-history block content (no markers).
+ *
+ * The chart is a light/dark picture pair of the repository SVG assets, each
+ * cache-busted with a minute-level ?v=YYYYMMDDHHmm query string. The optional
+ * data fields keep the per-repository functional elements found before the
+ * migration: deck links the pair to a standalone chart page, im renders it at
+ * a fixed width with a caption note.
+ */
+export function renderStarHistoryBlock(options: BlockRenderOptions = {}): string {
+  const data: StarHistoryData | undefined = options.starHistory;
+  if (data === undefined) {
+    throw new Error("star-history block needs starHistory data (repo and minute-level version)");
+  }
+  const repo = requireRepo(data.repo, "star-history");
+  if (!STAR_HISTORY_VERSION.test(data.version)) {
+    throw new Error(
+      'star-history version must be a minute-level YYYYMMDDHHmm query string (got "' + data.version + '")',
+    );
+  }
+  if (data.width !== undefined && (!Number.isInteger(data.width) || data.width <= 0)) {
+    throw new Error('star-history width must be a positive integer (got "' + String(data.width) + '")');
+  }
+  const branch = data.branch ?? "main";
+  const dark = rawImageUrl(repo, branch, data.darkPath ?? "docs/star-history-dark.svg", data.version);
+  const light = rawImageUrl(repo, branch, data.lightPath ?? "docs/star-history-light.svg", data.version);
+  const alt = escapeAttribute(data.alt ?? STAR_HISTORY_DEFAULT_ALT);
+  const lines: string[] = ['<div align="center">', ""];
+  if (data.pageUrl !== undefined) lines.push('<a href="' + escapeAttribute(data.pageUrl) + '">');
+  lines.push(
+    "  <picture>",
+    '    <source media="(prefers-color-scheme: dark)" srcset="' + dark + '" />',
+    '    <source media="(prefers-color-scheme: light)" srcset="' + light + '" />',
+    "    <img alt=\"" + alt + "\"" + (data.width === undefined ? "" : ' width="' + data.width + '"') + ' src="' + light + '" />',
+    "  </picture>",
+  );
+  if (data.pageUrl !== undefined) lines.push("</a>");
+  if (data.note !== undefined && data.note.trim() !== "") {
+    lines.push("", "<sub>" + escapeAttribute(data.note) + "</sub>");
+  }
+  lines.push("", "</div>");
+  return lines.join("\n");
+}
+
+/**
+ * Contribution total of one author: every issue, pull request, discussion and
+ * counted comment adds one flower.
+ */
+export function thanksTotal(author: ThanksAuthor): number {
+  return (
+    (author.issues?.length ?? 0) +
+    (author.prs?.length ?? 0) +
+    (author.discussions?.length ?? 0) +
+    (author.comments?.length ?? 0)
+  );
+}
+
+/** Roses of one author, one symbol per tier (greedy, high to low). */
+export function rosesFor(total: number): string {
+  let rest = Math.max(0, Math.floor(total));
+  let out = "";
+  for (const [worth, mark] of THANKS_TIERS) {
+    while (rest >= worth) {
+      out += mark;
+      rest -= worth;
+    }
+  }
+  return out;
+}
+
+/** Maintainer / bot / deleted accounts never enter the thanks table. */
+export function isSkippedThanksLogin(login: string, owner: string): boolean {
+  if (login === "" || login === owner || login === "ghost") return true;
+  return login === "dependabot" || login.endsWith("[bot]");
+}
+
+/**
+ * Contribution links of one author, grouped by URL segment (issue thread,
+ * pull-request thread, discussions) and ascending inside a segment. Comments
+ * inherit their thread segment so a comment and its issue stay adjacent.
+ */
+export function thanksLinks(author: ThanksAuthor, repo: string): string[] {
+  interface LinkEntry {
+    segment: number;
+    n: number;
+    path: string;
+  }
+  const entries: LinkEntry[] = [];
+  for (const entry of author.issues ?? []) entries.push({ segment: 0, n: entry.n, path: "issues" });
+  for (const entry of author.prs ?? []) entries.push({ segment: 1, n: entry.n, path: "pull" });
+  for (const entry of author.discussions ?? []) entries.push({ segment: 2, n: entry.n, path: "discussions" });
+  for (const entry of author.comments ?? []) {
+    const pull = entry.thread === "pr";
+    entries.push({ segment: pull ? 1 : 0, n: entry.n, path: pull ? "pull" : "issues" });
+  }
+  entries.sort((a, b) => (a.segment !== b.segment ? a.segment - b.segment : a.n - b.n));
+  return entries.map((entry) => "[#" + entry.n + "](https://github.com/" + repo + "/" + entry.path + "/" + entry.n + ")");
+}
+
+/** Row order: contribution total desc, last activity desc, login asc. */
+function orderedThanksLogins(authors: Record<string, ThanksAuthor>, owner: string): string[] {
+  return Object.keys(authors)
+    .filter((login) => !isSkippedThanksLogin(login, owner))
+    .sort((left, right) => {
+      const totalDelta = thanksTotal(authors[right]!) - thanksTotal(authors[left]!);
+      if (totalDelta !== 0) return totalDelta;
+      const lastLeft = authors[left]!.lastActive ?? "";
+      const lastRight = authors[right]!.lastActive ?? "";
+      if (lastLeft !== lastRight) return lastLeft < lastRight ? 1 : -1;
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+}
+
+/** One table row of the thanks block. */
+export function thanksRow(login: string, author: ThanksAuthor, repo: string): string {
+  const links = thanksLinks(author, repo).join(" ");
+  return "| [@" + login + "](https://github.com/" + login + ") | " + rosesFor(thanksTotal(author)) + " | " + links + " |";
+}
+
+/**
+ * Render the thanks block content (no markers, no heading / prose).
+ *
+ * The three-column table is the only managed part: its surrounding heading,
+ * intro and footer stay byte-identical outside the marker pair. The row rules
+ * are the ones the five repositories already use - maintainer / bot accounts
+ * filtered out, one symbol per tier, and the segment-merged link order.
+ */
+export function renderThanksBlock(options: BlockRenderOptions = {}): string {
+  const data: ThanksData | undefined = options.thanks;
+  if (data === undefined) throw new Error("thanks block needs thanks data (repo and author records)");
+  const repo = requireRepo(data.repo, "thanks");
+  const owner = repo.split("/")[0]!;
+  const lang = resolveLang(options);
+  const lines: string[] = [THANKS_TEXT.header[lang], THANKS_TEXT.separator];
+  for (const login of orderedThanksLogins(data.authors, owner)) {
+    lines.push(thanksRow(login, data.authors[login]!, repo));
+  }
+  return lines.join("\n");
+}
+

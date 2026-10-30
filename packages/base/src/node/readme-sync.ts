@@ -31,7 +31,12 @@ import {
   parseContactBlock,
   parseMoreBlock,
 } from "./readme-compare";
-import { renderContactBlock, renderMoreBlock } from "./renderers";
+import {
+  renderContactBlock,
+  renderMoreBlock,
+  renderStarHistoryBlock,
+  renderThanksBlock,
+} from "./renderers";
 import type {
   BlockName,
   BlockRenderOptions,
@@ -80,6 +85,12 @@ export interface BlockDefinition {
   locateLegacy?: (markdown: string) => LegacyBlockSpan | null;
   /** Recover the language, heading form and heading wording from a current block. */
   detect?: (raw: string) => { lang?: Lang; variant?: HeadingVariant; headingText?: string };
+  /**
+   * Whether the caller supplied the data this block renders. Definitions
+   * without data are skipped instead of failing, so a CLI run that has no
+   * thanks / star data yet still syncs the other blocks.
+   */
+  hasData?: (options: BlockRenderOptions) => boolean;
 }
 
 /** Marker strings of the four managed README blocks. */
@@ -283,6 +294,48 @@ function locateLegacyMore(markdown: string): LegacyBlockSpan | null {
 }
 
 /**
+ * Locate the legacy star-history block.
+ *
+ * The block starts at the wrapping centring <div> (the chart and, for deck,
+ * its standalone-page link live inside it) and ends at the closing </div>.
+ * When no chart survives in the README (ilife) the block is appended at the end.
+ */
+function locateLegacyStarHistory(markdown: string): LegacyBlockSpan | null {
+  const lines = markdownLines(markdown);
+  let fence = false;
+  let markerIndex = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index]!.text;
+    if (isFenceLine(text)) {
+      fence = !fence;
+      continue;
+    }
+    if (!fence && STAR_MARKER_LINE.test(text)) {
+      markerIndex = index;
+      break;
+    }
+  }
+  if (markerIndex === -1) {
+    const insertion = markdown.trimEnd().length;
+    return { start: insertion, end: markdown.length };
+  }
+  let startIndex = markerIndex;
+  for (let back = markerIndex - 1; back >= Math.max(0, markerIndex - 8); back -= 1) {
+    if (WRAPPING_DIV_LINE.test(lines[back]!.text)) {
+      startIndex = back;
+      break;
+    }
+  }
+  const closingDiv = /^\s*<\/div\b/i;
+  for (let index = markerIndex + 1; index < lines.length; index += 1) {
+    if (closingDiv.test(lines[index]!.text)) {
+      return { start: lines[startIndex]!.start, end: lines[index]!.end };
+    }
+  }
+  return { start: lines[startIndex]!.start, end: markdown.trimEnd().length };
+}
+
+/**
  * Registry of the managed README blocks.
  *
  * Order is documentation order, not README order: the engine locates every
@@ -297,14 +350,17 @@ export const BLOCK_DEFINITIONS: readonly BlockDefinition[] = [
     locateLegacy: locateLegacyContact,
     detect: detectContact,
   },
-  // Reserved for ticket 10.
   {
     name: "star-history",
     label: "star-history",
     markers: [{ start: BLOCK_MARKERS.starHistory.start, end: BLOCK_MARKERS.starHistory.end }],
+    render: (context) => renderStarHistoryBlock(context),
+    locateLegacy: locateLegacyStarHistory,
+    hasData: (options) => options.starHistory !== undefined,
   },
-  // Reserved for ticket 10. One marker pair per language; which pair exists
-  // tells the language of the README.
+  // One marker pair per language; which pair exists tells the language of the
+  // README. Only the table between the markers is managed: the surrounding
+  // heading / intro / footer prose differ per repository and stay untouched.
   {
     name: "thanks",
     label: "thanks",
@@ -312,6 +368,8 @@ export const BLOCK_DEFINITIONS: readonly BlockDefinition[] = [
       { lang: "zh", start: THANKS_ZH_MARKERS.start, end: THANKS_ZH_MARKERS.end },
       { lang: "en", start: THANKS_EN_MARKERS.start, end: THANKS_EN_MARKERS.end },
     ],
+    render: (context) => renderThanksBlock(context),
+    hasData: (options) => options.thanks !== undefined,
   },
   {
     name: "more",
@@ -467,6 +525,12 @@ function applyMarkerSet(
     if (definition.render === undefined) {
       return { markdown, changed: false, status: "skipped", errors };
     }
+    // A per-language marker pair that is absent from a README of the other
+    // language is not missing, just not applicable (deck's zh README has no
+    // English thanks table).
+    if (markerSet.lang !== undefined && markerSet.lang !== context.lang) {
+      return { markdown, changed: false, status: "skipped", errors };
+    }
     if (command === "sync") {
       errors.push(definition.label + " markers are missing; run readme:init first");
       return { markdown, changed: false, status: "skipped", errors };
@@ -576,6 +640,8 @@ function detectContext(markdown: string, options: ReadmeTargetOptions): Resolved
       cdnBase: options.cdnBase,
       selfId: options.selfId,
       headingText: options.headingText,
+      starHistory: options.starHistory,
+      thanks: options.thanks,
     },
     lang: lang ?? "zh",
     variants,
@@ -635,6 +701,13 @@ export function updateReadme(options: ReadmeUpdateOptions): ReadmeFileResult {
   const context = detectContext(markdown, options);
   let next = markdown;
   for (const definition of implementedBlockDefinitions()) {
+    if (definition.hasData !== undefined && !definition.hasData(context.options)) {
+      for (const markerSet of definition.markers) {
+        void markerSet;
+        result.blocks.push({ name: definition.name, status: "skipped" });
+      }
+      continue;
+    }
     for (const markerSet of definition.markers) {
       const applied = applyMarkerSet(next, definition, markerSet, context, command);
       next = applied.markdown;
@@ -686,6 +759,8 @@ export function updateReadmes(options: ReadmeSyncOptions): ReadmeBatchResult {
       variant: options.variant,
       selfId: options.selfId,
       headingText: options.headingText,
+      starHistory: options.starHistory,
+      thanks: options.thanks,
     }),
   );
   return { ok: files.every((file) => file.ok), files };

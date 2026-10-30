@@ -6,6 +6,60 @@ import type { Lang, Manifest } from "../core/types";
  */
 export type HeadingVariant = "html-heading" | "markdown-heading";
 
+/** One contribution number inside a thanks data file. */
+export interface ThanksEntry {
+  /** Issue / pull / discussion number. */
+  n: number;
+  /** ISO timestamp of the contribution. */
+  at?: string;
+  /** For comments: the thread the comment belongs to. */
+  thread?: "issue" | "pr";
+}
+
+/** One author record inside a thanks data file. */
+export interface ThanksAuthor {
+  issues?: ThanksEntry[];
+  prs?: ThanksEntry[];
+  discussions?: ThanksEntry[];
+  comments?: ThanksEntry[];
+  /** ISO timestamp of the last activity, used as the ranking tie-breaker. */
+  lastActive?: string;
+}
+
+/**
+ * Data needed to render the thanks table.
+ *
+ * The repositories keep this in docs/thanks-data.json (written by their own
+ * generators); the renderer never fetches anything.
+ */
+export interface ThanksData {
+  /** Owner/repo used to build the contribution links, e.g. FeatherHunter/dsh-im-companion. */
+  repo: string;
+  authors: Record<string, ThanksAuthor>;
+}
+
+/** Data needed to render the star-history block. */
+export interface StarHistoryData {
+  /** Owner/repo of the chart assets, e.g. FeatherHunter/dsh-mattpocock-skills-deck. */
+  repo: string;
+  /** Minute-level version query string (YYYYMMDDHHmm) appended to every image URL. */
+  version: string;
+  /** Branch that publishes docs/; defaults to `main`. */
+  branch?: string;
+  /** Dark-mode chart path; defaults to `docs/star-history-dark.svg`. */
+  darkPath?: string;
+  /** Light-mode chart path; defaults to `docs/star-history-light.svg`. */
+  lightPath?: string;
+  /** Image alt text; defaults to `Star History Chart`. */
+  alt?: string;
+  /** Optional link to a standalone chart page (deck). */
+  pageUrl?: string;
+  /** Optional rendered image width (im uses 720). */
+  width?: number;
+  /** Optional caption rendered as a `<sub>` note under the chart (im). */
+  note?: string;
+}
+
 /** Shared options for the README block renderers. */
 export interface BlockRenderOptions {
   /** Manifest to render from; defaults to the packaged baseline manifest. */
@@ -22,6 +76,10 @@ export interface BlockRenderOptions {
   selfId?: string;
   /** Heading text override, used to keep a historical heading wording. */
   headingText?: string;
+  /** Star-history data; the block is skipped when absent. */
+  starHistory?: StarHistoryData;
+  /** Thanks table data; the block is skipped when absent. */
+  thanks?: ThanksData;
 }
 
 /** Marker names of the four managed README blocks. */
@@ -59,6 +117,10 @@ export interface ReadmeSyncOptions {
   headingText?: string;
   /** README path relative to each root; default `README.md`. */
   readme?: string;
+  /** Star-history data; the block is skipped when absent. */
+  starHistory?: StarHistoryData;
+  /** Thanks table data; the block is skipped when absent. */
+  thanks?: ThanksData;
 }
 
 export interface DoctorCheck {

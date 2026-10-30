@@ -471,7 +471,7 @@ describe("readme batch (--all)", () => {
 });
 
 describe("block registry", () => {
-  it("registers the implemented blocks in visual order and reserves the follow-up markers", () => {
+  it("registers the implemented blocks in visual order", () => {
     const byName = new Map(BLOCK_DEFINITIONS.map((definition) => [definition.name, definition]));
     expect([...byName.keys()]).toEqual(["contact", "star-history", "thanks", "more"]);
 
@@ -494,8 +494,17 @@ describe("block registry", () => {
       ["zh", "<!-- THANKS-TABLE-ZH-START -->", "<!-- THANKS-TABLE-ZH-END -->"],
       ["en", "<!-- THANKS-TABLE-EN-START -->", "<!-- THANKS-TABLE-EN-END -->"],
     ]);
-    for (const name of ["star-history", "thanks"] as const) {
-      expect(byName.get(name)!.render).toBeUndefined();
-    }
+    const star = byName.get("star-history")!;
+    expect(star.render).toBeTypeOf("function");
+    expect(star.locateLegacy).toBeTypeOf("function");
+    expect(star.detect).toBeUndefined();
+    expect(star.hasData!({})).toBe(false);
+    expect(star.hasData!({ starHistory: { repo: "FeatherHunter/x", version: "202610310130" } })).toBe(true);
+
+    const thanks = byName.get("thanks")!;
+    expect(thanks.render).toBeTypeOf("function");
+    expect(thanks.locateLegacy).toBeUndefined();
+    expect(thanks.hasData!({})).toBe(false);
+    expect(thanks.hasData!({ thanks: { repo: "FeatherHunter/x", authors: {} } })).toBe(true);
   });
 });
