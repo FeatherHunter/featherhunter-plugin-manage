@@ -1,0 +1,57 @@
+{
+  "original": "D:\\temp\\vidfix\\orig_8.png",
+  "rebuilt": "D:\\temp\\vidfix\\new_8.png",
+  "threshold": 16,
+  "width": 1918,
+  "height": 960,
+  "differingPixels": 56,
+  "totalPixels": 1841280,
+  "diffRatio": 0,
+  "worstRegions": [
+    {
+      "x1": 720,
+      "y1": 120,
+      "x2": 960,
+      "y2": 240,
+      "ratio": 0.0012,
+      "differing": 35,
+      "total": 28800
+    },
+    {
+      "x1": 960,
+      "y1": 120,
+      "x2": 1200,
+      "y2": 240,
+      "ratio": 0.0006,
+      "differing": 16,
+      "total": 28800
+    },
+    {
+      "x1": 720,
+      "y1": 240,
+      "x2": 960,
+      "y2": 360,
+      "ratio": 0.0001,
+      "differing": 3,
+      "total": 28800
+    },
+    {
+      "x1": 960,
+      "y1": 240,
+      "x2": 1200,
+      "y2": 360,
+      "ratio": 0,
+      "differing": 1,
+      "total": 28800
+    },
+    {
+      "x1": 960,
+      "y1": 480,
+      "x2": 1200,
+      "y2": 600,
+      "ratio": 0,
+      "differing": 1,
+      "total": 28800
+    }
+  ]
+}

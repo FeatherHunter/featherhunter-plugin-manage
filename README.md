@@ -1,0 +1,2 @@
+# featherhunter-plugin-manage
+
