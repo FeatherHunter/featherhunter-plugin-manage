@@ -30,7 +30,7 @@ export interface BaseUIOptions {
   resolveQr?: QrResolver;
   /** Show the host plugin itself in the author plugin list. */
   showSelf?: boolean;
-  /** Max rows of the author plugin list (default 4). */
+  /** Max rows of the author plugin list (default 5). */
   maxRows?: number;
 }
 
@@ -55,8 +55,12 @@ export interface AuthorPluginsProps {
   className?: string;
   title?: string;
   lang?: Lang;
+  /** Id of the host plugin; defaults to the createBaseUI option. */
   selfId?: string;
+  /** Show the host plugin itself instead of dropping it. */
+  showSelf?: boolean;
   plugins?: PluginEntry[];
+  /** Hard cap on rendered rows (default 5). */
   maxRows?: number;
 }
 
