@@ -3,6 +3,7 @@ import type { Group, Lang, Manifest, PluginEntry } from "../core/types";
 import type { BlockRenderOptions, VerifyResult } from "./types";
 
 export * from "./types";
+export * from "./readme-compare";
 
 /** Managed-block markers. Writers only ever touch the text between them. */
 export const BLOCK_MARKERS = {
