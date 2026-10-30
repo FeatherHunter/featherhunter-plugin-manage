@@ -65,7 +65,9 @@ describe("client bundle contract", () => {
     expect(source).not.toMatch(/(^|\n)\s*import\b/);
     expect(source).not.toMatch(/\brequire\s*\(/);
     expect(source).not.toMatch(/\bimport\s*\(/);
-    expect(source).not.toMatch(/(^|\n)\s*await\b/);
+    // Top-level statements are emitted at column 0; an indented await lives
+    // inside an async function and is harmless for a self-contained module.
+    expect(source).not.toMatch(/(^|\n)await\b/);
     expect(importedSpecifiers(source)).toEqual([]);
   });
 

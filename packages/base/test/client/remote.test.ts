@@ -257,7 +257,7 @@ describe("remote manifest cache", () => {
 
 describe("dialog teardown while the manifest is in flight", () => {
   it("closes cleanly before the manifest arrives", async () => {
-    let release: (() => void) | null = null;
+    let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -271,7 +271,7 @@ describe("dialog teardown while the manifest is in flight", () => {
     ui.openContactModal({ now: NOW });
     ui.closeContactModal();
     expect(document.querySelector("dialog")).toBeNull();
-    release?.();
+    release();
     await settle();
     // The late response must not resurrect a dialog or throw.
     expect(document.querySelector("dialog")).toBeNull();
