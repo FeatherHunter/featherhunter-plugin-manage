@@ -323,6 +323,9 @@ packages/base/                  # npm 包本身
 交付：仓库 `FeatherHunter/featherhunter-plugin-manage`，长期分支 `main`，提交 `7f1d39f5ee584a83db0195b2a1b2f726a4ffe45b`，已推送 `origin/main`（远端 tip 与本地相同）。集成分支 `feat/base-package` 以 fast-forward 合入后删除；仓库无 PR 约定，直接推送。
 验收时间：2026-10-31 04:05（Asia/Shanghai）。实施票 01–13 全部 closed（每票正文/进度已按各票收尾更新）。
 
+### local — 2026-10-30T20:10:21.498Z
+关闭后补充（2026-10-31T04:10+08:00）：规格关闭写回的文件改动已单独提交 `0969bb1`（仅 `.scratch/base-package/spec.md`：收口评论、状态 closed、进度 100%，不改实现代码），已推送 `origin/main`；在该提交上复跑 `.tmp/final-acceptance.ps1` = 7/7（typecheck/test/build/三入口/demo-build/packlist/五仓 unchanged，日志 `.tmp/acceptance-closeout.log`），工作树仅 `?? .scratch/desktop-crash/`（非本实施）。
+
 ## 一、逐票核对（打开每张票对照判据，看最终代码与测试，不只看关闭状态）
 
 - **01 包骨架与三入口契约**（`e801688`）：查 `packages/base/package.json`（`exports` 的 `./core` `./client` `./node`、`bin` `dsh-base`、`peerDependencies` react `^18 || ^19`）、`packages/base/build.mjs`、`packages/base/tsconfig.build.json`、`packages/base/test/dist-contract.test.ts`（8 例）；命令 `npm run typecheck` / `npm run build` / `npm test` 全绿；client 产物零 import、node 产物只 import `node:`、packlist 含 dist/data/README。
