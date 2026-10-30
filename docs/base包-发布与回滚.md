@@ -8,6 +8,7 @@
 | 动作 | 命令 |
 | --- | --- |
 | 发布 | `cd packages/base && npm publish --access public` |
+| 一条命令发布（含换码与 README 同步） | `cd packages/base && npm run release -- --version <x.y.z> --tag latest --image <新码截图> --repos <五仓父目录>` |
 | 三通道冒烟 | `npm run test:network`（默认不进常规测试，需要网络与真实发布） |
 | 72 小时内回滚 | `npm unpublish dsh-featherhunter-plugin-base@<version>` |
 | 超过 72 小时回滚 | `npm deprecate dsh-featherhunter-plugin-base@<version> "<原因>"` + 发补丁版本 |
@@ -87,9 +88,12 @@ curl.exe -sS -I  "https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base@$v/
 
 | 版本 | 通道 | 首次生效耗时 | 验证时间 | 备注 |
 | --- | --- | --- | --- | --- |
-| 0.0.1 | unpkg | 待补 | — | — |
-| 0.0.1 | npmmirror | 待补 | — | — |
-| 0.0.1 | jsDelivr | 待补 | — | — |
+| 0.0.1 | unpkg | 约 5m14s（01:05:40 首次可见） | 2026-10-31 01:05:40 | 轮询原文 `.tmp/cdn-poll2.log`；npm 可见约 1.5 分钟（staged publishing） |
+| 0.0.1 | npmmirror | 未生效（HTTP 403） | 2026-10-31 01:26 | 返回 `not allow to unpkg files`：cnpm 白名单不代理本包，客户端回退 jsDelivr |
+| 0.0.1 | jsDelivr | 约 2m07s | 2026-10-31 01:02 前后 | 客户端回源首选通道 |
+
+> 2026-10-31 另有一次换码预发布 `0.0.2-drill`（`--tag drill`，不覆盖 `latest`）：unpkg 247ms、jsDelivr 914ms 即返回新清单，
+> 精确版本图片 200 且长缓存。完整记录见 `docs/base包-发布演练记录.md`。
 
 > 经验值：unpkg 与 jsDelivr 在发布后通常 1–5 分钟可见；npmmirror 走同步任务，可能更慢。CDN 缓存对 `@latest` 有短期缓存，用精确版本 URL 可立即验证发布是否成功。
 
@@ -133,7 +137,14 @@ curl.exe -sS -I  "https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base@$v/
 | 项目 | 结果 |
 | --- | --- |
 | 版本 | 0.0.1 |
-| 发布时间 | 待补 |
-| `npm view` 版本/files | 待补 |
-| unpkg / npmmirror / jsDelivr | 待补 |
-| jsDelivr 精确版本图片缓存头 | 待补 |
+| 发布时间 | 2026-10-31 01:00:26（Asia/Shanghai；npm `time` = 2026-10-30T17:00:26.059Z） |
+| `npm view` 版本/files | `version` → 0.0.1；`files` = dist/ data/ README.md LICENSE（`npm pack` 报告 30 files / 308654 B） |
+| unpkg / npmmirror / jsDelivr | unpkg 200（revision 1、updatedAt 2026-10-23、wechat validUntil 2026-10-30）；npmmirror 403（白名单）；jsDelivr 200（同清单） |
+| jsDelivr 精确版本图片缓存头 | `@0.0.1/data/img/card-feishu.png` → 200、image/png、`cache-control: public, max-age=31536000, s-maxage=31536000, immutable`、12292 B |
+
+## 9. 换码演练（0.0.2-drill）
+
+2026-10-31 01:19:27 以 `--tag drill` 发布 `0.0.2-drill`：微信卡片/二维码换成 2026-11-06 版本、
+`validUntil` 与 `updatedAt` 同步推进，`latest` 保持 0.0.1。三通道清单、精确版本图片、
+真实客户端 154ms 切换、README 地址改写（10/11 文件，im 根 README 因冲突残留按设计拒绝）与 HUMAN-GATE
+清单见 `docs/base包-发布演练记录.md`。

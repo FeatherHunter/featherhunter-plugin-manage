@@ -83,6 +83,10 @@ export interface ReleaseOptions {
   pkgDir?: string;
   /** Parent directory of the five repositories; enables the README sync step. */
   reposDir?: string;
+  /** New QR screenshot; when given, contact:update runs before the data step. */
+  imagePath?: string;
+  /** Contact group to refresh with `imagePath` (default: the group in contact/groups.json). */
+  group?: string;
   bump?: "patch" | "minor" | "major";
   /** Explicit target version; wins over `bump`. */
   version?: string;
@@ -246,6 +250,11 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       const result = await git(options.rootDir, ["checkout", "--", path]);
       if (result.code !== 0) stderr("rollback: cannot restore " + path + ": " + tail(result.stderr));
     }
+    if (options.imagePath !== undefined) {
+      // contact:update adds dated card/qr images that git checkout cannot remove.
+      const cleaned = await git(options.rootDir, ["clean", "-fdq", "--", "contact"]);
+      if (cleaned.code !== 0) stderr("rollback: cannot clean contact/: " + tail(cleaned.stderr));
+    }
     if (readmeTouched && options.reposDir !== undefined) {
       for (const target of README_TARGETS) {
         const repoDir = join(options.reposDir, target.repo);
@@ -322,7 +331,34 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
 
     mark("worktree", true, "git working tree is clean");
 
-    // 1. Data ------------------------------------------------------------
+    // 1. Contact source (optional) ---------------------------------------
+    if (options.imagePath === undefined) {
+      mark("contact", true, "skipped (no --image given)");
+    } else {
+      const contactArgs = [
+        join(pkgDir, "scripts", "run-ts.mjs"),
+        "contact-update",
+        resolve(options.imagePath),
+        "--confirmed",
+        "--no-build",
+      ];
+      if (options.group !== undefined) contactArgs.push("--group", options.group);
+      if (dryRun) contactArgs.push("--dry-run");
+      const contact = await run(process.execPath, contactArgs, { cwd: pkgDir, env });
+      if (contact.code !== 0) {
+        mark("contact", false, tail(contact.stderr || contact.stdout));
+        return await fail("contact:update failed");
+      }
+      mark(
+        "contact",
+        true,
+        dryRun
+          ? "validated " + options.imagePath + " (dry run, nothing written)"
+          : "contact sources refreshed from " + options.imagePath,
+      );
+    }
+
+    // 2. Data ------------------------------------------------------------
     if (dryRun) {
       const check = await run("npm", ["run", "data:check"], { cwd: pkgDir, env });
       if (check.code !== 0) {
@@ -344,7 +380,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       mark("data", true, "data regenerated and deterministic");
     }
 
-    // 2. Version ---------------------------------------------------------
+    // 3. Version ---------------------------------------------------------
     if (dryRun) {
       mark("version", true, "would run: npm version " + version + " --no-git-tag-version");
     } else {
@@ -356,7 +392,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       mark("version", true, "package.json + package-lock.json set to " + version);
     }
 
-    // 3. Gates -----------------------------------------------------------
+    // 4. Gates -----------------------------------------------------------
     const gates: Array<[string, string[]]> = [["typecheck", ["run", "typecheck"]]];
     if (dryRun) {
       mark("gates", true, "dry run: would run test + build after typecheck");
@@ -373,7 +409,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       mark(name, true, "passed");
     }
 
-    // 4. Pack ------------------------------------------------------------
+    // 5. Pack ------------------------------------------------------------
     let tgzPath = "";
     if (dryRun) {
       mark("pack", true, "dry run: would run npm pack --json");
@@ -398,7 +434,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
     }
     }
 
-    // 5. Publish + registry readiness ------------------------------------
+    // 6. Publish + registry readiness ------------------------------------
     if (options.skipPublish === true || dryRun) {
       mark("publish", true, "skipped (dry run or --skip-publish)" + (tgzPath === "" ? "" : "; tarball: " + tgzPath));
       mark("registry", true, "skipped with publish");
@@ -427,7 +463,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       mark("registry", true, "npm view sees " + version + " after " + registryMs + "ms");
     }
 
-    // 6. CDN channels ----------------------------------------------------
+    // 7. CDN channels ----------------------------------------------------
     if (options.skipPublish === true || dryRun) {
       mark("channels", true, "skipped with publish");
     } else {
@@ -447,7 +483,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       if (requiredFailed) return await fail("required CDN channel is not ready");
     }
 
-    // 7. README sync -----------------------------------------------------
+    // 8. README sync -----------------------------------------------------
     if (options.reposDir === undefined) {
       mark("readme", true, "skipped (no --repos given)");
     } else if (dryRun) {
@@ -480,7 +516,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       mark("readme-check", true, "no drift after sync");
     }
 
-    // 8. Report ----------------------------------------------------------
+    // 9. Report ----------------------------------------------------------
     timings["total"] = elapsed();
     const report: ReleaseReport = {
       ok: true,
@@ -588,6 +624,8 @@ Usage:
   npm run release -- [options]
 
 Options:
+  --image <path>      New QR screenshot; runs contact:update before regenerating data
+  --group <id>        Contact group for --image (default: the group in contact/groups.json)
   --repos <dir>       Parent directory of the five repositories; enables readme:sync
   --bump <kind>       patch | minor | major (default: patch)
   --version <x.y.z>   Explicit target version (wins over --bump)
@@ -604,6 +642,8 @@ Exit codes: 0 released / 1 failed (see rollback field) / 2 usage error
 
 interface CliOptions {
   reposDir?: string;
+  imagePath?: string;
+  group?: string;
   bump: "patch" | "minor" | "major";
   version?: string;
   tag: string;
@@ -626,6 +666,14 @@ function parseArgs(args: string[]): CliOptions | { error: string } {
     const arg = args[index]!;
     const value = (): string | undefined => args[index + 1];
     switch (arg) {
+      case "--image":
+        options.imagePath = value();
+        index += 1;
+        break;
+      case "--group":
+        options.group = value();
+        index += 1;
+        break;
       case "--repos":
         options.reposDir = value();
         index += 1;
@@ -715,6 +763,8 @@ export async function runCli(args: string[]): Promise<number> {
   const report = await runRelease({
     rootDir,
     reposDir: parsed.reposDir === undefined ? undefined : resolve(parsed.reposDir),
+    imagePath: parsed.imagePath === undefined ? undefined : resolve(parsed.imagePath),
+    group: parsed.group,
     bump: parsed.bump,
     version: parsed.version,
     tag: parsed.tag,

@@ -207,6 +207,7 @@ describe("runRelease", () => {
     expect(report.steps.map((step) => step.name)).toEqual([
       "preflight",
       "worktree",
+      "contact",
       "data",
       "version",
       "typecheck",
@@ -236,6 +237,65 @@ describe("runRelease", () => {
     const written = JSON.parse(readFileSync(reportPath, "utf8")) as { version: string; ok: boolean };
     expect(written.version).toBe("0.0.2");
     expect(written.ok).toBe(true);
+  });
+
+  it("runs contact:update first when --image is given", async () => {
+    const root = makeTemp("release-image-");
+    const pkgDir = makePackage(root);
+    const image = join(root, "new-wechat.png");
+    const runner = makeRunner({ registry: () => "0.0.2" });
+    const { deps } = makeDeps({ run: runner.run });
+    const report = await runRelease({ rootDir: root, imagePath: image, group: "wechat", deps, skipPublish: true });
+
+    expect(report.ok).toBe(true);
+    expect(report.steps.find((step) => step.name === "contact")?.detail).toContain("contact sources refreshed");
+    const contact = runner.calls.find((call) => call.args[1] === "contact-update");
+    expect(contact?.command).toBe(process.execPath);
+    expect(contact?.args).toEqual([
+      join(pkgDir, "scripts", "run-ts.mjs"),
+      "contact-update",
+      image,
+      "--confirmed",
+      "--no-build",
+      "--group",
+      "wechat",
+    ]);
+    const names = runner.calls.map((call) => call.args[1] ?? call.args[0]);
+    expect(names.indexOf("contact-update")).toBeLessThan(names.indexOf("build:data"));
+  });
+
+  it("validates the new image without writing when --dry-run and --image are combined", async () => {
+    const root = makeTemp("release-image-dry-");
+    makePackage(root);
+    const image = join(root, "new-wechat.png");
+    const runner = makeRunner();
+    const { deps } = makeDeps({ run: runner.run });
+    const report = await runRelease({ rootDir: root, imagePath: image, dryRun: true, deps });
+
+    expect(report.ok).toBe(true);
+    const contact = runner.calls.find((call) => call.args[1] === "contact-update");
+    expect(contact?.args).toContain("--dry-run");
+    expect(report.steps.find((step) => step.name === "contact")?.detail).toContain("nothing written");
+    expect(runner.calls.some((call) => call.command === "git" && call.args[0] === "clean")).toBe(false);
+  });
+
+  it("rolls back contact sources when contact:update fails", async () => {
+    const root = makeTemp("release-image-fail-");
+    makePackage(root);
+    const image = join(root, "new-wechat.png");
+    const runner = makeRunner({
+      failCommand: (command, args) => command === process.execPath && args[1] === "contact-update",
+    });
+    const { deps } = makeDeps({ run: runner.run });
+    const report = await runRelease({ rootDir: root, imagePath: image, deps });
+
+    expect(report.ok).toBe(false);
+    expect(report.rollback).toBe("rolled-back");
+    expect(report.steps.find((step) => step.name === "contact")?.ok).toBe(false);
+    expect(runner.calls.some((call) => call.args[0] === "publish")).toBe(false);
+    expect(
+      runner.calls.some((call) => call.command === "git" && call.args.join(" ") === "clean -fdq -- contact"),
+    ).toBe(true);
   });
 
   it("refuses to start on a dirty working tree", async () => {

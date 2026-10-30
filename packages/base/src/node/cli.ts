@@ -19,8 +19,8 @@ Usage:
                                   Refresh the text between the managed markers
   dsh-base readme:init|readme:sync --all --repos <dir>...
                                   Process the eleven managed READMEs of the five repositories
-  dsh-base contact:update [--check]
-                                  Refresh contact/ data from the QR source images
+  dsh-base contact:update          Source-repo only: refresh contact/ from a QR screenshot
+                                  (run "npm run contact:update -- <image>" in the checkout)
   dsh-base doctor [<repo-dir>]... [--repos <dir>]... [--offline] [--json]
                                   Diagnose data, CDN and README state
   dsh-base --version              Print the package version
@@ -43,12 +43,6 @@ refuse to touch a README with unpaired markers or merge-conflict residue.
 
 Exit codes: 0 success / no drift, 1 drift or error, 2 usage error.
 `;
-
-function notImplemented(command: string): number {
-  process.stderr.write(`dsh-base: "${command}" is not implemented yet`);
-  process.stderr.write("\n");
-  return 1;
-}
 
 type ReadmeCommand = "init" | "sync";
 
@@ -289,7 +283,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       return 0;
     }
     case "contact:update":
-      return notImplemented(command);
+      process.stderr.write(
+        "dsh-base: contact:update refreshes contact/ from QR screenshots inside the package source repository;\n" +
+          "it needs the image tooling (pngjs/jpeg-js) that only the maintainer checkout has.\n" +
+          "Run it there instead: npm run contact:update -- <image> [--group <id>] [--confirmed]\n",
+      );
+      return 2;
     default:
       process.stderr.write(`dsh-base: unknown command "${command}"\n\n`);
       process.stderr.write(HELP);
