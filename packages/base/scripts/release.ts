@@ -400,7 +400,7 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
 
     // 5. Publish + registry readiness ------------------------------------
     if (options.skipPublish === true || dryRun) {
-      mark("publish", true, "skipped (dry run or --skip-publish); tarball: " + tgzPath);
+      mark("publish", true, "skipped (dry run or --skip-publish)" + (tgzPath === "" ? "" : "; tarball: " + tgzPath));
       mark("registry", true, "skipped with publish");
     } else {
       const publish = await run("npm", ["publish", tgzPath, "--tag", tag], { cwd: pkgDir, env });
