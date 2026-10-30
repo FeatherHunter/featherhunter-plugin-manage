@@ -1,0 +1,112 @@
+import type { BaselineContent } from "./types";
+
+/**
+ * Offline baseline: rendered on the first frame, before (and instead of) the
+ * remote manifest. Ticket 03 replaces this placeholder with a generated file
+ * that inlines the Feishu / QQ QR codes as data URIs.
+ */
+export const BASELINE: BaselineContent = {
+  manifest: {
+    schema: 1,
+    version: "0.0.1",
+    revision: 0,
+    updatedAt: "2026-10-30T00:00:00+08:00",
+    fallbackUrl: "https://github.com/FeatherHunter/featherhunter-plugin-manage",
+    groups: [
+      {
+        id: "feishu",
+        platform: "feishu",
+        order: 10,
+        readmeTitle: { zh: "飞书群（主）", en: "Feishu Group (Main)" },
+        alt: { zh: "DSH 插件交流群 飞书群二维码", en: "DSH plugin community group Feishu QR code" },
+        card: "card-feishu.png",
+        qr: { kind: "bundled", key: "qr-feishu" },
+        title: { zh: "DSH 插件交流群", en: "DSH Plugin Community" },
+        subtitle: { zh: "用户418832的组织", en: "User 418832's organization" },
+        note: { zh: "该二维码永久有效", en: "This QR code never expires" },
+      },
+      {
+        id: "qq",
+        platform: "qq",
+        order: 20,
+        readmeTitle: { zh: "QQ群（新）", en: "QQ Group (New)" },
+        alt: { zh: "DSH 插件交流群 QQ 群二维码", en: "DSH plugin community group QQ QR code" },
+        card: "card-qq.jpg",
+        qr: { kind: "bundled", key: "qr-qq" },
+        title: { zh: "DSH 插件交流群", en: "DSH Plugin Community" },
+        subtitle: { zh: "群号：1020866453", en: "Group ID: 1020866453" },
+        note: { zh: "扫一扫二维码，加入群聊", en: "Scan the QR code to join the group chat" },
+      },
+      {
+        id: "wechat",
+        platform: "wechat",
+        order: 30,
+        readmeTitle: { zh: "微信群（新）", en: "WeChat Group (New)" },
+        alt: { zh: "DSH 插件交流群微信群二维码", en: "DSH plugin community group WeChat QR code" },
+        card: "card-wechat-2026-11-06.png",
+        qr: { kind: "remote", path: "qr-wechat-2026-11-06.png" },
+        title: { zh: "DSH 插件交流群", en: "DSH Plugin Community" },
+        subtitle: { zh: "群聊：DSH 插件交流群", en: "Group chat: DSH Plugin Community" },
+        validUntil: "2026-11-13",
+      },
+    ],
+    plugins: [
+      {
+        id: "deck",
+        order: 10,
+        verifiedAt: "2026-10-30",
+        name: "dsh-mattpocock-skills-deck",
+        repo: "FeatherHunter/dsh-mattpocock-skills-deck",
+        desc: {
+          zh: "近 30 万 star 的 mattpocock/skills 整套预置好（27 个技能），装好即用。",
+          en: "The whole mattpocock/skills set (nearly 300k stars) preinstalled — 27 skills, ready as soon as it is installed.",
+        },
+      },
+      {
+        id: "prompt",
+        order: 20,
+        verifiedAt: "2026-10-30",
+        name: "dsh-prompt",
+        repo: "FeatherHunter/dsh-prompt",
+        desc: {
+          zh: "经常反复重复的模板化提示词，存成自定义模板，选中后直接注入，不再需要耗费精力。",
+          en: "The boilerplate prompts you keep retyping, saved as custom templates and injected on selection — no more wasted effort.",
+        },
+      },
+      {
+        id: "palette",
+        order: 30,
+        verifiedAt: "2026-10-30",
+        name: "dsh-opencode-palette",
+        repo: "FeatherHunter/dsh-opencode-palette",
+        desc: {
+          zh: "38 款 opencode 经典配色 + 20+自定义主题 一键换装 DSH。",
+          en: "38 classic opencode themes + 20+ custom themes — reskin DSH in one click.",
+        },
+      },
+      {
+        id: "im",
+        order: 40,
+        verifiedAt: "2026-10-30",
+        name: "dsh-im-companion",
+        repo: "FeatherHunter/dsh-im-companion",
+        desc: {
+          zh: "给 dsh-im 加了「助理」和「家」的概念。",
+          en: "Adds the ideas of an “assistant” and a “home” to dsh-im.",
+        },
+      },
+      {
+        id: "ilife",
+        order: 50,
+        verifiedAt: "2026-10-30",
+        name: "ilife",
+        repo: "FeatherHunter/ilife",
+        desc: {
+          zh: "⚠️建设中⚠️爱生活：居家生活套件，记账、运动、饮食、体重、食谱、物品管理、作息规划、备忘录等。",
+          en: "⚠️Work in progress⚠️ iLife, the home-life suite: bookkeeping, exercise, diet, weight, recipes, item management, schedule planning, memos and more.",
+        },
+      },
+    ],
+  },
+  qr: {},
+};
