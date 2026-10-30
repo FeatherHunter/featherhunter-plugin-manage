@@ -263,7 +263,7 @@ _Avoid_: 微信二维码、微信群码、微信群直呼
 ## 设置面板通用件
 
 **联系弹窗**:
-设置面板里点动作行后弹出的群码弹层 = 联系标题两行 + 欢迎语 + 群表横排，与 README 联系区同源同形，只是渲染介质不同（静态 Markdown vs React 弹层）；由通用件提供，各插件只引入不实现。
+设置面板里点动作行后弹出的群码弹层 = 联系标题两行 + 欢迎语 + 群表横排，与 README 联系区**同源不同出口**：数据都来自 `contact/groups.json`，但弹窗用裁图 + 群标题 / 副行 / 角注（有效期由 `validUntil` 现场生成），README 用 260 宽整卡 + 表头文字，两类字段分开存放、互不串门；由通用件提供，各插件只引入不实现。
 
 _Avoid_: 弹窗、二维码弹窗、扫码弹窗、三群弹窗
 
@@ -283,16 +283,45 @@ _Avoid_: 图标按钮、二维码按钮、联系我们按钮
 _Avoid_: 基础包、公共包、工具包、组件库
 
 **远程清单**:
-`contact/manifest.json`，经 CDN 与 raw 通道暴露；联系弹窗打开时拉取，决定微信码文件与有效期，过期或取不到一律降级为链接，绝不展示过期码。
+随 npm 包发布的 `data/manifest.json`（源文件是 `contact/groups.json` + `contact/plugins.json`），经 npm CDN 暴露：清单走 unpkg `@latest`（60 秒缓存），图片走 jsDelivr 的**精确版本**路径（immutable），npmmirror 作兜底。**全量清单**——弹窗打开时拉取，清单里的 groups 数组就是最终要显示的群（可增、可删、可换序、可改图与有效期）；空数组一律视为非法，不可用或非法时回退内置基线。
 
-_Avoid_: 配置、远端配置、二维码配置
+_Avoid_: 配置、远端配置、二维码配置、补丁清单
 
 **群组条目**:
-联系弹窗与 README 联系区里的一张群卡的数据形态：`id`、`platform`、`title`、`subtitle`、`qr`（bundled / remote / url）、`note`、`validUntil`、`order`。渲染器只认条目数组，不认具体平台，所以加群是加数据而不是改代码。
+联系弹窗与 README 联系区里的一张群卡的数据形态：`id`、`platform`、`title`、`subtitle`、`qr`（弹窗用二维码裁图）、`card`（README 用整卡截图）、`note`、`validUntil`、`order`。渲染器只认条目数组，不认具体平台，所以加群是加数据而不是改代码。
 
 _Avoid_: 群配置、二维码项、卡片数据
 
+**整卡截图**:
+平台原生的群邀请卡截图（900×1600，`contact/card-*.png`），README 联系区用的就是它；二维码只占图宽 43%~67%，所以不适合 4 列弹窗。
+
+_Avoid_: 群卡图、邀请图、原图
+
+**二维码裁图**:
+从整卡截图裁出的二维码图片（`contact/src/qr-*` → 发布为 320px、16 色量化 PNG），弹窗 4 列布局下码面 ≥150px；白边外扩到至少 4 个模块。门禁不是「解码成功」——开源解码器对 QQ/微信风格码实测全部解不出，改由 `contact:update` 做「OpenCV 检测框 + 再检测覆盖比 ≥0.9 + 尺寸/方形校验」，并要求真机扫一次后发布。
+
+_Avoid_: 二维码图、码图、截图
+
 **内置基线**:
-随 base 包发布的默认群组集合（当前飞书 / QQ / 微信三个）；远程清单只能按 `id` 覆盖或追加，永远删不掉基线里的群。
+随 base 包发布的三群兜底集合（飞书 / QQ / 微信）；**只在远程清单不可用时生效**，清单可用时以清单为准（基线里的群也能被清单删掉）。
 
 _Avoid_: 默认配置、内置列表、fallback 群
+**README 同步任务**:
+README 四块（联系区 / 星图区 / 致谢区 / 作者其他插件区）的刷新机制：**不新增定时 workflow**（五仓已有 star-history 与 thanks 两个每日任务，再挂会抢提交，且 GitHub 对 60 天无活动的公开仓会自动禁用 scheduled workflow）。主路径是维护者本地 `base readme:sync --all`；次路径是在现有 workflow 里加一步 `base readme:sync`；`--check` 只校验、非零退出，作 CI 门禁。图片引用 npm CDN 的精确版本地址，不再拷进五仓。
+
+_Avoid_: 定时脚本、CI 同步、自动更新 README
+
+**作者其他插件区**:
+README 与设置面板里推荐同作者其他插件的那一块：README 版标题是「作者的其他作品 / MORE」，设置面板版标题是「作者其他插件」；数据来自唯一真 `contact/plugins.json`（发布为 manifest.plugins），两个版本由同一份数据渲染，每个渲染面自动排除自己。
+
+_Avoid_: 推荐区、引流卡、more 块、插件推荐区
+
+**推荐清单**:
+作者其他插件区的数据形态：5 条 `{ id, order, name, repo, url, desc: { zh, en }, verifiedAt }`，展示顺序以 `order` 为准（deck → prompt → palette → im → ilife）。文案已于 2026-10-30 由仓主逐字定稿，**允许写数字**（近 30 万 star、27 个技能、38 款配色、20+ 主题），但每条带 `verifiedAt`（最后一次核对数字的日期），`doctor` 对超过 90 天未核对者提示可能过期；改文案只发数据版本，五仓不发版。ilife 的「⚠️建设中⚠️」写在文案本身，不设单独 badge 字段。
+
+_Avoid_: 插件列表、推荐数据、more 配置
+
+**数据发布**:
+base 包的「发数据不发代码」动作：`contact:update` 换图与改清单 → `npm version patch` → `npm publish`；npm CDN 1~10 分钟生效，五仓客户端与 README 跟着变，不需要任何仓库升级或发版。
+
+_Avoid_: 清单更新、同步二维码、发布清单

@@ -1,196 +1,182 @@
-# base 包与联系弹窗 — 方案（已对齐）
+# base 包与联系弹窗：方案笔记（v2，2026-10-30 拍板后）
 
-> 状态：方向已定，等待用户执行 /to-spec 生成规格 issue。
-> 约束：**不修改其余五个插件的仓库代码**；五仓需要做的事一律写成交接文档。
-> 决策：D1-B（微信码运行时远程取）、D2-A（代码放当前工作区，用户自建仓库）、D3-B（一次性做完三块）、D4-A（SVG 图标按钮）。
+> 规格票：`.scratch/base-package/spec.md`（deck issue 00）。本笔记是背景与决策记录，冲突时以规格票为准。
+> 对抗式审查证据：`docs/base包-对抗式审查.md`（第一轮 F1~F16；第三轮 §8 追加 F17~F30，含 README 四块实测与发布链可验证性），规格票 00 已按此修订到 383 行；本笔记 §5/§9/§13 待票定稿后同步。
 
-## 0. 一句话
+## 0 一句话
 
-把「联系区」从五份手工复制的 README 片段，改成 **一份数据 + 两个渲染器 + 一条发布通道**；设置面板里的 SVG 按钮与弹窗只是这份数据在浏览器侧的第二个出口。
+把「联系弹窗 / 作者插件推荐卡 / README 联系区·星图区·致谢区·作者其他插件区」从 N 份复制品，收敛成 **一个 npm 包（通用件 + 渲染器）+ 一份数据 + 一条 npm CDN 分发通道**；五个插件仓库本次零改动，只按交接文档接入。
 
-## 1. 为什么这样切（第一性原理）
+## 1 为什么这样切（第一性原理）
 
-1. **变化频率不同的东西不绑在同一次发布里。** 代码（月级）、群与二维码（周级）、星标与贡献者（天级）。现在三者都塞在 README 与五个仓里，导致换一张微信码要五个仓提交、改一句欢迎语要动五个文件。
-2. **一份数据，多个渲染出口。** 联系区内容 = 群组数据 + 文案 + 列序规则 + 有效期规则。README 是 Markdown 渲染，弹窗是 DOM 渲染，两者必须同源。
-3. **复用靠版本与传播链，不靠复制源码。** 包会被内联进五个插件的构建产物，包本身传播不动，必须配发布链。
-4. **依赖只能由每个插件自带。** 不能让用户「先装一个联系人插件，其他插件就有弹窗」——没装的那个会没有功能。必须是编译期依赖。
+| 事实 | 推导 |
+| --- | --- |
+| 五仓 client 各自打包、互不共享运行时 | 复用只能靠 npm 包 + 编译期内联，不能靠运行时互引 |
+| 插件产物是单文件 bundle（esbuild/tsdown/mini-bundler/tsc-b 四套） | 包产物必须单文件、零 import、无动态 import、无 TLA |
+| 宿主 React 18.3 与 19.x 并存 | 包不能 import React，调用方注入 |
+| 图片只能进 data URI 或宿主静态路由，五仓无 assets 通道 | 图片走 npm CDN 精确版本 URL（README）+ 内联基线（弹窗兜底） |
+| 微码 7 天过期，但包版本升级要五仓各自发版 | 数据必须与代码版本解耦：发数据版本、不发代码；正确性靠 validUntil 校验 |
+| 推荐文案里的数字多处不一致且会过期 | 文案禁写数字的建议**被仓主 2026-10-30 推翻**：允许写数字，但每条带 `verifiedAt`，`doctor` 超 90 天未核对就提醒；改文案只发数据版本 |
+| 五仓已有 star-history / thanks 两个每日定时 workflow | 不再新增定时任务（README 竞争提交 + GitHub 60 天不活动自动禁用） |
+| 设置页内容列是滚动容器、遮罩 z-index 1000 | 弹层必须用 `<dialog>.showModal()`（top layer），absolute/portal+z-index 不可靠 |
 
-## 2. 决策记录
+## 2 决策记录
 
 | 编号 | 决策 | 结论 |
 | --- | --- | --- |
-| D1 | 微信群码周更 | **B**：常驻两码内置，微信码打开弹窗时远程取；取不到给兜底链接 |
-| D2 | 代码位置 | **A**：当前工作区（manage）新增 `packages/base`，用户自建 GitHub 仓库并发布 |
-| D3 | 交付范围 | **B**：一次性做完「弹窗 + 联系区 + 星图 + 致谢」四块工具 |
-| D4 | 入口形态 | **A**：SVG 图标按钮（aria-label「联系我们」），点击开弹窗 |
-| C1 | 五仓改动 | 一律不碰；只产出包 + 交接文档 |
-| C2 | 包的技术形态 | 单包三入口 `./core` `./client` `./node`，纯 ESM、零运行时依赖、不 import React（注入 createElement） |
-| C3 | 弹层 | 原生 `<dialog>.showModal()`，不用 portal / z-index / 自绘遮罩 |
-| C4 | 视觉 | 沿用 README 联系区语言（CONNECT / 反馈与联系、欢迎语、三列、细竖线）；颜色走宿主主题令牌 |
-| C5 | 文案 | 内置 zh/en，调用方传 `lang`，缺省读宿主界面语言 |
-| C6 | README 三块 | 统一由 `./node` 渲染；联系区/星图新增标记注释，致谢沿用现有标记 |
-| C7 | 传播 | 一条命令改版本 + 五仓 PR 清单；每仓 CI 加 `doctor` 门禁；不做运行时自更新 |
-| C8 | 测试 | vitest + jsdom；README 渲染用「五仓现状字节级快照」回归 |
-| C9 | 群数量 | 数据驱动（群组数组）；弹窗/README 每行最多 3 列换行；远程可追加不可删除 |
+| D1 | 数据放哪 | 唯一真源在 manage 仓 `contact/`，随 npm 包发布为 `data/` |
+| D2 | 仓库 | 代码放本工作区（manage 仓），不新建仓库 |
+| D3 | 范围 | 一次性做完：联系弹窗 + 四块 README + 推荐卡 |
+| D4 | 入口 | SVG 图标按钮，点击打开弹窗 |
+| P-A | 分发通道 | **npm CDN**：清单 unpkg @latest，图片 jsDelivr 精确版本，npmmirror 兜底 |
+| P-B | v1 范围 | 四块全做：联系 / 星图 / 致谢 / 作者其他插件 |
+| P-C | 弹窗列数 | 4 列，窄屏降 2 列、1 列 |
+| P-D | ilife 入口 | 只在 dsh-life-pack 总管页 1 处，子品页不改 |
+| P-E | 推荐位形态 | 一物两版：设置面板控件 + README 中英两版 |
+| P-F | 硬约束 | 不修改另外五个仓库的任何代码与 README |
+| T1 | 包形态 | 单包三入口 `./core` `./client` `./node`，纯 ESM，零运行时依赖 |
+| T2 | React | 不 import，`createBaseUI(React)` 工厂注入；peer `^18 || ^19` |
+| T3 | 弹层 | 原生 `<dialog>.showModal()` |
+| T4 | 视觉 | 沿用 README 排版语言；颜色走宿主主题令牌 + 内置回退 |
+| T5 | 文案 | 内置 zh/en，语言回退链 显式 > html[lang] > navigator > zh |
+| T6 | 图片 | 弹窗用裁图 320px/16 色；README 用整卡 260 宽；内置基线只放飞书 + QQ |
+| T7 | 有效性 | `validUntil` 过期即降级为链接，绝不展示过期码 |
+| T8 | 测试 | vitest + jsdom；README 四块用现状快照做语义等价回归 |
 
-## 3. 数据放哪（唯一真源）
-
-`contact/` 是唯一真源。**群是数组，不是写死的三张卡**：
-
-```
-contact/
-  manifest.json              # 远程清单：只描述变化（图片 / 有效期 / 角注）
-  feishu.png                 # 常驻码（内置进包）
-  qq.png                     # 常驻码（内置进包）
-  wechat-2026-10-30.png      # 周更码，文件名带日期
-```
-
-群组条目（`./core` 的类型，也是调用方唯一需要理解的东西）：
-
-| 字段 | 作用 |
-| --- | --- |
-| `id` | 稳定标识，远程清单按它覆盖；不许重复 |
-| `platform` | 平台标签，自由字符串（内置 feishu / qq / wechat） |
-| `title` | 卡头标题，如「飞书群（主）」 |
-| `subtitle` | 可选，群号 / 组织名 |
-| `qr` | 图片来源：`bundled`（包内资源键）/ `remote`（清单相对路径）/ `url`（https 白名单） |
-| `note` | 可选静态角注，如「该二维码永久有效」 |
-| `validUntil` | 可选 `YYYY-MM-DD`；有值则动态拼有效期并做过期判断 |
-| `order` | 可选排序；缺省按数组顺序 |
-
-manifest 只写变化：
-
-```json
-{
-  "schema": 2,
-  "updatedAt": "2026-10-30T14:00:00+08:00",
-  "groups": [
-    { "id": "wechat",
-      "qr": { "kind": "remote", "path": "wechat-2026-10-30.png" },
-      "validUntil": "2026-11-06" }
-  ]
-}
-```
-
-合并规则（弹窗与 README 渲染器共用同一函数）：
-
-1. **内置基线**：包里自带三个群（飞书 / QQ / 微信），远程永远删不掉；
-2. **按 id 覆盖**：清单条目只替换该群提供的字段（图片、有效期、角注）；
-3. **按 id 追加**：清单出现新 id 就往末尾加一张卡（前提是 `qr` 为 `remote` / `url`，内置资源键不能凭空新增）；
-4. **整份降级**：清单损坏、结构不合法、取不到 → 整份忽略，回到内置基线。
-
-## 4. 扩展性：3 个群 → N 个群
-
-需求里明确可能变成五个群五个码，所以渲染层**不认识具体平台，只认识群组数组**。
-
-| 关注点 | 规则 |
-| --- | --- |
-| 加一个群 | 改数据：加一条群组条目（或写进远程清单），不改代码、不发版（远程群）；常驻图要内置则随包发版 |
-| 弹窗列布局 | 桌面每行最多 3 列，超出换行（5 个群 = 3+2）；窄屏降 1 列；不做横向滚动 |
-| README 列布局 | 同一规则：`<table>` 每行最多 3 个 `<td>`，列宽 260，5 个群渲染成两行，不挤爆 GitHub 版心 |
-| 有效期 | 按群独立，多个周更群互不影响 |
-| 排序 | 显式 `order` 优先，缺省按数组顺序；「主 / 新」只是标题约定，不是渲染规则 |
-| 删除群 | 只允许发版删内置群；远程清单**只能加不能删**（宁可一张卡降级，也不让一次推送让所有人少一张卡） |
-| 文案 | 不出现「三个群」这类计数词，加群不用改文案 |
-| 暂不做 | 分组标题（超过 6 个群再议）、横向轮播、折叠 |
-
-## 5. 联网取最新：怎么做到
-
-### 5.1 托管
-
-- 文件在 base 仓库的 `contact/` 目录，仓库**必须公开**（npm 包本身也是公开的）。
-- 客户端从仓库地址推导出 CDN 地址；地址集中在一个常量里，仓库改名只改一处 + 重新构建。
-- 主通道 jsDelivr（国内外可达性最好）：`https://cdn.jsdelivr.net/gh/<owner>/<repo>@main/contact/manifest.json?v=<小时戳>`
-- 备通道 raw.githubusercontent.com（允许跨域，作为 CDN 失败兜底）。
-- 两者都用 `?v=<小时戳>` 让 CDN 当成新 URL，避免吃到旧缓存。
-
-### 5.2 打开弹窗的流程
+## 3 数据与发布物
 
 ```
-openContactModal()
-  ├─ 1 立即渲染（离线可看）：CONNECT/反馈与联系 + 欢迎语 + 内置基线群卡（3 张）
-  ├─ 2 并行请求远程清单（AbortController，1500ms 超时，不重试）
-  ├─ 3 成功且 validUntil ≥ 今天 → 微信卡换成远程图，有效期文案按真实日期拼
-  ├─ 4 成功但已过期 / 结构不合法 → 微信卡显示兜底链接
-  ├─ 5 失败/超时 → 微信卡显示「点此获取最新群二维码」→ README 联系区
-  └─ 6 关闭即销毁；会话内缓存 30 分钟，避免反复请求
-```
-
-### 5.3 正确性不靠缓存新鲜，靠日期校验
-
-- 即使 CDN 拿到旧清单（分支引用有缓存），只要 `validUntil < 今天` 就一定降级成链接，**绝不展示过期码**。
-- 图片文件名带日期 → 永久的 CDN 缓存也不会返回错误的图。
-
-### 5.4 安全边界
-
-- 只允许预置域名（jsDelivr / raw.githubusercontent）、只允许 https。
-- 校验 JSON 结构、字段长度、图片大小上限（512KB）。
-- 不 eval、不用 innerHTML、不渲染清单里的任何 HTML 文本。
-- 请求失败静默降级，不弹错误、不写告警。
-
-### 5.5 平时怎么更新（三步，不发布代码）
-
-1. 微信里取新群码 → 存成 PNG；
-2. 工作区跑 `npm run contact:update -- <图片路径>`：校验图片、按 `wechat-YYYY-MM-DD.png` 落盘、更新 manifest 的 generatedAt/validUntil、清理 8 周前的旧图、打印 diff 摘要；
-3. `git add contact && git commit && git push`，1~10 分钟生效。
-
-## 6. 包结构
-
-```
+contact/                  # 人维护（manage 仓）
+  groups.json             # 群组清单
+  plugins.json            # 作者插件清单（5 项，禁数字文案）
+  src/                    # 整卡截图 + 二维码原图 + crops.json
 packages/base/
-  package.json          # name: dsh-featherhunter-plugin-base, exports: ./core ./client ./node
-  src/core/             # 群组数据、文案、列序规则、有效期纯函数（零依赖、无 DOM）
-  src/client/           # createContactUI(React) → { ContactButton, openContactModal }
-  src/node/             # README 三块的 render / verify / sync + CLI（node:fs、fetch）
-  assets/               # 构建时从 contact/ 拷贝并生成 base64 模块（产物提交，构建可复现）
-  test/                 # vitest：快照、jsdom 弹窗、假时钟有效期、清单校验
+  src/core/ src/client/ src/node/
+  data/manifest.json      # 发布物：{schema, version, revision, updatedAt, fallbackUrl, groups, plugins}
+  data/img/               # 发布物：card-*.png（260）、qr-*.png（320/16 色）
 ```
 
-调用方只看得到：
+规则：清单全量（可增删换序）；空数组视为非法回退基线；单群过期只降级该卡；文件名带日期保证 CDN 缓存不串图；作者插件清单 5 项、每渲染面排除自己。
+
+群组数据一份、两个出口：README 版用 `readmeTitle` + `alt` + `card`（260 宽整卡，表格结构与现状逐字接近，ilife 用 `## 反馈与联系` 变体），弹窗版用 `title` + `subtitle` + `note` + 裁图 + `validUntil` 角注（见规格 §2 规则 9）。
+
+作者插件清单的文案已由仓主于 2026-10-30 逐字定稿，落在 `contact/plugins.json`（顺序 deck → prompt → palette → im → ilife，每条 `order` + `verifiedAt`）。ilife 的「⚠️建设中⚠️」写在文案本身，所以设置面板卡与 README 中英两版显示完全一致。
+
+## 4 图片与体积实测
+
+| 图片 | 原始 | 320px 16 色 | 备注 |
+| --- | --- | --- | --- |
+| 飞书码裁图 | 25.9KB | 13.4KB | 可解，安全 |
+| QQ 码裁图 | 61.1KB | 23.1KB | 4 色会发白，必须 16 色 |
+| 微信码裁图 | 39.1KB | 16.9KB | 圆点 + 中心 logo |
+
+内置基线只放飞书 + QQ ≈ 49KB base64；三码全内置 ≈ 71KB。裁图白边需外扩到 ≥4 模块。
+
+## 5 分发通道与新鲜度（P-A）
+
+- 清单：`https://unpkg.com/dsh-featherhunter-plugin-base@latest/data/manifest.json`（60s 缓存）→ npmmirror（先取 latest 版本）→ jsDelivr @latest。
+- 图片：`https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base@<version>/data/img/<path>`（immutable）；失败换 npmmirror。
+- 弹窗流程：内置基线首帧渲染 → 并行 fetch（1500ms 超时、不重试）→ 校验 → 整体替换 → 关闭销毁；模块内缓存 30 分钟；`preloadContent()` 预热。
+- 微码周更：新图 → `contact:update`（结构校验 + 落盘 + 更新清单 + 清旧图 + 打印 diff）→ `npm version patch && npm publish`（1~10 分钟到 unpkg）。
+- 不做运行时远程加载代码 / 远程 HTML。
+
+## 6 包结构与 API
 
 ```ts
-import { createContactUI } from 'dsh-featherhunter-plugin-base/client'
-
-const { ContactButton, openContactModal } = createContactUI(React)
-
-<ContactButton lang="zh" />   // 设置面板里的 SVG 图标按钮
-openContactModal()             // 也可以由代码主动打开
+import { createBaseUI } from 'dsh-featherhunter-plugin-base/client'
+const base = createBaseUI(React, { lang: "zh", selfId: "deck" })
+// base.ContactButton / base.ContactRow / base.AuthorPlugins
+// base.openContactModal(opts?) / base.closeContactModal() / base.preloadContent()
 ```
 
-## 7. README 三块
+- `./core`：`normalizeManifest` / `mergeContent` / `pickLang` / `formatValidity` / `texts`。
+- `./node`：`renderContactBlock` / `renderStarHistoryBlock` / `renderThanksBlock` / `renderMoreBlock` / `verifyBlock` + CLI（`readme:init` / `readme:sync [--check] [--all]` / `contact:update` / `doctor`）。
+- 产物单文件 ESM、零 import；client 样式一次性注入 `dsh-base-ui-style` 一段 `<style>`，类名前缀 `dsh-base-`。
 
-| 块 | 现状 | 目标 |
+## 7 设置面板三件套
+
+- `ContactButton`：16px 线框 SVG、`currentColor`、aria-label + title；hover 用主题令牌提亮；尺寸可传。
+- `ContactRow`：整行动作版（图标 + 文字 + 右侧箭头），给放不下图标按钮的面板。
+- `AuthorPlugins`：卡片 = 1px border + 圆角 10 + 内边距 12/14 + 标题行（2x2 宫格图标 + 13px 600）+ 4~5 行（monospace 包名 12/650 + 描述 12 secondary + 外链图标 14）；整行 `<a target="_blank">`；数据来自 manifest.plugins（文案为 2026-10-30 定稿，见 `contact/plugins.json`）并排除 selfId；纯展示不发请求。
+
+## 8 联系弹窗
+
+- `<dialog>.showModal()`；标题区（CONNECT / 反馈与联系 + 关闭 x）→ 欢迎语 → 4 列群卡 → 底部「扫描二维码加入我们」提示。
+- 群卡：标题 / 副行 / 二维码（白底、pixelated、≥150px）/ 角注；过期卡换成兜底链接。
+- Esc、点遮罩关闭；焦点回归触发按钮；锁 body 滚动；`role=dialog` + `aria-modal`。
+- 手机端群号可点复制；不展示过期码；失败静默降级。
+
+## 9 README 四块
+
+| 块 | 标记 | 说明 |
 | --- | --- | --- |
-| 联系区 | manage 仓 `scripts/sync-contact.cjs` 用 6 个各不相同的正则替换五仓 | `./node` 渲染 + 新增 `<!-- CONTACT-*-START/END -->` 标记，替换确定性 |
-| 星图 | deck/im 深浅双图、palette/prompt 单图、ilife 没有 | 统一 `<picture>` 深浅双图 + 分钟戳；ilife 补上 |
-| 致谢 | 五套生成器（.ts/.mts/.mjs）+ 五套门禁 | `renderThanks/verifyThanks` 纯函数；五仓脚本降到 3~5 行 |
+| 联系区 | `<!-- CONTACT-START/END -->` | 保持现状表格结构（CONNECT h2 或 ilife 的 `## 反馈与联系` + 欢迎语 + 三列 260 宽整卡），图片指向 npm CDN 精确版本；副行/角注只进弹窗 |
+| 星图区 | `<!-- STAR-START/END -->` | `<picture>` 深浅双图 + `?v=YYYYMMDDHHmm`；ilife 补 |
+| 致谢区 | 沿用 `<!-- THANKS-TABLE-*-START/END -->` | 表结构不变，纯函数生成 |
+| 作者其他插件区 | `<!-- MORE-START/END -->` | `<h2><sub>MORE</sub><br>作者的其他作品</h2>` + 引导句 + 4 行（顺序 deck → prompt → palette → im → ilife，文案与设置面板同源）；ilife 补；每仓排除自己 |
 
-迁移方式：一次性在五仓插入标记（由交接文档指导，维护者自己跑 `base readme:init`），此后 `base readme:sync --check` 可做 CI 门禁。
+目标文件 11 个（5 仓 × 中文/package/en 变体，ilife 仅中文）。
 
-## 8. 发布与传播
+## 10 同步与发布
 
-- base 发版：`npm run release`（test → build → 版本 → 发布），CI 用 npm trusted publishing。
-- 传播：改版本只能靠五仓各自升级。提供 `base doctor` 一条命令输出：声明版本 / 内联版本 / README 三块是否过期，各仓 CI 加一行即可。
-- 不做运行时自动更新：客户端代码是内联的，没有运行时通道；硬做等于让插件启动时执行远程代码。
+- 主路径：本地 `npx ... readme:sync --all --repos <目录>`；`--check` 作 CI 门禁。
+- 次路径：在五仓**已有**的 thanks/star workflow 里加一步，不新增 workflow/schedule。
+- `doctor`：一条命令报告依赖版本、内联产物版本、四块是否与清单一致。
+- base 发版：test → build → data → 版本 → npm publish。
+- 发布凭据：仓主已给 npm token（npm 用户 `feather_wch`，包名探测 404 可用）；token 只存本机 `.local/npm-token.txt`（`.gitignore` 已忽略），不入库、不写进任何文档，发布时从该文件读。
 
-## 9. 交接文档（给五仓看，本仓不替他们改）
+## 11 五仓接入边界（本次不改它们）
 
-`docs/handover/` 下三份，每份都能独立执行：
+| 仓 | 设置面板接入点 | 备注 |
+| --- | --- | --- |
+| deck | settings.section（自研 esbuild 内联拼接） | 替换 MORE_PLUGINS 与 word.yaml 文案 |
+| palette | tab order30 + section order16（自研 mini-bundler，需登记依赖） | 删 authorPlugins 3 行与 i18n |
+| prompt | settings.section order50（tsdown） | 删 settings-links.ts 推荐卡 |
+| im | 仅 settings.section order22（tsdown） | 删自绘二维码弹窗 connect-flow.ts，改调 base |
+| ilife | 仅 dsh-life-pack 总管页 1 处（tsc -b） | 子品页不改 |
 
-1. `01-接入联系弹窗.md`：装包、三行代码、按钮放哪、删除旧实现（im-companion 自绘弹窗）、验收清单。
-2. `02-README三块迁移.md`：标记初始化、联系区切换、星图改双图（palette/prompt）、ilife 补星图、致谢生成器替换、`verify` 命令。
-3. `03-CI与发布.md`：workflow 模板（星图/致谢定时刷新、doctor 门禁）、base 升级流程。
+## 12 交接文档
 
-## 10. 验收标准
+1. `docs/handover/01-接入联系弹窗与推荐卡.md`
+2. `docs/handover/02-README四块迁移.md`
+3. `docs/handover/03-CI与发布.md`
 
-- 包能构建、测试全绿；五仓 README 三块的生成结果与现状**字节级一致**（用现状文件做快照）。
-- 弹窗在本地 demo 页可打开、可关闭、Esc/遮罩可用、深色模式正常、窗口窄时降为单列。
-- 扩展性快照：3 个群 = 一行三列；5 个群 = 3+2 两行；7 个群 = 3+3+1；README 表格同规则。
-- 离线时：飞书/QQ 正常显示，微信卡给兜底链接。
-- 清单里 `validUntil` 过期时：不显示二维码，只显示兜底链接。
-- 交接文档按步骤可在任一仓完成接入，不需要读代码。
+## 13 验收
 
-## 11. 非目标
+- 包能构建、三入口可 import、测试全绿；demo 页四列群卡 + 推荐卡可见。
+- 断网仍有飞书/QQ；过期群只剩链接；空清单回退基线；`readme:sync --check` 在 11 个文件上通过。
+- 二进制快照：README 四块与现状语义等价。
+- 交接文档步骤可在任一仓独立完成接入。
 
-- 不改五个插件的代码与 README（他们自己按交接文档执行）。
-- 不做运行时远程加载代码、不做二维码在线生成、不做「作者其他插件」卡片（可作 v1.2）。
+## 14 非目标
+
+- 不改五仓代码与 README（只出文档）。
+- 不做安装检测 / 一键安装 / 运行时远程代码 / 在线生成二维码 / 点击放大整卡。
+- 不新增定时 workflow、不用 PAT。
+
+## 15 历史与证据
+
+- 首版方案（GitHub raw + 每仓定时 workflow + jsQR 门禁）已被对抗式审查推翻，见 `docs/base包-对抗式审查.md`。
+- 关键外部事实：GitHub 官方文档「公开仓库 60 天无活动，scheduled workflow 自动禁用」；UNPKG/jsDelivr/npmmirror 缓存行为实测；OpenCV/jsQR 对 QQ/微信码解码失败实测。
+
+## 16 实施票（2026-10-30 批准后建票）
+
+拍板补充（2026-10-30 用户确认，均按推荐）：**D-a** 「4 列」按上限解释，列数 = min(群组数, 4)；**D-b** deck 英文页的 `dsh-chinese-skill-patch` 行移除；**D-c** README 验收改「内容等价 + 保留各仓功能元素」；**D-d** ilife 在现有 CI 文件里加定时（不新增 workflow 文件），否则接受随发版滞后。
+
+| # | 实施票 | 阻塞 | 交付的垂直能力 |
+|---|---|---|---|
+| 01 | 包骨架与三入口契约 | — | 可发布包、产物契约、demo 壳 |
+| 02 | 首次真实发布与三通道冒烟 | 01 | 真发 0.0.1，三 CDN 实测 |
+| 03 | 群组数据链与内置基线 | 01 | 一份数据 → 清单 + 图 + 内置基线 + 更新命令 |
+| 04 | 联系弹窗 | 03 | 按钮 + 弹窗（离线可用） |
+| 05 | 远程清单与换码演练 | 02, 04 | 远端清单、降级、真实换码 |
+| 06 | 作者插件卡 | 03 | 面板推荐卡 |
+| 07 | README 现状 fixture 与等价口径 | 01 | 11 文件四块基准 + 内容等价判定 |
+| 08 | README 联系区渲染与同步 | 03, 07 | 联系区 init/sync/check |
+| 09 | README 作者作品区渲染与同步 | 06, 08 | MORE 区渲染与同步 |
+| 10 | README 星图区与致谢区渲染 | 07, 08 | 星图 / 致谢渲染 |
+| 11 | 全量同步门禁与 doctor | 09, 10 | --all / --check / doctor |
+| 12 | 周更发布流水线与发布演练 | 05, 11 | 换码一条命令 + 两次真实演练 + 旧脚本退役 |
+| 13 | 三份交接文档与最终验收走查 | 04, 06, 11, 12 | 交接文档 + HUMAN-GATE |
+
+票文件在 `.scratch/base-package/issues/01..13`，父票为规格票 00。README 的实际落地仍由五仓主按交接文档执行，本仓不含五仓代码改动。

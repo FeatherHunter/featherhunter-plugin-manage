@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-10-30",
+  "plugins": [
+    {
+      "id": "deck",
+      "order": 10,
+      "verifiedAt": "2026-10-30",
+      "name": "dsh-mattpocock-skills-deck",
+      "repo": "FeatherHunter/dsh-mattpocock-skills-deck",
+      "url": "https://github.com/FeatherHunter/dsh-mattpocock-skills-deck",
+      "desc": {
+        "zh": "近 30 万 star 的 mattpocock/skills 整套预置好（27 个技能），装好即用。",
+        "en": "The whole mattpocock/skills set (nearly 300k stars) preinstalled — 27 skills, ready as soon as it is installed."
+      }
+    },
+    {
+      "id": "prompt",
+      "order": 20,
+      "verifiedAt": "2026-10-30",
+      "name": "dsh-prompt",
+      "repo": "FeatherHunter/dsh-prompt",
+      "url": "https://github.com/FeatherHunter/dsh-prompt",
+      "desc": {
+        "zh": "经常反复重复的模板化提示词，存成自定义模板，选中后直接注入，不再需要耗费精力。",
+        "en": "The boilerplate prompts you keep retyping, saved as custom templates and injected on selection — no more wasted effort."
+      }
+    },
+    {
+      "id": "palette",
+      "order": 30,
+      "verifiedAt": "2026-10-30",
+      "name": "dsh-opencode-palette",
+      "repo": "FeatherHunter/dsh-opencode-palette",
+      "url": "https://github.com/FeatherHunter/dsh-opencode-palette",
+      "desc": {
+        "zh": "38 款 opencode 经典配色 + 20+自定义主题 一键换装 DSH。",
+        "en": "38 classic opencode themes + 20+ custom themes — reskin DSH in one click."
+      }
+    },
+    {
+      "id": "im",
+      "order": 40,
+      "verifiedAt": "2026-10-30",
+      "name": "dsh-im-companion",
+      "repo": "FeatherHunter/dsh-im-companion",
+      "url": "https://github.com/FeatherHunter/dsh-im-companion",
+      "desc": {
+        "zh": "给 dsh-im 加了「助理」和「家」的概念。",
+        "en": "Adds the ideas of an “assistant” and a “home” to dsh-im."
+      }
+    },
+    {
+      "id": "ilife",
+      "order": 50,
+      "verifiedAt": "2026-10-30",
+      "name": "ilife",
+      "repo": "FeatherHunter/ilife",
+      "url": "https://github.com/FeatherHunter/ilife",
+      "desc": {
+        "zh": "⚠️建设中⚠️爱生活：居家生活套件，记账、运动、饮食、体重、食谱、物品管理、作息规划、备忘录等。",
+        "en": "⚠️Work in progress⚠️ iLife, the home-life suite: bookkeeping, exercise, diet, weight, recipes, item management, schedule planning, memos and more."
+      }
+    }
+  ]
+}
