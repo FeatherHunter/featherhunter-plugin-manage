@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "revision": 1,
+  "updatedAt": "2026-10-23",
+  "fallbackUrl": "https://github.com/FeatherHunter/featherhunter-plugin-manage",
+  "groups": [
+    {
+      "id": "feishu",
+      "platform": "feishu",
+      "order": 10,
+      "readmeTitle": {
+        "zh": "飞书群（主）",
+        "en": "Feishu Group (Main)"
+      },
+      "alt": {
+        "zh": "DSH 插件交流群 飞书群二维码",
+        "en": "DSH plugin community group Feishu QR code"
+      },
+      "card": "card-feishu.png",
+      "qr": "qr-feishu.png",
+      "title": {
+        "zh": "DSH 插件交流群",
+        "en": "DSH Plugin Community"
+      },
+      "subtitle": {
+        "zh": "用户418832的组织",
+        "en": "User 418832's organization"
+      },
+      "note": {
+        "zh": "该二维码永久有效",
+        "en": "This QR code never expires"
+      }
+    },
+    {
+      "id": "qq",
+      "platform": "qq",
+      "order": 20,
+      "readmeTitle": {
+        "zh": "QQ群（新）",
+        "en": "QQ Group (New)"
+      },
+      "alt": {
+        "zh": "DSH 插件交流群 QQ 群二维码",
+        "en": "DSH plugin community group QQ QR code"
+      },
+      "card": "card-qq.jpg",
+      "qr": "qr-qq.jpg",
+      "title": {
+        "zh": "DSH 插件交流群",
+        "en": "DSH Plugin Community"
+      },
+      "subtitle": {
+        "zh": "群号：1020866453",
+        "en": "Group ID: 1020866453"
+      },
+      "note": {
+        "zh": "扫一扫二维码，加入群聊",
+        "en": "Scan the QR code to join the group chat"
+      }
+    },
+    {
+      "id": "wechat",
+      "platform": "wechat",
+      "order": 30,
+      "readmeTitle": {
+        "zh": "微信群（新）",
+        "en": "WeChat Group (New)"
+      },
+      "alt": {
+        "zh": "DSH 插件交流群微信群二维码",
+        "en": "DSH plugin community group WeChat QR code"
+      },
+      "card": "card-wechat-2026-10-23.png",
+      "qr": "qr-wechat-2026-10-23.png",
+      "title": {
+        "zh": "DSH 插件交流群",
+        "en": "DSH Plugin Community"
+      },
+      "subtitle": {
+        "zh": "群聊：DSH 插件交流群",
+        "en": "Group chat: DSH Plugin Community"
+      },
+      "validUntil": "2026-10-30"
+    }
+  ]
+}

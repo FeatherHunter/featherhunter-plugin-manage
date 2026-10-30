@@ -227,6 +227,7 @@ export function parseManifest(raw: unknown): Manifest {
   if (groupsRaw.length === 0) throw new Error("manifest: groups must not be empty");
   const pluginsRaw = raw["plugins"];
   if (!Array.isArray(pluginsRaw)) throw new Error("manifest: plugins must be an array");
+  if (pluginsRaw.length === 0) throw new Error("manifest: plugins must not be empty");
   const groups = groupsRaw.map(validateGroup);
   const plugins = pluginsRaw.map(validatePlugin);
   const ids = new Set<string>();

@@ -48,6 +48,9 @@
   "scripts": {
     "build": "node build.mjs",
     "build:demo": "node build.mjs --demo",
+    "build:data": "node scripts/run-ts.mjs build-data",
+    "data:check": "node scripts/run-ts.mjs build-data --check",
+    "contact:update": "node scripts/run-ts.mjs contact-update",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

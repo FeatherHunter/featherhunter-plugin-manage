@@ -2,7 +2,7 @@
   "schema": 1,
   "version": "0.0.1",
   "revision": 1,
-  "updatedAt": "2026-10-31T00:00:00+08:00",
+  "updatedAt": "2026-10-23T00:00:00+08:00",
   "fallbackUrl": "https://github.com/FeatherHunter/featherhunter-plugin-manage",
   "groups": [
     {
@@ -17,10 +17,10 @@
         "zh": "DSH 插件交流群 飞书群二维码",
         "en": "DSH plugin community group Feishu QR code"
       },
-      "card": "placeholder.png",
+      "card": "card-feishu.png",
       "qr": {
         "kind": "remote",
-        "path": "placeholder.png"
+        "path": "qr-feishu.png"
       },
       "title": {
         "zh": "DSH 插件交流群",
@@ -47,10 +47,10 @@
         "zh": "DSH 插件交流群 QQ 群二维码",
         "en": "DSH plugin community group QQ QR code"
       },
-      "card": "placeholder.png",
+      "card": "card-qq.png",
       "qr": {
         "kind": "remote",
-        "path": "placeholder.png"
+        "path": "qr-qq.png"
       },
       "title": {
         "zh": "DSH 插件交流群",
@@ -77,10 +77,10 @@
         "zh": "DSH 插件交流群微信群二维码",
         "en": "DSH plugin community group WeChat QR code"
       },
-      "card": "placeholder.png",
+      "card": "card-wechat-2026-10-23.png",
       "qr": {
         "kind": "remote",
-        "path": "placeholder.png"
+        "path": "qr-wechat-2026-10-23.png"
       },
       "title": {
         "zh": "DSH 插件交流群",
@@ -90,7 +90,7 @@
         "zh": "群聊：DSH 插件交流群",
         "en": "Group chat: DSH Plugin Community"
       },
-      "validUntil": "2026-11-13"
+      "validUntil": "2026-10-30"
     }
   ],
   "plugins": [
@@ -103,7 +103,8 @@
       "desc": {
         "zh": "近 30 万 star 的 mattpocock/skills 整套预置好（27 个技能），装好即用。",
         "en": "The whole mattpocock/skills set (nearly 300k stars) preinstalled — 27 skills, ready as soon as it is installed."
-      }
+      },
+      "url": "https://github.com/FeatherHunter/dsh-mattpocock-skills-deck"
     },
     {
       "id": "prompt",
@@ -114,7 +115,8 @@
       "desc": {
         "zh": "经常反复重复的模板化提示词，存成自定义模板，选中后直接注入，不再需要耗费精力。",
         "en": "The boilerplate prompts you keep retyping, saved as custom templates and injected on selection — no more wasted effort."
-      }
+      },
+      "url": "https://github.com/FeatherHunter/dsh-prompt"
     },
     {
       "id": "palette",
@@ -125,7 +127,8 @@
       "desc": {
         "zh": "38 款 opencode 经典配色 + 20+自定义主题 一键换装 DSH。",
         "en": "38 classic opencode themes + 20+ custom themes — reskin DSH in one click."
-      }
+      },
+      "url": "https://github.com/FeatherHunter/dsh-opencode-palette"
     },
     {
       "id": "im",
@@ -136,7 +139,8 @@
       "desc": {
         "zh": "给 dsh-im 加了「助理」和「家」的概念。",
         "en": "Adds the ideas of an “assistant” and a “home” to dsh-im."
-      }
+      },
+      "url": "https://github.com/FeatherHunter/dsh-im-companion"
     },
     {
       "id": "ilife",
@@ -147,7 +151,8 @@
       "desc": {
         "zh": "⚠️建设中⚠️爱生活：居家生活套件，记账、运动、饮食、体重、食谱、物品管理、作息规划、备忘录等。",
         "en": "⚠️Work in progress⚠️ iLife, the home-life suite: bookkeeping, exercise, diet, weight, recipes, item management, schedule planning, memos and more."
-      }
+      },
+      "url": "https://github.com/FeatherHunter/ilife"
     }
   ]
 }

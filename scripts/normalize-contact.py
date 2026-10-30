@@ -1,11 +1,12 @@
-# normalize-contact.py — 三群二维码源头图统一画布（解决三图高宽比不一导致的阶梯）
+# normalize-contact.py — LEGACY 手工工具：把 contact/src 下的整卡截图重新归一化到统一画布。
+# 周更换码现在走 `npm run contact:update -- <图片>`（TS 实现，自动命名/更新清单/清旧图），
+# 本脚本仅保留给需要批量重归一化已有卡片的场合；它会原地覆盖 contact/src/card-*。
 # 做法：等宽缩放 + 各自取边色 + 居中补齐到同一画布；不裁剪任何像素。
-# 用法：换微信图后先跑 python scripts/normalize-contact.py，再跑 node scripts/sync-contact.cjs
-import os, statistics
+import glob, os, statistics
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCES = ['contact-qq-permanent.jpg', 'contact-wechat-weekly.png', 'contact-feishu-permanent.png']
+SOURCES = [os.path.relpath(p, ROOT) for p in sorted(glob.glob(os.path.join(ROOT, 'contact', 'src', 'card-*')))]
 WIDTH = 900
 
 def edge_color(im):
