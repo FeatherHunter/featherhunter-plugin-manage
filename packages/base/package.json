@@ -54,6 +54,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:network": "node scripts/cdn-smoke.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {

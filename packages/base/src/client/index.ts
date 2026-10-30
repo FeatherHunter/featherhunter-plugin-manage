@@ -1,7 +1,8 @@
 import type * as ReactNamespace from "react";
-import { BASELINE, pickText, resolveLang, sortByOrder } from "../core/index";
-import type { Group, Lang, PluginEntry } from "../core/types";
+import { BASELINE, resolveLang } from "../core/index";
+import type { Group, Lang } from "../core/types";
 import { mountContactModal, type ContactModalHandle } from "./modal";
+import { renderAuthorPlugins } from "./plugins";
 import { resolveText, type TextOverrides } from "./texts";
 import type {
   AuthorPluginsProps,
@@ -52,10 +53,6 @@ function clampColumns(requested: number | undefined, groupCount: number): number
 function resolveBaselineQr(group: Group): string | null {
   if (group.qr.kind !== "bundled") return null;
   return BASELINE.qr[group.qr.key] ?? null;
-}
-
-function pluginUrl(plugin: PluginEntry): string {
-  return plugin.url ?? "https://github.com/" + plugin.repo;
 }
 
 function mergeTexts(overrides?: TextOverrides, extra?: TextOverrides): TextOverrides | undefined {
@@ -195,44 +192,17 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
   }
 
   function AuthorPlugins(props: AuthorPluginsProps): ReactNamespace.ReactElement | null {
-    const h = React.createElement;
     const lang = props.lang ?? detectLang(options.lang);
-    const selfId = props.selfId ?? options.selfId;
-    const maxRows = props.maxRows ?? options.maxRows ?? 4;
-    const all = sortByOrder(props.plugins ?? BASELINE.manifest.plugins);
-    const visible = all.filter((plugin) => plugin.id !== selfId).slice(0, Math.max(1, maxRows));
-    if (visible.length === 0) return null;
-    return h(
-      "div",
-      { className: classes("dsh-base-plugins", props.className) },
-      h(
-        "h3",
-        { className: "dsh-base-plugins__title", key: "title" },
-        props.title ?? resolveText("plugins", lang, options.texts),
-      ),
-      h(
-        "ul",
-        { className: "dsh-base-plugins__list", key: "list" },
-        visible.map((plugin) =>
-          h(
-            "li",
-            { className: "dsh-base-plugins__item", key: plugin.id },
-            h(
-              "a",
-              {
-                className: "dsh-base-plugins__name",
-                href: pluginUrl(plugin),
-                target: "_blank",
-                rel: "noopener noreferrer",
-                key: "name",
-              },
-              plugin.name,
-            ),
-            h("span", { className: "dsh-base-plugins__desc", key: "desc" }, pickText(plugin.desc, lang)),
-          ),
-        ),
-      ),
-    );
+    return renderAuthorPlugins({
+      React,
+      lang,
+      plugins: props.plugins ?? BASELINE.manifest.plugins,
+      selfId: props.selfId ?? options.selfId,
+      showSelf: props.showSelf ?? options.showSelf,
+      maxRows: props.maxRows ?? options.maxRows,
+      title: props.title ?? resolveText("plugins", lang, options.texts),
+      className: props.className,
+    });
   }
 
   async function preloadContent(): Promise<void> {

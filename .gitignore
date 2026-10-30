@@ -2,6 +2,8 @@
 .local/
 .tmp/
 .dsh-vision-router/
+.npmrc
+*.tgz
 
 # 探测与草稿
 .scratch/probe/
