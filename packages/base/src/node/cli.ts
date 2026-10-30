@@ -19,9 +19,11 @@ Usage:
   dsh-base --help                 Print this help
 
 Options:
-  --root <dir>   Repository root to update; repeatable (default: current directory)
-  --check        Report drift without writing; nonzero exit when a README is out of date
-  --all          Process every --root and continue after per-file errors
+  --root <dir>     Repository root to update; repeatable (default: current directory)
+  --readme <path>  README path relative to each root (default: README.md)
+  --self <id>      Plugin id of the repository; the MORE block excludes it
+  --check          Report drift without writing; nonzero exit when a README is out of date
+  --all            Process every --root and continue after per-file errors
 
 Commands that change files only rewrite the text between their managed markers and
 refuse to touch a README with unpaired markers or merge-conflict residue.
@@ -52,6 +54,8 @@ interface ReadmeCliOptions {
   roots: string[];
   check: boolean;
   all: boolean;
+  readme?: string;
+  selfId?: string;
 }
 
 /** Parse the arguments of readme:init / readme:sync. */
@@ -62,6 +66,22 @@ function parseReadmeArgs(
   const roots: string[] = [];
   let check = false;
   let all = false;
+  let readme: string | undefined;
+  let selfId: string | undefined;
+
+  /** Read the value of a flag in either `--flag value` or `--flag=value` form. */
+  const takeValue = (name: string, argument: string, position: number): { value: string } | { error: string } => {
+    if (argument.startsWith(name + "=")) {
+      const value = argument.slice(name.length + 1);
+      if (value.length === 0) return { error: 'readme:' + command + ': "' + name + '" needs a value' };
+      return { value };
+    }
+    const value = args[position + 1];
+    if (value === undefined || value.startsWith("-")) {
+      return { error: 'readme:' + command + ': "' + name + '" needs a value' };
+    }
+    return { value };
+  };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
@@ -82,6 +102,16 @@ function parseReadmeArgs(
         return { error: 'readme:' + command + ': "--root" needs a directory value' };
       }
       roots.push(value);
+    } else if (arg === "--readme" || arg.startsWith("--readme=")) {
+      const parsed = takeValue("--readme", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      readme = parsed.value;
+      if (arg === "--readme") index += 1;
+    } else if (arg === "--self" || arg.startsWith("--self=")) {
+      const parsed = takeValue("--self", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      selfId = parsed.value;
+      if (arg === "--self") index += 1;
     } else {
       return { error: 'readme:' + command + ': unknown option "' + arg + '"' };
     }
@@ -94,6 +124,8 @@ function parseReadmeArgs(
       roots: roots.map((root) => resolve(root)),
       check,
       all,
+      readme,
+      selfId,
     },
   };
 }
@@ -137,8 +169,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         process.stderr.write(HELP);
         return 2;
       }
-      const { roots, check, all } = parsed.options;
-      return reportReadmeBatch(updateReadmes({ roots, command: readmeCommand, check, all }));
+      const { roots, check, all, readme, selfId } = parsed.options;
+      return reportReadmeBatch(
+        updateReadmes({ roots, command: readmeCommand, check, all, readme, selfId }),
+      );
     }
     case "contact:update":
     case "doctor":
