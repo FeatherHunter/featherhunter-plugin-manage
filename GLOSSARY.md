@@ -241,7 +241,7 @@ _Avoid_: 花升级、花升级规则、换算规则
 ## 联系我体系
 
 **联系我**:
-群二维码功能的统称，含根目录群码集与同步脚本（`scripts/normalize-contact.py`、`scripts/sync-contact.cjs`），群数量不限当前 3 图。
+群二维码功能的统称，含源图集 `contact/`（`groups.json` + `plugins.json` + 源图 + `crops.json`）、`npm run contact:update`（换码）与 `readme:sync`（`packages/base` 的 node CLI，写 README 联系区），群数量不限当前 3 图。旧的 `scripts/sync-contact.cjs` 已退役（与新链路双写会打架）。
 _Avoid_: 反馈与联系（仅指 README 区块标题）、群组（仅指群集合）、三群（已废弃，写死数量）
 
 **群码**:
