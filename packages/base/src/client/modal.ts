@@ -19,10 +19,25 @@ export interface ContactModalConfig {
   now?: Date;
 }
 
+export interface ContactModalUpdate {
+  groups?: readonly Group[];
+  /** Already clamped to 1..4 columns. */
+  columns?: number;
+  /** Returns null when no image is available (card degrades to a link). */
+  resolveQr?: (group: Group) => string | null;
+  fallbackUrl?: string;
+  now?: Date;
+}
+
 export interface ContactModalHandle {
   dialog: HTMLDialogElement;
   /** Destroy the dialog; restore focus by default. */
   close: (restoreFocus?: boolean) => void;
+  /**
+   * Re-render the group cards in place. Used when the remote manifest arrives
+   * after the baseline was painted, so the dialog is never rebuilt.
+   */
+  update: (next: ContactModalUpdate) => void;
 }
 
 const TITLE_ID = "dsh-base-modal-title";
@@ -38,6 +53,7 @@ const FOCUSABLE_SELECTOR =
 export function mountContactModal(config: ContactModalConfig): ContactModalHandle {
   const { doc, lang } = config;
   const win = doc.defaultView;
+  let current = config;
   const t = (key: TextKey): string => resolveText(key, lang, config.texts);
   ensureBaseStyles(doc);
 
@@ -83,8 +99,12 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
   body.className = "dsh-base-modal__body";
   const grid = doc.createElement("div");
   grid.className = "dsh-base-modal__grid";
-  grid.style.setProperty("--dsh-base-columns", String(config.columns));
-  for (const group of sortByOrder(config.groups)) grid.append(buildCard(group));
+  function renderGroups(groups: readonly Group[], columns: number): void {
+    grid.style.setProperty("--dsh-base-columns", String(columns));
+    grid.replaceChildren(...sortByOrder(groups).map((group) => buildCard(group)));
+  }
+
+  renderGroups(current.groups, current.columns);
   body.append(grid);
 
   const footer = doc.createElement("div");
@@ -188,9 +208,9 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
     card.className = "dsh-base-modal__card";
     card.dataset.groupId = group.id;
 
-    const expired = isExpired(group.validUntil, config.now);
+    const expired = isExpired(group.validUntil, current.now);
     if (expired) card.classList.add("dsh-base-modal__card--expired");
-    const qrSrc = expired ? null : config.resolveQr(group);
+    const qrSrc = expired ? null : current.resolveQr(group);
 
     const cardTitle = doc.createElement("h3");
     cardTitle.className = "dsh-base-modal__card-title";
@@ -223,7 +243,7 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
       note.textContent = t("expired");
       card.append(note);
     } else {
-      const validity = formatValidity(group.validUntil, { lang, now: config.now });
+      const validity = formatValidity(group.validUntil, { lang, now: current.now });
       const noteText = validity ?? (group.note ? pickText(group.note, lang) : null);
       if (noteText) {
         const note = doc.createElement("span");
@@ -236,7 +256,7 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
     if (!qrSrc) {
       const link = doc.createElement("a");
       link.className = "dsh-base-modal__card-link";
-      link.href = config.fallbackUrl;
+      link.href = current.fallbackUrl;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.textContent = t("fallback");
@@ -266,8 +286,15 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
     }
   }
 
+  function update(next: ContactModalUpdate): void {
+    if (closed) return;
+    current = { ...current, ...next };
+    renderGroups(current.groups, current.columns);
+  }
+
   return {
     dialog,
     close: (restoreFocus = true) => destroy(restoreFocus),
+    update,
   };
 }

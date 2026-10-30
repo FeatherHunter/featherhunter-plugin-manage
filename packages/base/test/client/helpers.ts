@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { resetContentCache } from "../../src/client/content";
 import { BASELINE } from "../../src/core/index";
 import type { Group } from "../../src/core/types";
 
@@ -114,10 +115,24 @@ export function removeClipboard(): void {
   });
 }
 
+/**
+ * Fail every network request by default: the contact modal refreshes the remote
+ * manifest on open, and unit tests must never reach the real CDN.
+ */
+export function installOfflineFetch(): void {
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    writable: true,
+    value: () => Promise.reject(new Error("network disabled in tests")),
+  });
+}
+
 /** Reset the document between tests without leaking injected styles. */
 export function resetClientDom(): void {
   document.body.innerHTML = "";
   document.body.style.overflow = "";
   document.documentElement.removeAttribute("lang");
   document.getElementById("dsh-base-style")?.remove();
+  resetContentCache();
+  installOfflineFetch();
 }

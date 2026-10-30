@@ -1,6 +1,11 @@
 import type * as ReactNamespace from "react";
 import { BASELINE, resolveLang } from "../core/index";
 import type { Group, Lang } from "../core/types";
+import {
+  createContentLoader,
+  type ContentLoader,
+  type LoadedContent,
+} from "./content";
 import { mountContactModal, type ContactModalHandle } from "./modal";
 import { renderAuthorPlugins } from "./plugins";
 import { resolveText, type TextOverrides } from "./texts";
@@ -11,6 +16,7 @@ import type {
   ContactButtonProps,
   ContactRowProps,
   OpenContactModalOptions,
+  QrResolver,
 } from "./types";
 
 export type * from "./types";
@@ -49,10 +55,24 @@ function clampColumns(requested: number | undefined, groupCount: number): number
   return Math.max(1, Math.min(MAX_COLUMNS, groupCount));
 }
 
-/** Default QR source: bundled baseline data URI. Remote resolution is ticket 05. */
+/** Bundled QR source: the baseline data URI, or null when absent. */
 function resolveBaselineQr(group: Group): string | null {
   if (group.qr.kind !== "bundled") return null;
   return BASELINE.qr[group.qr.key] ?? null;
+}
+
+/**
+ * Resolve a card image. Remote codes only use bytes that were prefetched and
+ * size-checked by the content loader; anything else degrades to a link.
+ */
+function resolveGroupQr(
+  group: Group,
+  content: LoadedContent | null,
+  loader: ContentLoader | null,
+): string | null {
+  if (group.qr.kind === "bundled") return resolveBaselineQr(group);
+  if (!content || !loader) return null;
+  return loader.imageFor(content, group.qr.path);
 }
 
 function mergeTexts(overrides?: TextOverrides, extra?: TextOverrides): TextOverrides | undefined {
@@ -72,6 +92,21 @@ function classes(base: string, extra?: string): string {
  */
 export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOptions = {}): BaseUI {
   let active: ContactModalHandle | null = null;
+  let loader: ContentLoader | null = options.contentLoader ?? null;
+
+  /** Lazily build the loader; a host without fetch keeps the baseline only. */
+  function getLoader(): ContentLoader | null {
+    if (loader) return loader;
+    try {
+      loader = createContentLoader({
+        manifestUrl: options.manifestUrl,
+        fetchImpl: options.fetchImpl,
+      });
+    } catch {
+      loader = null;
+    }
+    return loader;
+  }
 
   function widgetText(key: Parameters<typeof resolveText>[0]): string {
     return resolveText(key, detectLang(options.lang), options.texts);
@@ -87,6 +122,58 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
 
   function closeContactModal(): void {
     closeActive(true);
+  }
+
+  /** Build the resolver used for one dialog: caller override wins. */
+  function buildResolver(
+    callOptions: OpenContactModalOptions,
+    content: LoadedContent | null,
+  ): QrResolver {
+    const custom = callOptions.resolveQr ?? options.resolveQr;
+    if (custom) return custom;
+    return (group: Group) => resolveGroupQr(group, content, loader);
+  }
+
+  function applyContent(handle: ContactModalHandle, content: LoadedContent): void {
+    if (active !== handle) return;
+    const groups =
+      content.manifest.groups.length > 0 ? content.manifest.groups : BASELINE.manifest.groups;
+    handle.update({
+      groups,
+      columns: clampColumns(undefined, groups.length),
+      fallbackUrl: content.manifest.fallbackUrl,
+      resolveQr: (group: Group) =>
+        resolveGroupQr(group, content, loader) ?? null,
+    });
+  }
+
+  /**
+   * Fetch the published manifest after the baseline is on screen, prefetch the
+   * QR images, then swap the cards in place. Silent on every failure.
+   */
+  async function refreshRemote(
+    handle: ContactModalHandle,
+    callOptions: OpenContactModalOptions,
+  ): Promise<void> {
+    // An explicit group list is an override (hosts, tests): never clobber it.
+    if (callOptions.groups && callOptions.groups.length > 0) return;
+    const currentLoader = getLoader();
+    if (!currentLoader) return;
+    const content = await currentLoader.load();
+    if (!content || active !== handle) return;
+    await currentLoader.ensureImages(content);
+    if (active !== handle) return;
+    const custom = callOptions.resolveQr ?? options.resolveQr;
+    if (custom) {
+      handle.update({
+        groups: content.manifest.groups,
+        columns: clampColumns(callOptions.columns ?? options.columns, content.manifest.groups.length),
+        fallbackUrl: content.manifest.fallbackUrl,
+        resolveQr: (group: Group) => custom(group) ?? null,
+      });
+      return;
+    }
+    applyContent(handle, content);
   }
 
   function openContactModal(callOptions: OpenContactModalOptions = {}): () => void {
@@ -107,7 +194,8 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
       candidate && typeof (candidate as HTMLElement).focus === "function"
         ? (candidate as HTMLElement)
         : null;
-    const resolver = callOptions.resolveQr ?? options.resolveQr ?? resolveBaselineQr;
+    const cached = getLoader()?.getCached() ?? null;
+    const resolver = buildResolver(callOptions, cached);
     const handle = mountContactModal({
       doc: document,
       lang,
@@ -115,7 +203,10 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
       columns: clampColumns(callOptions.columns ?? options.columns, groups.length),
       trigger,
       fallbackUrl:
-        callOptions.fallbackUrl ?? options.fallbackUrl ?? BASELINE.manifest.fallbackUrl,
+        callOptions.fallbackUrl ??
+        options.fallbackUrl ??
+        cached?.manifest.fallbackUrl ??
+        BASELINE.manifest.fallbackUrl,
       texts: mergeTexts(options.texts, callOptions.texts),
       resolveQr: (group: Group) => resolver(group) ?? null,
       now: callOptions.now,
@@ -126,6 +217,7 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
       if (active === handle) active = null;
       if (sharedModal === handle) sharedModal = null;
     });
+    void refreshRemote(handle, callOptions);
     return () => {
       if (active === handle) active = null;
       if (sharedModal === handle) sharedModal = null;
@@ -205,8 +297,17 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
     });
   }
 
+  /** Warm the manifest and QR images; also refreshes an already open dialog. */
   async function preloadContent(): Promise<void> {
-    // Ticket 05 adds the three-channel manifest fetch with timeout + cache.
+    const currentLoader = getLoader();
+    if (!currentLoader) return;
+    await currentLoader.preload();
+    if (options.resolveQr) return; // caller owns the image resolution
+    const content = currentLoader.getCached();
+    const handle = active;
+    if (!content || !handle) return;
+    if (active !== handle) return;
+    applyContent(handle, content);
   }
 
   return {
@@ -223,3 +324,18 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
 export { BASE_CSS, BASE_STYLE_ID, ensureBaseStyles } from "./styles";
 export { MESSAGES, resolveText } from "./texts";
 export type { TextKey, TextOverrides } from "./texts";
+export {
+  ALLOWED_CDN_HOSTS,
+  ContentLoader,
+  MANIFEST_CACHE_TTL_MS,
+  MANIFEST_TIMEOUT_MS,
+  MAX_IMAGE_BYTES,
+  createContentLoader,
+  defaultChannels,
+  imageUrls,
+  isAllowedCdnUrl,
+  isHttpsUrl,
+  resetContentCache,
+  validateRemoteManifest,
+} from "./content";
+export type { ContentLoaderOptions, FetchLike, FetchResponseLike, LoadedContent, ManifestChannel } from "./content";

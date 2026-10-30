@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { Group, Lang, PluginEntry } from "../core/types";
+import type { ContentLoader, FetchLike } from "./content";
 import type { TextOverrides } from "./texts";
 
 /**
@@ -20,6 +21,10 @@ export interface BaseUIOptions {
   selfId?: string;
   /** Manifest URL override (defaults to the published CDN manifest). */
   manifestUrl?: string;
+  /** Fetch implementation override (testing seam). */
+  fetchImpl?: FetchLike;
+  /** Pre-built content loader override (testing seam). */
+  contentLoader?: ContentLoader;
   /** Text overrides keyed by message id. */
   texts?: TextOverrides;
   /** Max columns of the contact grid (hard ceiling: 4). */
