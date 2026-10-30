@@ -255,12 +255,28 @@ function locateLegacyMore(markdown: string): LegacyBlockSpan | null {
     break;
   }
   const boundary = nextManagedBlockLine(lines, headingIndex + 1);
-  let endIndex = boundary - 1;
-  while (
-    endIndex >= startIndex &&
-    (lines[endIndex]!.text.trim() === "" || /^-{3,}$/.test(lines[endIndex]!.text.trim()))
-  ) {
+  // A footer that follows a top-level `---` rule (deck-en's Q&A / licence, im's
+  // CTA) is not part of the block: it must survive byte-for-byte after the end
+  // marker. Everything up to the rule is replaced.
+  let footerIndex = -1;
+  for (let index = headingIndex + 1; index < boundary; index += 1) {
+    if (!/^-{3,}$/.test(lines[index]!.text.trim())) continue;
+    for (let after = index + 1; after < boundary; after += 1) {
+      if (lines[after]!.text.trim() !== "") {
+        footerIndex = index;
+        break;
+      }
+    }
+    if (footerIndex !== -1) break;
+  }
+  let endIndex = footerIndex === -1 ? boundary - 1 : footerIndex - 1;
+  while (endIndex >= startIndex && lines[endIndex]!.text.trim() === "") {
     endIndex -= 1;
+  }
+  if (footerIndex === -1) {
+    while (endIndex >= startIndex && /^-{3,}$/.test(lines[endIndex]!.text.trim())) {
+      endIndex -= 1;
+    }
   }
   if (endIndex < startIndex) return null;
   return { start: lines[startIndex]!.start, end: lines[endIndex]!.end };

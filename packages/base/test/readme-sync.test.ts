@@ -190,31 +190,39 @@ describe("MORE block migration", () => {
     }
   });
 
-  it("keeps the historical 'More by the author' wording of the English im README", () => {
+  it("keeps the historical 'More by the author' wording and the footer of the English im README", () => {
     const readme =
       "# Demo plugin\n\n" + fixtureContactRaw("im-en") + "\n\n" + fixtureMoreRaw("im-en") + "\n";
     const { dir, readmePath, cleanup } = setup(readme);
     try {
       const init = updateReadme({ root: dir, command: "init", selfId: "im" });
       expect(init.errors).toEqual([]);
-      const inner = moreInner(readFileSync(readmePath, "utf8"));
+      const markdown = readFileSync(readmePath, "utf8");
+      const inner = moreInner(markdown);
       expect(inner.startsWith('<h2 align="center"><sub>MORE</sub><br>More by the author</h2>')).toBe(true);
       expect(inner).toContain("** — ");
       expect(inner).not.toContain("file an ISSUE");
       expect(parseMoreBlock(inner).items.map((item) => item.name)).toEqual(manifestRowNames("im"));
+      // The legacy footer after the --- rule is not part of the managed block.
+      const tail = markdown.slice(markdown.indexOf(MORE_END) + MORE_END.length);
+      expect(tail).toContain("---");
+      expect(tail).toContain("Any question, suggestion, idea, feedback, or rant");
+      expect(tail).toContain("file an ISSUE");
+      expect(init.blocks.find((block) => block.name === "more")?.status).toBe("inserted");
     } finally {
       cleanup();
     }
   });
 
-  it("replaces deck-en's third-party row with the final plugin list", () => {
+  it("replaces deck-en's third-party row with the final plugin list and keeps its licence footer", () => {
     const readme =
       "# Demo plugin\n\n" + fixtureContactRaw("deck-en") + "\n\n" + fixtureMoreRaw("deck-en") + "\n";
     const { dir, readmePath, cleanup } = setup(readme);
     try {
       const init = updateReadme({ root: dir, command: "init", selfId: "deck" });
       expect(init.errors).toEqual([]);
-      const inner = moreInner(readFileSync(readmePath, "utf8"));
+      const markdown = readFileSync(readmePath, "utf8");
+      const inner = moreInner(markdown);
       expect(inner).not.toContain("dsh-chinese-skill-patch");
       expect(inner).not.toContain("MIT ©");
       const rows = parseMoreBlock(inner).items.map((item) => item.name);
@@ -222,6 +230,12 @@ describe("MORE block migration", () => {
       expect(rows).toHaveLength(4);
       expect(rows).toContain("dsh-im-companion");
       expect(rows).toContain("ilife");
+      // The Q&A / licence footer after the --- rule must stay byte-for-byte.
+      const tail = markdown.slice(markdown.indexOf(MORE_END) + MORE_END.length);
+      expect(tail).toContain("Questions or ideas?");
+      expect(tail).toContain("A personal project, not affiliated with");
+      expect(tail).toContain("MIT © FeatherHunter");
+      expect(tail).not.toContain("dsh-chinese-skill-patch");
     } finally {
       cleanup();
     }
