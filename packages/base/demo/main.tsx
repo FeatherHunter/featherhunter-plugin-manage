@@ -17,7 +17,7 @@ const DEMO_QR_SVG =
 
 const DEMO_QR = "data:image/svg+xml;utf8," + encodeURIComponent(DEMO_QR_SVG);
 
-const demoOptions = { lang: "zh" as const, selfId: "deck", maxRows: 4, resolveQr: () => DEMO_QR };
+const demoOptions = { lang: "zh" as const, selfId: "deck", resolveQr: () => DEMO_QR };
 const base = createBaseUI(React, demoOptions);
 const baseEn = createBaseUI(React, { ...demoOptions, lang: "en" as const });
 
@@ -36,8 +36,9 @@ function App() {
     <main style={pageStyle}>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>dsh-featherhunter-plugin-base</h1>
       <p style={{ fontSize: 14, opacity: 0.7, marginTop: 0 }}>
-        演示：联系弹窗（票 04）。零参打开、4 列上限、窄屏降列、Esc / 遮罩 / 关闭按钮关闭、焦点回归、
-        群号点击复制、过期降级链接。
+        演示：联系弹窗（票 04）与作者插件卡（票 06）。弹窗支持零参打开、4 列上限、窄屏降列、Esc / 遮罩 /
+        关闭按钮关闭、焦点回归、群号点击复制、过期降级链接；插件卡默认排除自己（deck）后显示 4 项，
+        行内是图标 + 包名 + 一句话描述 + 外链图标，整行点击在新标签打开仓库。
       </p>
 
       <section style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "24px 0" }}>
@@ -67,12 +68,23 @@ function App() {
 
       <ui.ContactRow hint="设置面板里的一行" />
 
-      <div style={{ marginTop: 24 }}>
+      <section style={{ marginTop: 24 }}>
+        <p style={{ fontSize: 13, opacity: 0.65, margin: "0 0 8px" }}>
+          作者插件卡：默认排除自己（{english ? "4 rows" : "4 项"}）
+        </p>
         <ui.AuthorPlugins />
-      </div>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <p style={{ fontSize: 13, opacity: 0.65, margin: "0 0 8px" }}>
+          作者插件卡：showSelf（{english ? "5 rows" : "含自己在内 5 项"}）
+        </p>
+        <ui.AuthorPlugins showSelf maxRows={5} />
+      </section>
 
       <p style={{ fontSize: 12, opacity: 0.55, marginTop: 24 }}>
-        注：内置基线的二维码数据在票 03 填充、远程清单在票 05 接入；本 demo 用占位二维码展示卡片排版。
+        注：内置基线的二维码数据在票 03 填充、远程清单在票 05 接入；本 demo 用占位二维码展示卡片排版，
+        插件卡数据来自 manifest.plugins 的定稿 5 条。
       </p>
     </main>
   );
