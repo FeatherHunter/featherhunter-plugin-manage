@@ -29,8 +29,9 @@ import {
   findSuspiciousLines,
   locateReadmeBlocks,
   parseContactBlock,
+  parseMoreBlock,
 } from "./readme-compare";
-import { renderContactBlock } from "./renderers";
+import { renderContactBlock, renderMoreBlock } from "./renderers";
 import type {
   BlockName,
   BlockRenderOptions,
@@ -77,8 +78,8 @@ export interface BlockDefinition {
   render?: (context: BlockRenderContext) => string;
   /** Locate the pre-marker block extent in a README (used by `readme:init`). */
   locateLegacy?: (markdown: string) => LegacyBlockSpan | null;
-  /** Recover the language and heading variant from a current block text. */
-  detect?: (raw: string) => { lang?: Lang; variant?: HeadingVariant };
+  /** Recover the language, heading form and heading wording from a current block. */
+  detect?: (raw: string) => { lang?: Lang; variant?: HeadingVariant; headingText?: string };
 }
 
 /** Marker strings of the four managed README blocks. */
@@ -140,6 +141,132 @@ function locateLegacyContact(markdown: string): LegacyBlockSpan | null {
 }
 
 /**
+ * Detect the language and heading form of a legacy MORE block.
+ *
+ * The heading text distinguishes zh from en and the two historical English
+ * wordings ("More from the author" / "More by the author"); the wording is
+ * returned so a sync keeps it instead of silently unifying it.
+ */
+function detectMore(raw: string): { lang?: Lang; variant?: HeadingVariant; headingText?: string } {
+  const parsed = parseMoreBlock(raw);
+  const heading = parsed.heading?.text ?? "";
+  if (heading === "") return {};
+  const lang: Lang = /[A-Za-z]/.test(heading) ? "en" : "zh";
+  const variant: HeadingVariant =
+    parsed.variant === "markdown-heading" ? "markdown-heading" : "html-heading";
+  return { lang, variant, headingText: heading };
+}
+
+const MORE_HEADING_LINE = /^(?:<h2\b[^\n]*(?:\bMORE\b|作者的其他作品|More from the author|More by the author)[^\n]*<\/h2>|##\s+[^\n]*(?:\bMORE\b|作者的其他作品|More from the author|More by the author)[^\n]*)\s*$/i;
+const THANKS_HEADING_LINE = /^(?:<h2\b[^\n]*(?:\bTHANKS\b|致谢|\bThanks\b|\bContributors\b)[^\n]*<\/h2>|##\s+[^\n]*(?:\bTHANKS\b|致谢|\bThanks\b|\bContributors\b)[^\n]*)\s*$/i;
+const CONTACT_HEADING_LINE = /^(?:<h2\b[^\n]*(?:CONNECT|反馈与联系|Feedback and Contact)[^\n]*<\/h2>|##\s+[^\n]*(?:CONNECT|反馈与联系|Feedback and Contact)[^\n]*)\s*$/i;
+const STAR_MARKER_LINE = /star-history[-a-z]*\.svg|star-history\.html|星标增长曲线|Star history chart/i;
+const WRAPPING_DIV_LINE = /^\s*<div\b/i;
+/** A managed block boundary already seeded by a previous init pass. */
+const MANAGED_MARKER_LINE =
+  /^\s*<!--\s*(?:CONTACT|MORE|STAR-HISTORY|THANKS-TABLE-[A-Z]+)-(?:START|END)\s*-->\s*$/;
+
+interface MarkdownLine {
+  text: string;
+  /** Offset of the first character of the line. */
+  start: number;
+  /** Offset just past the last character of the line (without the EOL). */
+  end: number;
+}
+
+/** Split a README into lines and character offsets (CRLF-safe). */
+function markdownLines(markdown: string): MarkdownLine[] {
+  const lines: MarkdownLine[] = [];
+  let offset = 0;
+  for (const raw of markdown.split("\n")) {
+    const text = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    lines.push({ text, start: offset, end: offset + text.length });
+    offset += raw.length + 1;
+  }
+  return lines;
+}
+
+function isFenceLine(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.startsWith("```") || trimmed.startsWith("~~~");
+}
+
+/**
+ * Index of the first line after `from` that starts another managed block, or
+ * the number of lines when the block runs to the end of the README. A star
+ * marker is widened back to the wrapping <div> so a boundary never cuts a
+ * block in the middle.
+ */
+function nextManagedBlockLine(lines: readonly MarkdownLine[], from: number): number {
+  let fence = false;
+  for (let index = from; index < lines.length; index += 1) {
+    const text = lines[index]!.text;
+    if (isFenceLine(text)) {
+      fence = !fence;
+      continue;
+    }
+    if (fence) continue;
+    if (MANAGED_MARKER_LINE.test(text)) return index;
+    if (MORE_HEADING_LINE.test(text) || THANKS_HEADING_LINE.test(text) || CONTACT_HEADING_LINE.test(text)) {
+      return index;
+    }
+    if (STAR_MARKER_LINE.test(text)) {
+      for (let back = index - 1; back >= Math.max(0, index - 8); back -= 1) {
+        if (WRAPPING_DIV_LINE.test(lines[back]!.text)) return back;
+      }
+      return index;
+    }
+  }
+  return lines.length;
+}
+
+/**
+ * Locate the legacy MORE block.
+ *
+ * The heading may be wrapped in a centring <div> (the prompt repositories), so
+ * the start walks back to that wrapper. The block ends where the next managed
+ * block begins, or at the end of the README, and trailing blank lines / `---`
+ * rules are trimmed so a block inserted by init does not swallow the around
+ * text. When no legacy heading exists (ilife) the block is appended at the end.
+ */
+function locateLegacyMore(markdown: string): LegacyBlockSpan | null {
+  const lines = markdownLines(markdown);
+  let fence = false;
+  let headingIndex = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index]!.text;
+    if (isFenceLine(text)) {
+      fence = !fence;
+      continue;
+    }
+    if (!fence && MORE_HEADING_LINE.test(text)) {
+      headingIndex = index;
+      break;
+    }
+  }
+  if (headingIndex === -1) {
+    const insertion = markdown.trimEnd().length;
+    return { start: insertion, end: markdown.length };
+  }
+  let startIndex = headingIndex;
+  for (let back = headingIndex - 1; back >= 0; back -= 1) {
+    if (lines[back]!.text.trim() === "") continue;
+    if (WRAPPING_DIV_LINE.test(lines[back]!.text)) startIndex = back;
+    break;
+  }
+  const boundary = nextManagedBlockLine(lines, headingIndex + 1);
+  let endIndex = boundary - 1;
+  while (
+    endIndex >= startIndex &&
+    (lines[endIndex]!.text.trim() === "" || /^-{3,}$/.test(lines[endIndex]!.text.trim()))
+  ) {
+    endIndex -= 1;
+  }
+  if (endIndex < startIndex) return null;
+  return { start: lines[startIndex]!.start, end: lines[endIndex]!.end };
+}
+
+/**
  * Registry of the managed README blocks.
  *
  * Order is documentation order, not README order: the engine locates every
@@ -153,13 +280,6 @@ export const BLOCK_DEFINITIONS: readonly BlockDefinition[] = [
     render: (context) => renderContactBlock(context),
     locateLegacy: locateLegacyContact,
     detect: detectContact,
-  },
-  // Reserved for ticket 09: renderer + legacy anchor for the author-plugins
-  // (MORE) block. Marker pair is fixed now so init/sync never invents one.
-  {
-    name: "more",
-    label: "more",
-    markers: [{ start: BLOCK_MARKERS.more.start, end: BLOCK_MARKERS.more.end }],
   },
   // Reserved for ticket 10.
   {
@@ -176,6 +296,14 @@ export const BLOCK_DEFINITIONS: readonly BlockDefinition[] = [
       { lang: "zh", start: THANKS_ZH_MARKERS.start, end: THANKS_ZH_MARKERS.end },
       { lang: "en", start: THANKS_EN_MARKERS.start, end: THANKS_EN_MARKERS.end },
     ],
+  },
+  {
+    name: "more",
+    label: "more",
+    markers: [{ start: BLOCK_MARKERS.more.start, end: BLOCK_MARKERS.more.end }],
+    render: (context) => renderMoreBlock(context),
+    locateLegacy: locateLegacyMore,
+    detect: detectMore,
   },
 ];
 
@@ -290,14 +418,19 @@ interface ApplyResult {
   errors: string[];
 }
 
-/** Render the content of one marker segment (resolved per-language). */
+/** Render the content of one marker segment (resolved per-language and block). */
 function renderSegment(
   definition: BlockDefinition,
   markerSet: BlockMarkerSet,
-  context: BlockRenderContext,
+  context: ResolvedBlockContext,
 ): string {
   if (definition.render === undefined) throw new Error("block has no renderer: " + definition.name);
-  return definition.render({ ...context, lang: markerSet.lang ?? context.lang });
+  return definition.render({
+    ...context.options,
+    lang: markerSet.lang ?? context.lang,
+    variant: context.variants[definition.name] ?? context.options.variant,
+    headingText: context.headings[definition.name] ?? context.options.headingText,
+  });
 }
 
 /** Replace the text between one marker pair, or (init) insert the pair. */
@@ -305,7 +438,7 @@ function applyMarkerSet(
   markdown: string,
   definition: BlockDefinition,
   markerSet: BlockMarkerSet,
-  context: BlockRenderContext,
+  context: ResolvedBlockContext,
   command: "init" | "sync",
 ): ApplyResult {
   const errors: string[] = [];
@@ -330,9 +463,16 @@ function applyMarkerSet(
       return { markdown, changed: false, status: "skipped", errors };
     }
     const content = renderSegment(definition, markerSet, context).split(/\r?\n/).join(eol);
-    const replacement = start + eol + content + eol + end;
+    // A block inserted at the end of the README still needs a blank line
+    // between the existing content and the start marker.
+    const before = markdown.slice(0, legacy.start);
+    let lead = "";
+    if (legacy.start === legacy.end && before.length > 0) {
+      if (!/(?:\r?\n){2}$/.test(before)) lead = /\n$/.test(before) ? eol : eol + eol;
+    }
+    const replacement = lead + start + eol + content + eol + end;
     return {
-      markdown: markdown.slice(0, legacy.start) + replacement + markdown.slice(legacy.end),
+      markdown: before + replacement + markdown.slice(legacy.end),
       changed: true,
       status: "inserted",
       errors,
@@ -372,13 +512,26 @@ function applyMarkerSet(
   return { markdown, changed: false, status: "skipped", errors };
 }
 
-/** Recover language / heading variant from the README's current block text. */
-function detectContext(
-  markdown: string,
-  options: ReadmeTargetOptions,
-): BlockRenderContext {
+/**
+ * Render context recovered from the README.
+ *
+ * Heading form and wording are recovered per block: the prompt repositories
+ * mix an HTML contact block with a Markdown MORE heading, so one global
+ * variant would overwrite the other block's convention.
+ */
+interface ResolvedBlockContext {
+  /** Data options forwarded to the renderers. */
+  options: BlockRenderOptions;
+  lang: Lang;
+  variants: Partial<Record<BlockName, HeadingVariant>>;
+  headings: Partial<Record<BlockName, string>>;
+}
+
+/** Recover language, heading variant and heading wording from the current README. */
+function detectContext(markdown: string, options: ReadmeTargetOptions): ResolvedBlockContext {
   let lang: Lang | undefined = options.lang;
-  let variant: HeadingVariant | undefined = options.variant;
+  const variants: Partial<Record<BlockName, HeadingVariant>> = {};
+  const headings: Partial<Record<BlockName, string>> = {};
   for (const definition of BLOCK_DEFINITIONS) {
     if (definition.detect === undefined) continue;
     let raw: string | null = null;
@@ -397,14 +550,20 @@ function detectContext(
     if (raw === null) continue;
     const detected = definition.detect(raw);
     lang ??= detected.lang;
-    variant ??= detected.variant;
+    if (detected.variant !== undefined) variants[definition.name] ??= detected.variant;
+    if (detected.headingText !== undefined) headings[definition.name] ??= detected.headingText;
   }
   return {
-    manifest: options.manifest,
-    version: options.version,
-    cdnBase: options.cdnBase,
+    options: {
+      manifest: options.manifest,
+      version: options.version,
+      cdnBase: options.cdnBase,
+      selfId: options.selfId,
+      headingText: options.headingText,
+    },
     lang: lang ?? "zh",
-    variant,
+    variants,
+    headings,
   };
 }
 
@@ -501,6 +660,7 @@ export function updateReadmes(options: ReadmeSyncOptions): ReadmeBatchResult {
   const files = options.roots.map((root) =>
     updateReadme({
       root,
+      readme: options.readme,
       command: options.command ?? "sync",
       check: options.check,
       manifest: options.manifest,
@@ -508,6 +668,8 @@ export function updateReadmes(options: ReadmeSyncOptions): ReadmeBatchResult {
       cdnBase: options.cdnBase,
       lang: options.lang,
       variant: options.variant,
+      selfId: options.selfId,
+      headingText: options.headingText,
     }),
   );
   return { ok: files.every((file) => file.ok), files };

@@ -18,11 +18,6 @@ export function renderThanksBlock(options: BlockRenderOptions = {}): string {
   return [BLOCK_MARKERS.thanks.start, "", BLOCK_MARKERS.thanks.end].join("\n");
 }
 
-/** Render the MORE block. Placeholder until ticket 09. */
-export function renderMoreBlock(options: BlockRenderOptions = {}): string {
-  return [BLOCK_MARKERS.more.start, "", BLOCK_MARKERS.more.end].join("\n");
-}
-
 /** Check that a rendered block has balanced markers. */
 export function verifyBlock(block: string, name: keyof typeof BLOCK_MARKERS): VerifyResult {
   const markers = BLOCK_MARKERS[name];

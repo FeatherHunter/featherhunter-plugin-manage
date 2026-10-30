@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/node/cli";
@@ -42,7 +42,7 @@ describe("dsh-base CLI wiring", () => {
   it("keeps --help and --version", async () => {
     const help = await run(["--help"]);
     expect(help.code).toBe(0);
-    for (const needle of ["readme:init", "readme:sync", "--check", "--all", "--root"]) {
+    for (const needle of ["readme:init", "readme:sync", "--check", "--all", "--root", "--readme", "--self"]) {
       expect(help.stdout, needle).toContain(needle);
     }
 
@@ -57,6 +57,14 @@ describe("dsh-base CLI wiring", () => {
     const missingValue = await run(["readme:sync", "--root"]);
     expect(missingValue.code).toBe(2);
     expect(missingValue.stderr).toMatch(/--root/);
+
+    const missingReadme = await run(["readme:sync", "--readme"]);
+    expect(missingReadme.code).toBe(2);
+    expect(missingReadme.stderr).toMatch(/--readme/);
+
+    const missingSelf = await run(["readme:sync", "--self"]);
+    expect(missingSelf.code).toBe(2);
+    expect(missingSelf.stderr).toMatch(/--self/);
 
     const unknownOption = await run(["readme:sync", "--bogus"]);
     expect(unknownOption.code).toBe(2);
@@ -144,6 +152,43 @@ describe("dsh-base CLI wiring", () => {
       missing.cleanup();
       first.cleanup();
       second.cleanup();
+    }
+  });
+
+  it("targets a non-root README with --readme and excludes the repository itself with --self", async () => {
+    const { dir, cleanup } = makeTempDir();
+    try {
+      mkdirSync(join(dir, "docs"), { recursive: true });
+      const readmePath = join(dir, "docs", "README.en.md");
+      writeFileSync(readmePath, fakeReadme(fixtureContactRaw("deck-en")), "utf8");
+
+      const init = await run([
+        "readme:init",
+        "--root",
+        dir,
+        "--readme",
+        "docs/README.en.md",
+        "--self",
+        "deck",
+      ]);
+      expect(init.code).toBe(0);
+      expect(init.stderr).toBe("");
+      const markdown = readFileSync(readmePath, "utf8");
+      expect(markdown).toContain("<!-- MORE-START -->");
+      expect(markdown).toContain("More from the author");
+      expect(markdown).not.toContain("**[dsh-mattpocock-skills-deck]");
+
+      const check = await run([
+        "readme:sync",
+        "--check",
+        "--root",
+        dir,
+        "--readme=docs/README.en.md",
+        "--self=deck",
+      ]);
+      expect(check.code).toBe(0);
+    } finally {
+      cleanup();
     }
   });
 

@@ -18,6 +18,10 @@ export interface BlockRenderOptions {
   cdnBase?: string;
   /** Heading form override; renderers default to their repository convention. */
   variant?: HeadingVariant;
+  /** Plugin id of the repository being rendered; the MORE block excludes it. */
+  selfId?: string;
+  /** Heading text override, used to keep a historical heading wording. */
+  headingText?: string;
 }
 
 /** Marker names of the four managed README blocks. */
@@ -49,6 +53,12 @@ export interface ReadmeSyncOptions {
   lang?: Lang;
   /** Heading form override; detected from the README when omitted. */
   variant?: HeadingVariant;
+  /** Plugin id of the repository being rendered; the MORE block excludes it. */
+  selfId?: string;
+  /** Heading text override; detected from the README when omitted. */
+  headingText?: string;
+  /** README path relative to each root; default `README.md`. */
+  readme?: string;
 }
 
 export interface DoctorCheck {

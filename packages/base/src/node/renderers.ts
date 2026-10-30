@@ -7,7 +7,7 @@
  * (see ./readme-sync.ts). The returned string is the block *content*.
  */
 import { BASELINE, pickText, sortByOrder } from "../core/index";
-import type { Group, Lang, Manifest } from "../core/types";
+import type { Group, Lang, Manifest, PluginEntry } from "../core/types";
 import type { BlockRenderOptions } from "./types";
 
 /** jsDelivr base of the published data package (exact-version images). */
@@ -26,6 +26,23 @@ export const CONTACT_TEXT = {
   welcome: {
     zh: "👏欢迎提交PR、ISSUE。星星之火可以燎原🔥有任何建议、意见、想法、吐槽、idea都可以进群交流。",
     en: "👏Welcome PRs and issues. A single spark can start a prairie fire 🔥. Any suggestion, opinion, idea or rant — come join the group and talk.",
+  },
+} as const;
+
+/** Fixed wording of the author-plugins (MORE) block. */
+export const MORE_TEXT = {
+  sub: "MORE",
+  heading: {
+    zh: "作者的其他作品",
+    en: "More from the author",
+  },
+  leadIn: {
+    zh: "喜欢这个插件的话，这些可能你也用得上：",
+    en: "If you like this plugin, these might help too:",
+  },
+  separator: {
+    zh: "——",
+    en: "—",
   },
 } as const;
 
@@ -140,6 +157,67 @@ export function renderContactBlock(options: BlockRenderOptions = {}): string {
     CONTACT_TEXT.welcome[lang],
     "",
     '<table align="center"><tr>' + headerCells + "</tr><tr>" + cardCells + "</tr></table>",
+    "",
+    "</div>",
+  ].join("\n");
+}
+
+/**
+ * Link target of one plugin row.
+ *
+ * The manifest URL wins; the GitHub repository is the fallback so a row never
+ * renders as a linkless plugin name.
+ */
+export function pluginLink(plugin: PluginEntry): string {
+  return plugin.url ?? "https://github.com/" + plugin.repo;
+}
+
+/**
+ * Render the author-plugins (MORE) block content (no markers).
+ *
+ * Structure: heading, left-aligned wrapper, one lead-in sentence and four
+ * `**[name](url)** —— description` rows, one per plugin other than the
+ * repository being rendered. The standard heading is the HTML `<h2>` with the
+ * MORE sub-label; the prompt repositories keep their Markdown `##` variant and
+ * the en headings may keep a historical wording through `headingText`.
+ *
+ * @param options data + language; `selfId` excludes the current repository and
+ *   `variant` / `headingText` preserve the repository heading conventions.
+ */
+export function renderMoreBlock(options: BlockRenderOptions = {}): string {
+  const manifest = resolveManifest(options);
+  const lang = resolveLang(options);
+  if (manifest.plugins.length === 0) {
+    throw new Error("more block needs at least one plugin in the manifest");
+  }
+  const plugins = sortByOrder(manifest.plugins).filter((plugin) => plugin.id !== options.selfId);
+  if (plugins.length === 0) {
+    throw new Error('more block needs at least one plugin besides "' + String(options.selfId) + '"');
+  }
+  const headingText = options.headingText ?? MORE_TEXT.heading[lang];
+  const heading =
+    options.variant === "markdown-heading"
+      ? "## " + headingText + " <sub>" + MORE_TEXT.sub + "</sub>"
+      : '<h2 align="center"><sub>' + MORE_TEXT.sub + "</sub><br>" + headingText + "</h2>";
+  const rows = plugins.map(
+    (plugin) =>
+      "**[" +
+      plugin.name +
+      "](" +
+      pluginLink(plugin) +
+      ")** " +
+      MORE_TEXT.separator[lang] +
+      " " +
+      pickText(plugin.desc, lang),
+  );
+  return [
+    heading,
+    "",
+    '<div align="left">',
+    "",
+    MORE_TEXT.leadIn[lang],
+    "",
+    rows.join("\n\n"),
     "",
     "</div>",
   ].join("\n");

@@ -1,9 +1,11 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { BASELINE, sortByOrder } from "../src/core/index";
 import {
   BLOCK_DEFINITIONS,
   compareBlocks,
+  parseMoreBlock,
   updateReadme,
   updateReadmes,
   writeFileAtomic,
@@ -11,11 +13,14 @@ import {
 import {
   expectMigratedContactSources,
   fixtureContactRaw,
+  fixtureMoreRaw,
   makeTempDir,
 } from "./readme-helpers";
 
 const START = "<!-- CONTACT-START -->";
 const END = "<!-- CONTACT-END -->";
+const MORE_START = "<!-- MORE-START -->";
+const MORE_END = "<!-- MORE-END -->";
 
 /** A small README that wraps a legacy contact block with unrelated text. */
 function fakeReadme(contactRaw: string): string {
@@ -38,6 +43,22 @@ function markedInner(markdown: string): string {
   return markdown.slice(start + START.length, end).trim();
 }
 
+/** Inner text of the marked MORE block. */
+function moreInner(markdown: string): string {
+  const start = markdown.indexOf(MORE_START);
+  const end = markdown.indexOf(MORE_END);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return markdown.slice(start + MORE_START.length, end).trim();
+}
+
+/** Plugin names the MORE block must list for one repository. */
+function manifestRowNames(selfId?: string): string[] {
+  return sortByOrder(BASELINE.manifest.plugins)
+    .filter((plugin) => plugin.id !== selfId)
+    .map((plugin) => plugin.name);
+}
+
 describe("readme:init", () => {
   it("inserts paired markers around a rendered contact block in an unmarked README", () => {
     const contactRaw = fixtureContactRaw("deck");
@@ -55,7 +76,9 @@ describe("readme:init", () => {
         "cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base@0.0.1/data/img/card-feishu.png",
       );
       expect(markdown.startsWith("# Demo plugin\n\nSome intro paragraph.\n\n")).toBe(true);
-      expect(markdown.endsWith("\n\n## Footer\n\nFooter text.\n")).toBe(true);
+      expect(markdown).toContain("## Footer\n\nFooter text.");
+      // The unmarked README also gains the brand-new MORE block at the end.
+      expect(markdown.trimEnd().endsWith(MORE_END)).toBe(true);
 
       const comparison = compareBlocks("contact", expectMigratedContactSources(contactRaw), markedInner(markdown));
       expect(comparison.contentDifferences).toEqual([]);
@@ -115,6 +138,132 @@ describe("readme:init", () => {
     }
   });
 });
+describe("MORE block migration", () => {
+  it("appends the author-plugins block at the end of a README that has none (ilife)", () => {
+    const { dir, readmePath, cleanup } = setup(fakeReadme(fixtureContactRaw("ilife")));
+    try {
+      const init = updateReadme({ root: dir, command: "init", selfId: "ilife" });
+      expect(init.errors).toEqual([]);
+      expect(init.blocks.find((block) => block.name === "more")?.status).toBe("inserted");
+
+      const markdown = readFileSync(readmePath, "utf8");
+      expect(markdown.trimEnd().endsWith(MORE_END)).toBe(true);
+      const inner = moreInner(markdown);
+      expect(inner.startsWith('<h2 align="center"><sub>MORE</sub><br>作者的其他作品</h2>')).toBe(true);
+      expect(inner).toContain("喜欢这个插件的话，这些可能你也用得上：");
+
+      const rows = parseMoreBlock(inner).items.map((item) => item.name);
+      expect(rows).toEqual(manifestRowNames("ilife"));
+      expect(rows).not.toContain("ilife");
+      expect(rows).toHaveLength(4);
+
+      const again = updateReadme({ root: dir, command: "init", selfId: "ilife" });
+      expect(again.errors).toEqual([]);
+      expect(again.changed).toBe(false);
+      const check = updateReadme({ root: dir, command: "sync", check: true, selfId: "ilife" });
+      expect(check.errors).toEqual([]);
+      expect(check.ok).toBe(true);
+      expect(check.written).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps the prompt Markdown heading variant when the contact block stays HTML", () => {
+    const readme =
+      "# Demo plugin\n\n" + fixtureContactRaw("prompt") + "\n\n" + fixtureMoreRaw("prompt") + "\n";
+    const { dir, readmePath, cleanup } = setup(readme);
+    try {
+      const init = updateReadme({ root: dir, command: "init", selfId: "prompt" });
+      expect(init.errors).toEqual([]);
+      const markdown = readFileSync(readmePath, "utf8");
+      const inner = moreInner(markdown);
+      expect(inner.startsWith("## 作者的其他作品 <sub>MORE</sub>")).toBe(true);
+      expect(inner).not.toContain("<h2");
+      expect(parseMoreBlock(inner).items.map((item) => item.name)).toEqual(manifestRowNames("prompt"));
+
+      const again = updateReadme({ root: dir, command: "init", selfId: "prompt" });
+      expect(again.errors).toEqual([]);
+      expect(again.changed).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps the historical 'More by the author' wording of the English im README", () => {
+    const readme =
+      "# Demo plugin\n\n" + fixtureContactRaw("im-en") + "\n\n" + fixtureMoreRaw("im-en") + "\n";
+    const { dir, readmePath, cleanup } = setup(readme);
+    try {
+      const init = updateReadme({ root: dir, command: "init", selfId: "im" });
+      expect(init.errors).toEqual([]);
+      const inner = moreInner(readFileSync(readmePath, "utf8"));
+      expect(inner.startsWith('<h2 align="center"><sub>MORE</sub><br>More by the author</h2>')).toBe(true);
+      expect(inner).toContain("** — ");
+      expect(inner).not.toContain("file an ISSUE");
+      expect(parseMoreBlock(inner).items.map((item) => item.name)).toEqual(manifestRowNames("im"));
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("replaces deck-en's third-party row with the final plugin list", () => {
+    const readme =
+      "# Demo plugin\n\n" + fixtureContactRaw("deck-en") + "\n\n" + fixtureMoreRaw("deck-en") + "\n";
+    const { dir, readmePath, cleanup } = setup(readme);
+    try {
+      const init = updateReadme({ root: dir, command: "init", selfId: "deck" });
+      expect(init.errors).toEqual([]);
+      const inner = moreInner(readFileSync(readmePath, "utf8"));
+      expect(inner).not.toContain("dsh-chinese-skill-patch");
+      expect(inner).not.toContain("MIT ©");
+      const rows = parseMoreBlock(inner).items.map((item) => item.name);
+      expect(rows).toEqual(manifestRowNames("deck"));
+      expect(rows).toHaveLength(4);
+      expect(rows).toContain("dsh-im-companion");
+      expect(rows).toContain("ilife");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("replaces a MORE block that precedes another managed block without swallowing it", () => {
+    const readme =
+      "# Demo plugin\n\n" + fixtureMoreRaw("palette") + "\n\n" + fixtureContactRaw("palette") + "\n";
+    const { dir, readmePath, cleanup } = setup(readme);
+    try {
+      const init = updateReadme({ root: dir, command: "init", selfId: "palette" });
+      expect(init.errors).toEqual([]);
+      const markdown = readFileSync(readmePath, "utf8");
+      expect(markdown.indexOf(MORE_START)).toBeGreaterThanOrEqual(0);
+      expect(markdown.indexOf(MORE_START)).toBeLessThan(markdown.indexOf(START));
+      expect(moreInner(markdown)).not.toContain("CONNECT");
+      expect(moreInner(markdown)).not.toContain("Feedback and Contact");
+      expect(markedInner(markdown)).not.toContain("MORE");
+
+      const sync = updateReadme({ root: dir, command: "sync", selfId: "palette" });
+      expect(sync.errors).toEqual([]);
+      expect(sync.changed).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports unpaired MORE markers and leaves the file untouched", () => {
+    const readme = fakeReadme(fixtureContactRaw("deck")) + "\n" + MORE_START + "\n";
+    const { dir, readmePath, cleanup } = setup(readme);
+    try {
+      const before = readFileSync(readmePath, "utf8");
+      const result = updateReadme({ root: dir, command: "sync" });
+      expect(result.ok).toBe(false);
+      expect(result.errors.join("\n")).toMatch(/unpaired/);
+      expect(readFileSync(readmePath, "utf8")).toBe(before);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("readme:sync", () => {
   /** Initialize a temp README, then return its directory and current text. */
   function seeded(contactId = "deck"): { dir: string; readmePath: string; markdown: string; cleanup: () => void } {
@@ -308,16 +457,20 @@ describe("readme batch (--all)", () => {
 });
 
 describe("block registry", () => {
-  it("implements contact and reserves the markers of the follow-up blocks", () => {
+  it("registers the implemented blocks in visual order and reserves the follow-up markers", () => {
     const byName = new Map(BLOCK_DEFINITIONS.map((definition) => [definition.name, definition]));
-    expect([...byName.keys()]).toEqual(["contact", "more", "star-history", "thanks"]);
+    expect([...byName.keys()]).toEqual(["contact", "star-history", "thanks", "more"]);
 
     const contact = byName.get("contact")!;
     expect(contact.render).toBeTypeOf("function");
     expect(contact.locateLegacy).toBeTypeOf("function");
     expect(contact.markers).toEqual([{ start: START, end: END }]);
 
-    expect(byName.get("more")!.markers.map((set) => [set.start, set.end])).toEqual([
+    const more = byName.get("more")!;
+    expect(more.render).toBeTypeOf("function");
+    expect(more.locateLegacy).toBeTypeOf("function");
+    expect(more.detect).toBeTypeOf("function");
+    expect(more.markers.map((set) => [set.start, set.end])).toEqual([
       ["<!-- MORE-START -->", "<!-- MORE-END -->"],
     ]);
     expect(byName.get("star-history")!.markers.map((set) => [set.start, set.end])).toEqual([
@@ -327,7 +480,7 @@ describe("block registry", () => {
       ["zh", "<!-- THANKS-TABLE-ZH-START -->", "<!-- THANKS-TABLE-ZH-END -->"],
       ["en", "<!-- THANKS-TABLE-EN-START -->", "<!-- THANKS-TABLE-EN-END -->"],
     ]);
-    for (const name of ["more", "star-history", "thanks"] as const) {
+    for (const name of ["star-history", "thanks"] as const) {
       expect(byName.get(name)!.render).toBeUndefined();
     }
   });

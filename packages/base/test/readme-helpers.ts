@@ -49,6 +49,13 @@ export function fixtureContactRaw(id: string): string {
   return raw;
 }
 
+/** Raw legacy author-plugins (MORE) block of one fixture README. */
+export function fixtureMoreRaw(id: string): string {
+  const raw = fixtureFile(id).blocks.more.raw;
+  if (raw === null) throw new Error("fixture has no more block: " + id);
+  return raw;
+}
+
 /** Default CDN base used by the renderers. */
 export const CDN_BASE = "https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base";
 
