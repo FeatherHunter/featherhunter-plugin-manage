@@ -765,3 +765,33 @@ export function updateReadmes(options: ReadmeSyncOptions): ReadmeBatchResult {
   );
   return { ok: files.every((file) => file.ok), files };
 }
+
+/** Options for updating an explicit list of targets (CLI `--all --repos`). */
+export interface ReadmeTargetListOptions {
+  /** `init` may insert missing marker pairs; `sync` only rewrites marked text. */
+  command?: "init" | "sync";
+  /** Report drift without writing. */
+  check?: boolean;
+}
+
+/**
+ * Update an explicit list of targets (CLI `--all --repos`).
+ *
+ * Unlike {@link updateReadmes}, which applies one set of options to several
+ * roots, every target carries its own README path, language, self id and
+ * per-repository star / thanks data. Every target is attempted even when one
+ * fails, so the maintainer sees all problems in one run.
+ */
+export function updateReadmeTargets(
+  targets: readonly ReadmeTargetOptions[],
+  options: ReadmeTargetListOptions = {},
+): ReadmeBatchResult {
+  const files = targets.map((target) =>
+    updateReadme({
+      ...target,
+      command: options.command ?? "sync",
+      check: options.check,
+    }),
+  );
+  return { ok: files.every((file) => file.ok), files };
+}

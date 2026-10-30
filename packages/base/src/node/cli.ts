@@ -1,20 +1,28 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { updateReadmes, type ReadmeBatchResult } from "./readme-sync";
+import { formatDoctorReport, runDoctor } from "./doctor";
+import { updateReadmeTargets, updateReadmes, type ReadmeBatchResult } from "./readme-sync";
+import {
+  expandReadmeTargets,
+  readPackagedManifest,
+  readPackageVersion,
+  readmeTargetRepos,
+} from "./targets";
 
 const HELP = `dsh-base — FeatherHunter base package CLI
 
 Usage:
-  dsh-base readme:init [--check] [--root <dir>]...
+  dsh-base readme:init [--check] [--root <dir>]... [--readme <path>] [--self <id>]
                                   Insert the managed blocks (contact first) into a README
   dsh-base readme:sync [--check] [--root <dir>]...
                                   Refresh the text between the managed markers
-  dsh-base readme:init|readme:sync --all [--root <dir>]...
-                                  Process every target directory and keep going after errors
+  dsh-base readme:init|readme:sync --all --repos <dir>...
+                                  Process the eleven managed READMEs of the five repositories
   dsh-base contact:update [--check]
                                   Refresh contact/ data from the QR source images
-  dsh-base doctor                 Diagnose data, CDN and README state
+  dsh-base doctor [<repo-dir>]... [--repos <dir>]... [--offline] [--json]
+                                  Diagnose data, CDN and README state
   dsh-base --version              Print the package version
   dsh-base --help                 Print this help
 
@@ -22,24 +30,19 @@ Options:
   --root <dir>     Repository root to update; repeatable (default: current directory)
   --readme <path>  README path relative to each root (default: README.md)
   --self <id>      Plugin id of the repository; the MORE block excludes it
+  --repos <dir>    Parent directory that contains the five plugin repositories; repeatable.
+                   readme:init/sync: process the built-in table of eleven managed READMEs.
+                   doctor: check every managed repository under that directory.
+  --all            Process every target and keep going after per-file errors
   --check          Report drift without writing; nonzero exit when a README is out of date
-  --all            Process every --root and continue after per-file errors
+  --offline        doctor: skip the remote manifest probe
+  --json           doctor: print a machine-readable JSON report
 
 Commands that change files only rewrite the text between their managed markers and
 refuse to touch a README with unpaired markers or merge-conflict residue.
 
 Exit codes: 0 success / no drift, 1 drift or error, 2 usage error.
 `;
-
-function readVersion(): string {
-  try {
-    const pkgUrl = new URL("../../package.json", import.meta.url);
-    const parsed = JSON.parse(readFileSync(pkgUrl, "utf8")) as { version?: string };
-    return typeof parsed.version === "string" ? parsed.version : "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
 
 function notImplemented(command: string): number {
   process.stderr.write(`dsh-base: "${command}" is not implemented yet`);
@@ -52,6 +55,7 @@ type ReadmeCommand = "init" | "sync";
 interface ReadmeCliOptions {
   command: ReadmeCommand;
   roots: string[];
+  repos: string[];
   check: boolean;
   all: boolean;
   readme?: string;
@@ -64,6 +68,7 @@ function parseReadmeArgs(
   args: string[],
 ): { options: ReadmeCliOptions } | { error: string } {
   const roots: string[] = [];
+  const repos: string[] = [];
   let check = false;
   let all = false;
   let readme: string | undefined;
@@ -89,19 +94,16 @@ function parseReadmeArgs(
       check = true;
     } else if (arg === "--all") {
       all = true;
-    } else if (arg === "--root") {
-      const value = args[index + 1];
-      if (value === undefined || value.startsWith("-")) {
-        return { error: 'readme:' + command + ': "--root" needs a directory value' };
-      }
-      roots.push(value);
-      index += 1;
-    } else if (arg.startsWith("--root=")) {
-      const value = arg.slice("--root=".length);
-      if (value.length === 0) {
-        return { error: 'readme:' + command + ': "--root" needs a directory value' };
-      }
-      roots.push(value);
+    } else if (arg === "--root" || arg.startsWith("--root=")) {
+      const parsed = takeValue("--root", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      roots.push(parsed.value);
+      if (arg === "--root") index += 1;
+    } else if (arg === "--repos" || arg.startsWith("--repos=")) {
+      const parsed = takeValue("--repos", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      repos.push(parsed.value);
+      if (arg === "--repos") index += 1;
     } else if (arg === "--readme" || arg.startsWith("--readme=")) {
       const parsed = takeValue("--readme", arg, index);
       if ("error" in parsed) return { error: parsed.error };
@@ -117,11 +119,24 @@ function parseReadmeArgs(
     }
   }
 
-  if (roots.length === 0) roots.push(process.cwd());
+  if (repos.length > 0) {
+    if (roots.length > 0) {
+      return { error: 'readme:' + command + ': "--repos" cannot be combined with "--root"' };
+    }
+    if (readme !== undefined || selfId !== undefined) {
+      return {
+        error: 'readme:' + command + ': "--repos" uses the built-in per-repository paths; do not pass --readme/--self',
+      };
+    }
+  } else if (roots.length === 0) {
+    roots.push(process.cwd());
+  }
+
   return {
     options: {
       command,
       roots: roots.map((root) => resolve(root)),
+      repos: repos.map((reposDir) => resolve(reposDir)),
       check,
       all,
       readme,
@@ -148,6 +163,73 @@ function reportReadmeBatch(result: ReadmeBatchResult): number {
   return result.ok ? 0 : 1;
 }
 
+interface DoctorCliOptions {
+  repoRoots: string[];
+  reposDirs: string[];
+  offline: boolean;
+  json: boolean;
+}
+
+/** Parse the arguments of the doctor command. */
+function parseDoctorArgs(args: string[]): { options: DoctorCliOptions } | { error: string } {
+  const repoRoots: string[] = [];
+  const reposDirs: string[] = [];
+  let offline = false;
+  let json = false;
+
+  const takeValue = (name: string, argument: string, position: number): { value: string } | { error: string } => {
+    if (argument.startsWith(name + "=")) {
+      const value = argument.slice(name.length + 1);
+      if (value.length === 0) return { error: 'doctor: "' + name + '" needs a value' };
+      return { value };
+    }
+    const value = args[position + 1];
+    if (value === undefined || value.startsWith("-")) {
+      return { error: 'doctor: "' + name + '" needs a value' };
+    }
+    return { value };
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (arg === "--offline") {
+      offline = true;
+    } else if (arg === "--json") {
+      json = true;
+    } else if (arg === "--repos" || arg.startsWith("--repos=")) {
+      const parsed = takeValue("--repos", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      reposDirs.push(resolve(parsed.value));
+      if (arg === "--repos") index += 1;
+    } else if (arg === "--repo" || arg.startsWith("--repo=")) {
+      const parsed = takeValue("--repo", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      repoRoots.push(resolve(parsed.value));
+      if (arg === "--repo") index += 1;
+    } else if (!arg.startsWith("-")) {
+      repoRoots.push(resolve(arg));
+    } else {
+      return { error: 'doctor: unknown option "' + arg + '"' };
+    }
+  }
+
+  if (repoRoots.length === 0 && reposDirs.length === 0) {
+    const cwd = process.cwd();
+    const repos = readmeTargetRepos();
+    if (repos.includes(basename(cwd))) {
+      repoRoots.push(cwd);
+    } else if (repos.some((repo) => existsSync(join(cwd, repo)))) {
+      reposDirs.push(cwd);
+    } else {
+      return {
+        error: "doctor: no managed repository found here; pass a repository directory or --repos <parent-dir>",
+      };
+    }
+  }
+
+  return { options: { repoRoots, reposDirs, offline, json } };
+}
+
 /** Run one CLI invocation and return its exit code. */
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const command = argv[0];
@@ -156,7 +238,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return 0;
   }
   if (command === "--version" || command === "-v" || command === "version") {
-    process.stdout.write(`${readVersion()}\n`);
+    process.stdout.write(`${readPackageVersion()}\n`);
     return 0;
   }
   switch (command) {
@@ -169,13 +251,44 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         process.stderr.write(HELP);
         return 2;
       }
-      const { roots, check, all, readme, selfId } = parsed.options;
+      const { roots, repos, check, all, readme, selfId } = parsed.options;
+      if (repos.length > 0) {
+        const manifest = readPackagedManifest();
+        const targets = expandReadmeTargets(repos, { manifest });
+        return reportReadmeBatch(updateReadmeTargets(targets, { command: readmeCommand, check }));
+      }
       return reportReadmeBatch(
         updateReadmes({ roots, command: readmeCommand, check, all, readme, selfId }),
       );
     }
+    case "doctor": {
+      const parsed = parseDoctorArgs(argv.slice(1));
+      if ("error" in parsed) {
+        process.stderr.write("dsh-base: " + parsed.error + "\n\n");
+        process.stderr.write(HELP);
+        return 2;
+      }
+      const { repoRoots, reposDirs, offline, json } = parsed.options;
+      let result;
+      try {
+        result = await runDoctor({ repoRoots, reposDirs, offline });
+      } catch (error) {
+        process.stderr.write("dsh-base: " + (error as Error).message + "\n");
+        return 2;
+      }
+      if (json) {
+        process.stdout.write(JSON.stringify({ ok: result.ok, checks: result.checks }, null, 2) + "\n");
+      } else {
+        process.stdout.write(formatDoctorReport(result) + "\n");
+      }
+      if (!result.ok) {
+        const failed = result.checks.filter((check) => !check.ok).length;
+        process.stderr.write("dsh-base: doctor found " + failed + " failing check(s)\n");
+        return 1;
+      }
+      return 0;
+    }
     case "contact:update":
-    case "doctor":
       return notImplemented(command);
     default:
       process.stderr.write(`dsh-base: unknown command "${command}"\n\n`);
