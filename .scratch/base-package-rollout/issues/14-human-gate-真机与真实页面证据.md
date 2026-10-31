@@ -39,6 +39,12 @@
 仍需仓主取证：B（真机扫码，B3 依赖新微信群码）、C（真实浏览器 dialog，零安装可做）、D（插件真实页面入口，需先装本次构建产物并重启）、E（大陆网络降级）。
 
 已向仓主列出剩余场景与前置依赖。
+
+### local — 2026-10-31T09:35:35.118Z
+2026-10-31 追加证据（票 15 换码后）：
+1) 微信群二维码已换发为 2026-10-31 版（validUntil 2026-11-07），base 包 0.1.1 与五仓 README 均指向新卡；CDN 实测 jsDelivr/unpkg 200（card-wechat-2026-10-31.png 21010B），deck GitHub README 页面 headless 截图核对：三列联系区正常渲染，微信群卡为深色卡面、二维码白底可扫、图内文字『该二维码7天内（11月7日前）有效』。
+2) 五仓已升 base 0.1.1 并接入页头三件套（联系/Star/Issue），commit：prompt f7229e5+685cb7b、deck 91db8fcf、palette 28f215b、im aa36b20、ilife a1d108a7，均已 push；doctor/readme:check 聚合 exit 0。
+3) 仍需仓主真机：B1/B2 扫码进群（飞书/QQ/微信新码）、B3 弹窗过期降级（旧码 10-30 已过期可验）、C 组浏览器 dialog 9 项、D 组安装本次构建产物后 5 仓入口、E 组断网三通道降级。B 组建议手机打开 unpkg 直链长按识别：https://unpkg.com/dsh-featherhunter-plugin-base@0.1.1/data/img/card-wechat-2026-10-31.png
 ## HUMAN-GATE 准备就绪（代理侧）
 
 自动侧已全部完成：票 08–13 关闭，五仓接入提交已推送到 GitHub 默认分支（prompt `944905c`、deck `42280a82`、palette `862a4c2`、im `76dd0f6`、ilife `d7cdda30`）。
@@ -53,5 +59,6 @@
 
 ## 进度
 
+- 进度：60%（2026-10-31T17:35:34+08:00）：新微信群码（validUntil 2026-11-07）已发布到 base 0.1.1 与五仓 README，deck GitHub 页面实测新卡渲染正常；B3 过期降级场景需仓主等 11-07 后再验
 - 进度：50%（2026-10-31T15:26:09+08:00）：A 组 deck 页代理实测通过；剩余 B/C/D/E 待仓主取证，B3 缺新微信群码
 - 进度：40%（2026-10-31T15:01:13+08:00）：场景化走查与参考渲染已就绪，等仓主真机/真实页面取证

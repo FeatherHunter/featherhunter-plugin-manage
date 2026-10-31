@@ -38,3 +38,17 @@
 - 五仓接入提交（本地提交，尚未推送）：dsh-prompt `944905c`、deck `42280a82`、palette `862a4c2`、im-companion `76dd0f6`、ilife `d7cdda30`。
 - 票 08–13 已全部关闭；票 14 HUMAN-GATE 待仓主真机/真实页面证据（扫码三群、浏览器内 dialog 顶层与焦点、GitHub 观感、大陆网络三通道降级）。
 - 注：markdown 后端的 spec 容器不支持 deck_issue_patch 评论（工具报 `map.md not-found`），本条按工作区约定直接回填在 spec.md 正文。
+
+## 验收记录（票 15 回填，2026-10-31 17:55 +08:00）
+- 追加需求（用户 2026-10-31 提出）：页头三件套（联系 / Star / Issue）+ 三项合一控件 + 公共 HoverTip；微信群二维码换发（旧码 10-30 到期）。
+- base 包：新增 ActionButtons / ActionGroup / HoverTip / StarButton / IssueButton / ContactButton，中英文案与图标单测；全量 vitest 322 pass；typecheck/build 绿；版本 `0.1.1` 发布 npm（`--tag latest`；0.1.0 因 data/manifest.json 版本未随 bump 更新已 deprecate）。
+- 发布通道核验：jsDelivr / unpkg / npmmirror 均能读到 0.1.1 与 `data/img/card-wechat-2026-10-31.png`（21010B）；npmmirror dist-tags latest=0.1.1。
+- 五仓接入（均只改本仓文件、构建+测试通过、已 push）：
+  - dsh-prompt `f7229e5`（页头三件套）+ `685cb7b`（README 同步）
+  - dsh-mattpocock-skills-deck `91db8fcf`（派生重建 baseClient v0.1.1 + 页头 ActionGroup + README 致谢表补 3 行）
+  - dsh-opencode-palette `28f215b`（页头 ActionGroup + 类型垫片 + 312 测全过）
+  - dsh-im-companion `aa36b20`（页头 mountHeaderActions 挂 ActionGroup，保留自绘作者插件卡）
+  - ilife `a1d108a7`（根+plugin-manager 双依赖升级，PanelActions → ActionGroup，保留手册入口）
+- 聚合校验：`readme:sync --check --all --repos D:\dsh-plugin` exit 0；`doctor --repos D:\dsh-plugin` exit 0（依赖钉 0.1.1、内联 bundle 版本 0.1.1、README 图片 @0.1.1）。
+- README 与页面：11 份 README 联系区全部指向 2026-10-31 新微信群码；deck GitHub README headless 截图核对：三列联系区正常、微信群卡深色卡面二维码可扫、图内文字“该二维码7天内（11月7日前）有效”。
+- 剩余：票 14 HUMAN-GATE 仍需仓主真机证据（B1/B2 扫码进群、B3 弹窗过期降级、C 组 dialog 行为、D 组装产物后入口、E 组断网降级）；票 14 关闭后由用户在规格详情页点“完成”收口。
