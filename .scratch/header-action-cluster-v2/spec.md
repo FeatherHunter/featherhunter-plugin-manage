@@ -68,4 +68,14 @@
 
 **遗留**：票 14（HUMAN-GATE A/C 已可引用本轮证据；B 手机扫码 / D Desktop 安装形态 / E 断网降级 待 owner 真机）；各仓既有红点非本次引入（prompt test:star-history / test:issue-89 僵尸 / check:update-pkg 需联网；ilife ci-gates-295 / p10-boundaries；palette check-deps 离线 '?'）。规格收口由用户在详情页点「完成」。
 
+## 发版记录：dsh-prompt 0.4.40（2026-11-01 01:2x +08:00）
+
+- 目的：验证「五仓 + base 0.1.5 收口后的产物」能走正式 npm 发版链路（此前五仓只在本机 file: tarball 上迭代）。
+- 变更 commit `ae7c6b5`（main，7 files +91/−16）：version 0.4.39→0.4.40（package.json / package-lock）、README 中英安装命令锁版、CHANGELOG 0.4.40 条目、`scripts/check-star-history.mjs` 门禁修正（刻度数字按 Yd(v)+4 摆放，回推像素 y 需减 4；峰值落在最后一天时不再要求平滑后顶点高于原始顶点）、新增 `.github/workflows/publish.yml`（workflow_dispatch：npm ci → node 读 version → build → npm publish --tag inputs.tag）。
+- 本机 registry.npmjs.org TLS 被拦（直连与 127.0.0.1:7890 代理均 curl exit 35），故发版走 GitHub Actions：`gh secret set NPM_TOKEN`（取自 User 环境变量 NODE_AUTH_TOKEN，40 字符）→ `gh workflow run publish.yml --ref main -f tag=latest` → run [41223953408](https://github.com/FeatherHunter/dsh-prompt/actions/runs/41223953408) completed/success（job 124604096278，17s）。
+- npm notice：`dsh-prompt@0.4.40` package size 998.1 kB / unpacked 3.6 MB / 13 files / shasum `c2a9543ec12795ac3a6b92e295ad87abfa97dc11` / integrity `sha512-DOBulWrDL+CoG…wpqsU3g3WFfdA==`；publish 输出 `+ dsh-prompt@0.4.40`（tag latest）。
+- 发布后核验：npmmirror `dist-tags.latest=0.4.40`（sync 2026-10-31T17:20:52Z）；jsDelivr `@0.4.40/package.json` 200（version 0.4.40）；`npm install dsh-prompt@0.4.40 --registry=https://registry.npmmirror.com` 成功（3 packages / 2s），装出的 `lib/client.js` 含 base `v0.1.5` banner ×1、`dsh-base-cluster` ×115。
+- npmmirror tarball 998,150B 解包：`package/package.json` version 0.4.40；`lib/client.js` 942,485B，`dsh-base-cluster` ×115、`__btn` ×49、`createTipController` ×3、`rowTip` ×2、`dsh-base-modal__qr{box-sizing:border-box` ×1、`linearGradient` ×4、旧 `dsh-base-actions--group` ×2（兼容代码）。
+- unpkg 在发布后 ~10 分钟仍 404（同步滞后），以 npmmirror、jsDelivr 与 registry 实际安装为证据；npmjs 本体不可直连（本机 TLS），发版成功与 jsDelivr 200 共同证明 npmjs 侧已收录。
+- 其余四仓尚未发版；如需，可按同一 workflow 模式逐个加 `publish.yml`。
 ## 进度

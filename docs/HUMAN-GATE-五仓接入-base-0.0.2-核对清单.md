@@ -135,3 +135,8 @@
 - §0 版本与提交为 0.0.2 时期快照，最新为 base 0.1.5 + 五仓 0.1.5（commits 见规格 `.scratch/header-action-cluster-v2/spec.md` 验收记录）。
 - §6 D1–D5 的「面板底部联系入口 + 推荐卡」形态已被 owner 拍板取代：只保留页头三枚图标入口，底部联系整行已从五仓移除（base 的 ContactRow 组件保留给其他使用者）。
 - §6 B3 的过期降级已不再适用（微信码已换新并内置基线码，0.1.3 起离线也有码）。
+
+### 7.4 发版链路（2026-11-01 01:2x）
+
+- **dsh-prompt 0.4.40 已正式发布到 npm**（GitHub Actions run [41223953408](https://github.com/FeatherHunter/dsh-prompt/actions/runs/41223953408) success；commit `ae7c6b5`）：npmmirror `latest=0.4.40`、jsDelivr `@0.4.40` 200、`npm install dsh-prompt@0.4.40` 实测可装，包内内联 base v0.1.5（彩色快捷操作簇 + 作者插件卡 tooltip + 二维码居中）。
+- 用途：若要做 **D 组正式版安装形态**（而非 file: tarball 临时验证），可用带版本号的正式包：`dsh plugin --profile <profile> add dsh-prompt@0.4.40`；本机 npmjs TLS 受限时需该 profile 的 `.npmrc` 指向 `https://registry.npmmirror.com/`（web profile 已如此配置）。其余四仓尚未发版。
