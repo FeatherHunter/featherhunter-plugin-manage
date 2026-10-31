@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseManifest } from "../src/core/index";
 import type { Group } from "../src/core/types";
+import { PKG_VERSION } from "./readme-helpers";
 import {
   BUNDLED_PLATFORMS,
   QR_BASE64_BUDGET,
@@ -215,7 +216,7 @@ describe("generateData", () => {
     const manifest = parseManifest(readJson(join(outDir, "manifest.json")));
     expect(manifest.groups).toHaveLength(3);
     expect(manifest.plugins.length).toBeGreaterThanOrEqual(5);
-    expect(manifest.version).toBe("0.0.1");
+    expect(manifest.version).toBe(PKG_VERSION);
 
     for (const group of manifest.groups) {
       expect(existsSync(join(outDir, "img", group.card))).toBe(true);
