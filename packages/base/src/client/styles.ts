@@ -132,7 +132,9 @@ export const BASE_CSS = [
   ".dsh-base-modal__card-subtitle[data-copied='true']{color:var(--dsw-alias-link,#4d6bfe)}",
   ".dsh-base-modal__card-subtitle:focus-visible{outline:2px solid var(--dsw-alias-link,#4d6bfe);outline-offset:2px}",
   // The QR surface stays white in every theme: scanners need the printed contrast.
-  ".dsh-base-modal__qr{width:100%;height:auto;min-height:150px;padding:6px;border-radius:8px;background:#fff;object-fit:contain;image-rendering:pixelated}",
+  // border-box keeps the 6px white quiet zone inside the card column: with content-box
+  // the image's padding escapes to the right and the QR sits visibly off-centre.
+  ".dsh-base-modal__qr{box-sizing:border-box;max-width:100%;width:100%;height:auto;min-height:150px;padding:6px;border-radius:8px;background:#fff;object-fit:contain;image-rendering:pixelated}",
   ".dsh-base-modal__card-note{margin-top:2px;font-size:10.5px;line-height:1.5;color:var(--dsw-alias-label-tertiary,#86909c)}",
   ".dsh-base-modal__card-expired{margin-top:2px;font-size:10.5px;line-height:1.5;color:var(--dsw-alias-state-warn-label,#b45309)}",
   ".dsh-base-modal__card-link{align-self:center;margin-top:4px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2,rgba(77,107,254,.35));border-radius:8px;color:var(--dsw-alias-link,#4d6bfe);font-size:11.5px;line-height:1.4;text-decoration:none;word-break:break-all}",

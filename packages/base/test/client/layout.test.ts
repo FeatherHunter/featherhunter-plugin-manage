@@ -66,6 +66,10 @@ describe("contact grid layout", () => {
     expect(compact).toContain(".dsh-base-modal__body{");
     expect(compact).toMatch(/\.dsh-base-modal__body\{[^}]*overflow:auto/);
     expect(compact).toMatch(/\.dsh-base-modal__qr\{[^}]*width:100%/);
+    // The white 6px quiet zone must live inside the column: content-box padded the
+    // image 12px wider than its cell and pushed the QR off-centre to the right.
+    expect(compact).toMatch(/\.dsh-base-modal__qr\{[^}]*box-sizing:border-box/);
+    expect(compact).toMatch(/\.dsh-base-modal__qr\{[^}]*max-width:100%/);
     expect(compact).toContain("image-rendering:pixelated");
   });
 });
