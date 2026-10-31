@@ -342,3 +342,330 @@ export function quantizeToPng(image: RgbaImage, maxColors: number): Buffer {
   const { palette, indices } = medianCutPalette(image, maxColors);
   return encodePalettePng(image.width, image.height, palette, indices);
 }
+
+/** Module count of a QR finder pattern (7x7 with a 1:1:3:1:1 profile). */
+const FINDER_MODULES = 7;
+/** Minimum published QR edge length (spec: output >= 320px). */
+export const QR_MIN_SIZE = 320;
+/** Quiet zone required around a published QR code, in modules (ISO/IEC 18004). */
+export const QR_QUIET_ZONE_MODULES = 4;
+
+export interface QrFinderPattern {
+  /** Centre of the 3x3 core, in pixels. */
+  x: number;
+  y: number;
+  /** Estimated module (pixel) size. */
+  moduleSize: number;
+}
+
+export interface QrGeometry {
+  /** Axis-aligned bounds of the whole symbol, including the finder patterns. */
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  /** Average edge length in pixels. */
+  size: number;
+  moduleSize: number;
+  finders: QrFinderPattern[];
+}
+
+export interface QrDetection {
+  /** Verified finder patterns, strongest first (at most three). */
+  finders: QrFinderPattern[];
+  geometry: QrGeometry | null;
+  /** Human readable reason when geometry is null. */
+  reason: string | null;
+}
+
+function otsuThreshold(gray: Uint8Array): number {
+  const histogram = new Uint32Array(256);
+  for (let i = 0; i < gray.length; i += 1) histogram[gray[i]!] += 1;
+  const total = gray.length;
+  let sum = 0;
+  for (let value = 0; value < 256; value += 1) sum += value * histogram[value]!;
+  let sumDark = 0;
+  let darkCount = 0;
+  let best = 0;
+  let threshold = 127;
+  for (let value = 0; value < 256; value += 1) {
+    darkCount += histogram[value]!;
+    if (darkCount === 0) continue;
+    const lightCount = total - darkCount;
+    if (lightCount === 0) break;
+    sumDark += value * histogram[value]!;
+    const darkMean = sumDark / darkCount;
+    const lightMean = (sum - sumDark) / lightCount;
+    const between = darkCount * lightCount * (darkMean - lightMean) ** 2;
+    if (between > best) {
+      best = between;
+      threshold = value;
+    }
+  }
+  return threshold;
+}
+
+function grayscale(image: RgbaImage): Uint8Array {
+  const out = new Uint8Array(image.width * image.height);
+  for (let i = 0; i < out.length; i += 1) {
+    const offset = i * 4;
+    out[i] = Math.round(0.299 * image.data[offset]! + 0.587 * image.data[offset + 1]! + 0.114 * image.data[offset + 2]!);
+  }
+  return out;
+}
+
+/** True when five run lengths match the 1:1:3:1:1 finder profile. */
+function finderProfile(runs: readonly number[], tolerance: number): number | null {
+  const total = runs.reduce((sum, run) => sum + run, 0);
+  if (total < FINDER_MODULES) return null;
+  const moduleSize = total / FINDER_MODULES;
+  const expected = [1, 1, 3, 1, 1];
+  for (let i = 0; i < expected.length; i += 1) {
+    if (Math.abs(runs[i]! - expected[i]! * moduleSize) > Math.max(1, moduleSize * tolerance)) return null;
+  }
+  return moduleSize;
+}
+
+/**
+ * Locate a QR symbol geometrically: binarise, find the three 1:1:3:1:1 finder
+ * patterns (horizontal + vertical profiles), cluster them and derive the
+ * bounding box from the module size. No decoding — QQ's gradient dots and
+ * WeChat's logo make open-source decoders unreliable (see F2).
+ */
+export function detectQrGeometry(image: RgbaImage): QrDetection {
+  const { width, height } = image;
+  const gray = grayscale(image);
+  const threshold = otsuThreshold(gray);
+  const isDark = (x: number, y: number): boolean => gray[y * width + x]! <= threshold;
+
+  const candidates: QrFinderPattern[] = [];
+  for (let y = 0; y < height; y += 1) {
+    // Run-length encode the row, then slide a five-run window over it. Shifting
+    // one run at a time is important: a finder pattern can start in the middle
+    // of an arbitrary five-run window (e.g. when it touches a data module).
+    const runs: { dark: boolean; start: number; length: number }[] = [];
+    let runStart = 0;
+    let runDark = isDark(0, y);
+    for (let x = 1; x <= width; x += 1) {
+      const nextDark = x < width ? isDark(x, y) : !runDark;
+      if (nextDark !== runDark) {
+        runs.push({ dark: runDark, start: runStart, length: x - runStart });
+        runStart = x;
+        runDark = nextDark;
+      }
+    }
+    for (let index = 0; index + 4 < runs.length; index += 1) {
+      if (!runs[index]!.dark) continue;
+      const lengths = [
+        runs[index]!.length,
+        runs[index + 1]!.length,
+        runs[index + 2]!.length,
+        runs[index + 3]!.length,
+        runs[index + 4]!.length,
+      ];
+      const moduleSize = finderProfile(lengths, 0.7);
+      if (moduleSize === null) continue;
+      candidates.push({
+        x: runs[index]!.start + lengths[0]! + lengths[1]! + lengths[2]! / 2,
+        y,
+        moduleSize,
+      });
+    }
+  }
+  const verified: QrFinderPattern[] = [];
+  for (const candidate of candidates) {
+    const px = Math.round(candidate.x);
+    if (px < 1 || px >= width - 1) continue;
+    let up = 0;
+    let cursor = candidate.y;
+    while (cursor >= 0 && isDark(px, cursor)) {
+      up += 1;
+      cursor -= 1;
+    }
+    let down = 0;
+    cursor = candidate.y + 1;
+    while (cursor < height && isDark(px, cursor)) {
+      down += 1;
+      cursor += 1;
+    }
+    let top = candidate.y - up;
+    let lightUp = 0;
+    while (top >= 0 && !isDark(px, top)) {
+      lightUp += 1;
+      top -= 1;
+    }
+    let darkUp = 0;
+    while (top >= 0 && isDark(px, top)) {
+      darkUp += 1;
+      top -= 1;
+    }
+    let bottom = candidate.y + down + 1;
+    let lightDown = 0;
+    while (bottom < height && !isDark(px, bottom)) {
+      lightDown += 1;
+      bottom += 1;
+    }
+    let darkDown = 0;
+    while (bottom < height && isDark(px, bottom)) {
+      darkDown += 1;
+      bottom += 1;
+    }
+    if (lightUp === 0 || lightDown === 0 || darkUp === 0 || darkDown === 0) continue;
+    const verticalRuns = [darkUp, lightUp, up + down, lightDown, darkDown];
+    const moduleSize = finderProfile(verticalRuns, 0.8);
+    if (moduleSize === null) continue;
+    if (Math.abs(moduleSize - candidate.moduleSize) > Math.max(1, candidate.moduleSize * 0.6)) continue;
+    verified.push({ x: candidate.x, y: candidate.y, moduleSize: (moduleSize + candidate.moduleSize) / 2 });
+  }
+
+  interface Cluster {
+    x: number;
+    y: number;
+    moduleSize: number;
+    count: number;
+  }
+  const clusters: Cluster[] = [];
+  for (const point of verified) {
+    const near = clusters.find(
+      (cluster) =>
+        Math.abs(cluster.x - point.x) < cluster.moduleSize * 3 &&
+        Math.abs(cluster.y - point.y) < cluster.moduleSize * 3,
+    );
+    if (near) {
+      near.x = (near.x * near.count + point.x) / (near.count + 1);
+      near.y = (near.y * near.count + point.y) / (near.count + 1);
+      near.moduleSize = (near.moduleSize * near.count + point.moduleSize) / (near.count + 1);
+      near.count += 1;
+    } else {
+      clusters.push({ x: point.x, y: point.y, moduleSize: point.moduleSize, count: 1 });
+    }
+  }
+  clusters.sort((a, b) => b.count - a.count);
+  const best = clusters.slice(0, 3).map(({ x, y, moduleSize }) => ({ x, y, moduleSize }));
+  if (best.length < 3) {
+    return { finders: best, geometry: null, reason: `found ${best.length} of 3 finder patterns` };
+  }
+  const distance = (a: QrFinderPattern, b: QrFinderPattern): number => Math.hypot(a.x - b.x, a.y - b.y);
+  const pairs = [
+    { i: 0, j: 1, d: distance(best[0]!, best[1]!) },
+    { i: 0, j: 2, d: distance(best[0]!, best[2]!) },
+    { i: 1, j: 2, d: distance(best[1]!, best[2]!) },
+  ].sort((a, b) => b.d - a.d);
+  const diagonal = pairs[0]!;
+  const topLeftIndex = [0, 1, 2].find((index) => index !== diagonal.i && index !== diagonal.j)!;
+  const topLeft = best[topLeftIndex]!;
+  const topRight = best[diagonal.i]!;
+  const bottomLeft = best[diagonal.j]!;
+  const moduleSize = (topLeft.moduleSize + topRight.moduleSize + bottomLeft.moduleSize) / 3;
+  const sideA = distance(topLeft, topRight);
+  const sideB = distance(topLeft, bottomLeft);
+  const squareness = Math.abs(sideA - sideB) / Math.max(sideA, sideB);
+  const dot =
+    ((topRight.x - topLeft.x) * (bottomLeft.x - topLeft.x) + (topRight.y - topLeft.y) * (bottomLeft.y - topLeft.y)) /
+    (sideA * sideB);
+  if (squareness > 0.15 || Math.abs(dot) > 0.25) {
+    return { finders: best, geometry: null, reason: "finder patterns do not form a square (the code may be rotated or cropped)" };
+  }
+  const half = (FINDER_MODULES / 2) * moduleSize;
+  const left = Math.min(topLeft.x, topRight.x, bottomLeft.x) - half;
+  const top = Math.min(topLeft.y, topRight.y, bottomLeft.y) - half;
+  const right = Math.max(topLeft.x, topRight.x, bottomLeft.x) + half;
+  const bottom = Math.max(topLeft.y, topRight.y, bottomLeft.y) + half;
+  return {
+    finders: best,
+    geometry: {
+      left,
+      top,
+      right,
+      bottom,
+      size: (right - left + bottom - top) / 2,
+      moduleSize,
+      finders: best,
+    },
+    reason: null,
+  };
+}
+
+/** Pad an image with a solid colour on every side. */
+export function padImage(image: RgbaImage, padding: number, color: readonly [number, number, number] = [255, 255, 255]): RgbaImage {
+  if (!Number.isInteger(padding) || padding < 0) throw new Error(`pad: invalid padding ${padding}`);
+  if (padding === 0) return { width: image.width, height: image.height, data: Uint8Array.from(image.data) };
+  const width = image.width + padding * 2;
+  const height = image.height + padding * 2;
+  const data = new Uint8Array(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = color[0];
+    data[i + 1] = color[1];
+    data[i + 2] = color[2];
+    data[i + 3] = 255;
+  }
+  for (let row = 0; row < image.height; row += 1) {
+    const source = row * image.width * 4;
+    const target = ((row + padding) * width + padding) * 4;
+    data.set(image.data.subarray(source, source + image.width * 4), target);
+  }
+  return { width, height, data };
+}
+
+export interface ExtractQrOptions {
+  /** Edge length of the published image (>= QR_MIN_SIZE). Defaults to QR_MIN_SIZE. */
+  outputSize?: number;
+  /** Required quiet zone in modules. Defaults to QR_QUIET_ZONE_MODULES. */
+  quietZoneModules?: number;
+  /** Minimum share of the tight crop the re-detected symbol must cover. */
+  coverage?: number;
+}
+
+/**
+ * Turn a calibrated crop box into a publishable QR image: detect the symbol,
+ * cut it out tightly, prove the cut-out re-detects with >= 90% coverage, pad a
+ * full quiet zone and resize to a square of at least 320px. Throws with a
+ * human readable reason when the crop does not contain a complete code.
+ */
+export function extractQrCode(image: RgbaImage, box: CropBox, options: ExtractQrOptions = {}): RgbaImage {
+  const outputSize = Math.max(options.outputSize ?? QR_MIN_SIZE, QR_MIN_SIZE);
+  const quietZoneModules = options.quietZoneModules ?? QR_QUIET_ZONE_MODULES;
+  const coverageFloor = options.coverage ?? 0.9;
+  const cropPixels = cropImage(image, box);
+  const first = detectQrGeometry(cropPixels);
+  if (!first.geometry) {
+    throw new Error(`crop box ${box.x},${box.y},${box.size} does not contain a complete QR code (${first.reason})`);
+  }
+  const geometry = first.geometry;
+  if (geometry.left < -1 || geometry.top < -1 || geometry.right > box.size + 1 || geometry.bottom > box.size + 1) {
+    throw new Error(`the QR code in crop box ${box.x},${box.y},${box.size} is clipped; enlarge the crop box`);
+  }
+  const side = Math.max(1, Math.round(geometry.size));
+  const centreX = (geometry.left + geometry.right) / 2;
+  const centreY = (geometry.top + geometry.bottom) / 2;
+  const x = Math.min(Math.max(0, Math.round(centreX - side / 2)), Math.max(0, box.size - side));
+  const y = Math.min(Math.max(0, Math.round(centreY - side / 2)), Math.max(0, box.size - side));
+  const tight = cropImage(cropPixels, { x, y, size: side });
+  const second = detectQrGeometry(tight);
+  if (!second.geometry) {
+    throw new Error(`the QR code could not be re-detected after cropping (${second.reason})`);
+  }
+  const secondGeometry = second.geometry;
+  const coverage = Math.min(1, (secondGeometry.size * secondGeometry.size) / (side * side));
+  if (coverage < coverageFloor) {
+    throw new Error(`the cropped QR code only covers ${(coverage * 100).toFixed(0)}% of the crop (expected at least ${(coverageFloor * 100).toFixed(0)}%)`);
+  }
+  const moduleSize = (geometry.moduleSize + secondGeometry.moduleSize) / 2;
+  const padding = Math.max(1, Math.ceil(moduleSize * quietZoneModules));
+  const padded = padImage(tight, padding);
+  const published = resizeImage(padded, outputSize, outputSize);
+  const third = detectQrGeometry(published);
+  if (!third.geometry) {
+    throw new Error(`the published QR image is not readable (${third.reason})`);
+  }
+  const quietModules = [
+    third.geometry.left,
+    third.geometry.top,
+    outputSize - third.geometry.right,
+    outputSize - third.geometry.bottom,
+  ].map((value) => value / third.geometry!.moduleSize);
+  if (Math.min(...quietModules) < quietZoneModules - 0.5) {
+    throw new Error(`the published QR image has a quiet zone of only ${Math.min(...quietModules).toFixed(1)} modules (expected ${quietZoneModules})`);
+  }
+  return published;
+}

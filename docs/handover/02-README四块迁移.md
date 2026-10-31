@@ -11,7 +11,7 @@
 | 块 | 标记 | 渲染内容 |
 | --- | --- | --- |
 | 联系区 | `<!-- CONTACT-START -->` … `<!-- CONTACT-END -->` | 标题（标准变体 `<h2 align="center"><sub>CONNECT</sub><br>反馈与联系</h2>`；ilife 用 `## 反馈与联系`）+ 居中 div（欢迎语 + 三列表格 + 260 宽整卡）；图片改成 npm CDN 精确版本地址，不再往仓里拷图 |
-| 星标历史 | `<!-- STAR-HISTORY-START -->` … `<!-- STAR-HISTORY-END -->` | `<picture>` 深浅双图，SVG 地址带分钟级 `?v=YYYYMMDDHHmm`；保留 deck 的 star-history.html 外链、im 的 width 与角注 |
+| 星标历史 | `<!-- STAR-HISTORY-START -->` … `<!-- STAR-HISTORY-END -->` | 深浅双图用 `<picture>`，SVG 地址带分钟级 `?v=YYYYMMDDHHmm`；palette / prompt 两主题共用同一张 SVG，渲染器只输出单张 `<img>`；保留 deck 的 star-history.html 外链、im 的 width 与角注 |
 | 致谢表 | `<!-- THANKS-TABLE-ZH-START -->` … `<!-- THANKS-TABLE-ZH-END -->`（en 用 `-EN-`） | 三列表格（贡献者 / 致敬 / 贡献），保留编号、花数与准入规则；标记沿用现有名字 |
 | 作者其他作品 | `<!-- MORE-START -->` … `<!-- MORE-END -->` | 标准 HTML 标题 `<h2 align="center"><sub>MORE</sub><br>作者的其他作品</h2>` + 引导句 + 4 行 `**[repo](url)** —— 一句话`；prompt 两个文件保留 `## … <sub>MORE</sub>` Markdown 变体；英文标题沿用各仓现有形态（`More from the author` / `More by the author`）；每仓排除自己；ilife 新增该块（带建设中标识） |
 
@@ -34,6 +34,8 @@
 | ilife | `README.md` | zh |
 
 语言不用手写配置：引擎从现有块的标题文字自动识别（英文标题 → en）。
+
+**星图资产前置条件**：星图块引用仓内 `docs/star-history-dark.svg` 与 `docs/star-history-light.svg`（palette / prompt 是两主题共用的 `docs/star-history.svg`）。仓库还没有这些资产时（目前是 ilife），`readme:init` 会**跳过**星图块而不是写入坏图，`doctor` 的 `<repo>/star-assets` 会报缺失并指到本文。先按各仓既有星图生成流程补齐资产，再跑 init；已有资产但改名过的仓，改 `packages/base/src/node/targets.ts` 的 `star.darkPath` / `star.lightPath` 即可。
 
 ## 2. 迁移步骤（每个仓）
 
@@ -68,12 +70,12 @@ npx dsh-featherhunter-plugin-base@1 readme:sync --all --repos <五仓父目录>
 | --- | --- |
 | deck `README.md` / `package/README.md` | 联系区图片从 `assets/contact-*.png` 换成 CDN 精确版本地址；星图保留 star-history.html 外链，`?v=` 从日期升为分钟级；致谢表数据不变（仅白空格/属性顺序规范化）；作者作品区改为标准标题 + 4 行（palette / prompt / im / ilife，排除自己） |
 | deck `docs/README.en.md` | 同上英文版；作者作品区**移除 `dsh-chinese-skill-patch` 行**（不在定稿 5 仓清单里）；`---` 之后的提问 / 版权声明段落**保持原样**，不被 MORE 块吞掉 |
-| palette `README.md` | 联系区换 CDN 地址；星图从**单图升为深浅双图**；作者作品区标准 4 行（含 deck、prompt、im、ilife） |
+| palette `README.md` | 联系区换 CDN 地址；星图保留**单张主题中性图**（两主题共用 `docs/star-history.svg`，不再输出双 source）；作者作品区标准 4 行（含 deck、prompt、im、ilife） |
 | palette `package/README.md` / `docs/README.en.md` | 英文同上；package/README 也是英文 |
 | im `README.md` | 联系区换 CDN 地址；星图保留 width=720 与角注；**先手工修掉 `</div>>>>>>>> origin/master` 脏行**，否则 init/sync 报错且一个字节不写；作者作品区标准 4 行 |
 | im `docs/README.en.md` | 英文同上 |
-| prompt `README.md` / `docs/README.en.md` | 联系区换 CDN 地址；星图从单图升为双图；作者作品区保留 `## 作者的其他作品 <sub>MORE</sub>` **Markdown 标题变体**；英文标题沿用现有形态 |
-| ilife `README.md` | 联系区保留 `## 反馈与联系` Markdown 变体、换 CDN 地址；**新增星标历史块**（深浅双图）；**新增作者作品区**（带 ilife 自己的「⚠️建设中⚠️」标识）；致谢表若为空按规则处理（保留空表结构或按引擎规则省略，以 `--check` 结果为准） |
+| prompt `README.md` / `docs/README.en.md` | 联系区换 CDN 地址；星图保留**单张主题中性图**（两主题共用 `docs/star-history.svg`）；作者作品区保留 `## 作者的其他作品 <sub>MORE</sub>` **Markdown 标题变体**；英文标题沿用现有形态 |
+| ilife `README.md` | 联系区保留 `## 反馈与联系` Markdown 变体、换 CDN 地址；**先补 `docs/star-history-{dark,light}.svg` 再新增星标历史块**（缺资产时该块跳过、doctor 报 `star-assets`）；**新增作者作品区**（带 ilife 自己的「⚠️建设中⚠️」标识）；致谢表若为空按规则处理（保留空表结构或按引擎规则省略，以 `--check` 结果为准） |
 
 图片不再拷进五仓：迁移完成后 `assets/contact-*.png` 等旧图可以删（建议单独一个 commit，先删再跑一次 `--check` 确认没被引用）。星图的 SVG 生成脚本与定时任务**不在迁移范围**，不要动。
 
@@ -105,6 +107,7 @@ npx dsh-featherhunter-plugin-base@1 readme:sync --check --all --repos <五仓父
 
 ## 7. 每仓执行清单
 
+- [ ] 确认星图资产齐全：`npx dsh-featherhunter-plugin-base@1 doctor <仓目录>` 的 `star-assets` 为 ok（ilife 先补资产，见第 2 节）。
 - [ ] 五仓父目录下跑 `readme:init --all --repos <dir>`，确认 11 个文件都被处理（逐文件摘要行）。
 - [ ] 按第 3 节逐文件核对 diff，把与预期不符的差异记录进迁移报告。
 - [ ] `readme:sync --check --all --repos <dir>` 退出 0。

@@ -14,13 +14,13 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { parseDateOnly } from "../src/core/index";
+import { isRecord, parseDateOnly } from "../src/core/index";
 import {
   generateData,
   validateCropsSource,
   validateGroupsSource,
 } from "./build-data";
-import { cropImage, luminanceStdDev, normalizeCard } from "./image";
+import { cropImage, extractQrCode, luminanceStdDev, normalizeCard } from "./image";
 import { findRepoRoot, readJsonFile, relativePosix } from "./io";
 import { decodeImage, encodeTruecolorPng, isJpeg, isPng } from "./png";
 
@@ -28,8 +28,8 @@ import { decodeImage, encodeTruecolorPng, isJpeg, isPng } from "./png";
 export const VALID_DAYS = 7;
 /** Dated source images older than this are removed on update. */
 export const STALE_DAYS = 56;
-/** Minimum decoded screenshot edge length. */
-export const MIN_IMAGE_SIZE = 300;
+/** Minimum decoded screenshot edge length (the published code must be >= 320px). */
+export const MIN_IMAGE_SIZE = 320;
 /** Below this luminance standard deviation the crop box is probably blank. */
 export const MIN_CROP_CONTRAST = 6;
 
@@ -67,18 +67,16 @@ export interface ContactUpdateResult {
   generated: string[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-function formatDateOnly(date: Date): string {
+/** Format an instant as a UTC date (used for date-only arithmetic). */
+function formatUtcDate(date: Date): string {
   return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
 }
 
+/** Format an instant as the maintainer's local date (the default date stamp). */
 function formatLocalDate(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
@@ -86,7 +84,7 @@ function formatLocalDate(date: Date): string {
 function addDays(dateOnly: string, days: number): string {
   const parsed = parseDateOnly(dateOnly);
   if (!parsed) throw new Error(`invalid date "${dateOnly}"`);
-  return formatDateOnly(new Date(parsed.getTime() + days * 24 * 60 * 60 * 1000));
+  return formatUtcDate(new Date(parsed.getTime() + days * 24 * 60 * 60 * 1000));
 }
 
 function escapeRegExp(value: string): string {
@@ -183,6 +181,15 @@ export function updateContact(options: ContactUpdateOptions): ContactUpdateResul
       `crop box for "${groupId}" looks blank (contrast ${contrast.toFixed(1)}) — is this really a QR screenshot?`,
     );
   }
+  // Geometry gate (F2): three finder patterns, no clipping, re-detect >= 90%,
+  // 4-module quiet zone and a >= 320px square output. Decoding is deliberately
+  // not attempted (QQ/WeChat styles defeat open-source decoders).
+  let publishedQr;
+  try {
+    publishedQr = extractQrCode(normalized, crop);
+  } catch (error) {
+    throw new Error(`crop box for "${groupId}": ${(error as Error).message}`);
+  }
 
   const extension = isPng(raw) ? ".png" : ".jpg";
   const qrName = `qr-${groupId}-${date}${extension}`;
@@ -248,6 +255,7 @@ export function updateContact(options: ContactUpdateOptions): ContactUpdateResul
   }
 
   write(`contact:update — group ${groupId} → ${date} (valid until ${validUntil})`);
+  write(`contact:update — QR geometry ok (published ${publishedQr.width}x${publishedQr.height}px, 4-module quiet zone)`);
   if (diff.length > 0) {
     write(`${GROUPS_FILE}:`);
     for (const line of diff.split("\n")) write(`  ${line}`);
@@ -290,11 +298,13 @@ Usage:
 
 Steps:
   1. normalise the screenshot onto the fixed 900x1600 card template
-  2. write contact/src/card-<group>-<date>.png and qr-<group>-<date>.<ext>
-  3. update contact/groups.json (card, qr, validUntil = date + 7 days, revision)
-  4. delete that group's dated images older than 8 weeks
-  5. regenerate data/manifest.json, data/img/ and src/core/baseline.ts
-  6. exit 3 until a human scanned the new code and re-runs with --confirmed
+  2. geometry gate: three finder patterns, no clipping, re-detect >= 90%,
+     4-module quiet zone, >= 320px square output (no decoding — see F2)
+  3. write contact/src/card-<group>-<date>.png and qr-<group>-<date>.<ext>
+  4. update contact/groups.json (card, qr, validUntil = date + 7 days, revision)
+  5. delete that group's dated images older than 8 weeks
+  6. regenerate data/manifest.json, data/img/ and src/core/baseline.ts
+  7. exit 3 until a human scanned the new code and re-runs with --confirmed
 `;
 
 export async function runCli(argv: string[]): Promise<number> {

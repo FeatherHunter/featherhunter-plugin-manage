@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -71,6 +71,17 @@ function makeRunner(options: RunnerOptions = {}): Runner {
       return { code: 1, stdout: "", stderr: "boom" };
     }
     if (command === "git") return { code: 0, stdout: "", stderr: "" };
+    if (command === "npm" && args[0] === "version") {
+      // npm version --no-git-tag-version rewrites package.json in place; the
+      // release's data step reads it back, so the stub has to do the same.
+      const packageJsonPath = runOptions?.cwd === undefined ? undefined : join(runOptions.cwd, "package.json");
+      if (packageJsonPath !== undefined && existsSync(packageJsonPath)) {
+        const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>;
+        parsed["version"] = String(args[1]);
+        writeFileSync(packageJsonPath, JSON.stringify(parsed, null, 2) + "\n", "utf8");
+      }
+      return { code: 0, stdout: String(args[1]) + "\n", stderr: "" };
+    }
     if (command === "npm" && args[0] === "view") {
       return { code: 0, stdout: (options.registry?.() ?? "") + "\n", stderr: "" };
     }
@@ -170,6 +181,22 @@ describe("runRelease", () => {
     expect(report.dryRun).toBe(true);
     expect(report.version).toBe("0.0.2");
     expect(report.steps.find((step) => step.name === "version")?.detail).toContain("would run");
+    // Dry run prints the same order as a real release: the bump is planned
+    // before the data check.
+    expect(report.steps.map((step) => step.name)).toEqual([
+      "preflight",
+      "worktree",
+      "contact",
+      "version",
+      "data",
+      "gates",
+      "typecheck",
+      "pack",
+      "publish",
+      "registry",
+      "channels",
+      "readme",
+    ]);
     const commands = runner.calls.map((call) => call.args.join(" "));
     expect(commands).toContain("run data:check");
     expect(commands).not.toContain("run build:data");
@@ -208,8 +235,8 @@ describe("runRelease", () => {
       "preflight",
       "worktree",
       "contact",
-      "data",
       "version",
+      "data",
       "typecheck",
       "test",
       "build",
@@ -237,6 +264,39 @@ describe("runRelease", () => {
     const written = JSON.parse(readFileSync(reportPath, "utf8")) as { version: string; ok: boolean };
     expect(written.version).toBe("0.0.2");
     expect(written.ok).toBe(true);
+  });
+
+  it("bumps the package version before build:data so the manifest carries the new version", async () => {
+    const root = makeTemp("release-order-");
+    const pkgDir = makePackage(root, "0.0.1");
+    const runner = makeRunner();
+    const dataStepVersions: string[] = [];
+    const { deps } = makeDeps({
+      run: async (command, args, options) => {
+        // Capture exactly what build-data.ts would read from package.json at
+        // the moment the data step starts.
+        if (command === "npm" && args[0] === "run" && args[1] === "build:data") {
+          dataStepVersions.push(readPackageVersion(pkgDir));
+        }
+        return runner.run(command, args, options);
+      },
+    });
+
+    const report = await runRelease({ rootDir: root, deps, skipPublish: true });
+
+    expect(report.ok).toBe(true);
+    expect(report.version).toBe("0.0.2");
+    // Regression guard: with the old data-then-version order build:data sees
+    // "0.0.1", so the published manifest.json lags one version and every CDN
+    // probe (which compares the served manifest to 0.0.2) times out.
+    expect(dataStepVersions).toEqual(["0.0.2"]);
+    expect(readPackageVersion(pkgDir)).toBe("0.0.2");
+
+    const npmCalls = runner.calls.filter((call) => call.command === "npm");
+    const bumpIndex = npmCalls.findIndex((call) => call.args[0] === "version");
+    const dataIndex = npmCalls.findIndex((call) => call.args.join(" ") === "run build:data");
+    expect(bumpIndex).toBeGreaterThanOrEqual(0);
+    expect(dataIndex).toBeGreaterThan(bumpIndex);
   });
 
   it("runs contact:update first when --image is given", async () => {

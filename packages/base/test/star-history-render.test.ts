@@ -3,9 +3,10 @@ import { compareBlocks, parseStarHistoryBlock, renderStarHistoryBlock } from "..
 import { fixtureStarRaw, starDataOf } from "./readme-helpers";
 
 /**
- * Intentional content differences of the migration: palette / prompt readmes
- * carried a single Markdown image before the migration, the unified renderer
- * emits the light+dark picture pair (two <source> elements) for them too.
+ * Content differences of the migration: none. The unified renderer reproduces
+ * each repository's existing chart shape, including the single theme-neutral
+ * image palette and prompt publish (no <picture> pair when both themes would
+ * point at the same file).
  */
 const INTENTIONAL_DIFFERENCES: Record<string, string[]> = {
   deck: [],
@@ -13,11 +14,11 @@ const INTENTIONAL_DIFFERENCES: Record<string, string[]> = {
   "deck-en": [],
   im: [],
   "im-en": [],
-  palette: ["star-history.sources"],
-  "palette-pkg": ["star-history.sources"],
-  "palette-en": ["star-history.sources"],
-  prompt: ["star-history.sources"],
-  "prompt-en": ["star-history.sources"],
+  palette: [],
+  "palette-pkg": [],
+  "palette-en": [],
+  prompt: [],
+  "prompt-en": [],
 };
 
 describe("star-history renderer", () => {

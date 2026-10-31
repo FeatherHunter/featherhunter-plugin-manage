@@ -1,6 +1,7 @@
 import type * as ReactNamespace from "react";
 import { pickText, sortByOrder } from "../core/index";
 import type { Lang, PluginEntry } from "../core/types";
+import { externalLinkIcon, gridIcon } from "./icons";
 import { ensureBaseStyles } from "./styles";
 
 /**
@@ -12,9 +13,9 @@ export const DEFAULT_MAX_ROWS = 5;
 
 /** Options that decide which plugin rows are visible. */
 export interface AuthorPluginRowsOptions {
-  /** Full plugin list, usually `manifest.plugins`. */
+  /** Full plugin list, usually manifest.plugins. */
   plugins: readonly PluginEntry[];
-  /** Id of the host plugin; excluded unless `showSelf` is on. */
+  /** Id of the host plugin; excluded unless showSelf is on. */
   selfId?: string;
   /** Show the host plugin itself. */
   showSelf?: boolean;
@@ -40,7 +41,7 @@ export function selectAuthorPlugins(options: AuthorPluginRowsOptions): PluginEnt
 }
 
 /**
- * Link target of one row: the explicit `url` when the data provides one,
+ * Link target of one row: the explicit url when the data provides one,
  * otherwise the canonical GitHub repository page.
  */
 export function pluginHref(plugin: PluginEntry): string {
@@ -124,56 +125,5 @@ export function renderAuthorPlugins(
         ),
       ),
     ),
-  );
-}
-
-/** 2x2 grid glyph used by the card title (14px) and each row (12px). */
-function gridIcon(
-  h: typeof ReactNamespace.createElement,
-  size: number,
-): ReactNamespace.ReactElement {
-  return h(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      strokeWidth: 2,
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      "aria-hidden": "true",
-      focusable: "false",
-    },
-    h("rect", { x: 3, y: 3, width: 7, height: 7, rx: 1, key: "tl" }),
-    h("rect", { x: 14, y: 3, width: 7, height: 7, rx: 1, key: "tr" }),
-    h("rect", { x: 3, y: 14, width: 7, height: 7, rx: 1, key: "bl" }),
-    h("rect", { x: 14, y: 14, width: 7, height: 7, rx: 1, key: "br" }),
-  );
-}
-
-/** Square + diagonal arrow: the "opens in a new tab" affordance. */
-function externalLinkIcon(h: typeof ReactNamespace.createElement): ReactNamespace.ReactElement {
-  return h(
-    "svg",
-    {
-      width: 14,
-      height: 14,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      strokeWidth: 2,
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      "aria-hidden": "true",
-      focusable: "false",
-    },
-    h("path", {
-      d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
-      key: "box",
-    }),
-    h("polyline", { points: "15 3 21 3 21 9", key: "arrow" }),
-    h("line", { x1: 10, y1: 14, x2: 21, y2: 3, key: "line" }),
   );
 }

@@ -254,6 +254,30 @@ describe("readme:init / readme:sync --all --repos", () => {
     expect(walkFiles(repos.dir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
   });
 
+  it("skips the star block of a repository without chart assets instead of writing a broken image", async () => {
+    current = buildFakeRepos();
+    const repos = current;
+    rmSync(join(repos.dir, "ilife", "docs", "star-history-dark.svg"));
+    rmSync(join(repos.dir, "ilife", "docs", "star-history-light.svg"));
+
+    const result = await run(["readme:init", "--all", "--repos", repos.dir]);
+    expect(result.code).toBe(0);
+    const ilife = readFileSync(fakeReadmePath(repos, "ilife"), "utf8");
+    expect(ilife).toContain(CONTACT_START);
+    expect(ilife).not.toContain("STAR-HISTORY-START");
+    expect(ilife).not.toContain("star-history-dark.svg");
+    // Every repository that does have the assets still gets the block.
+    const deck = readFileSync(fakeReadmePath(repos, "dsh-mattpocock-skills-deck"), "utf8");
+    expect(deck).toContain("STAR-HISTORY-START");
+
+    const doctor = await run(["doctor", "--repos", repos.dir, "--offline", "--json"]);
+    expect(doctor.code).toBe(1);
+    const parsed = JSON.parse(doctor.stdout) as { checks: Array<{ name: string; ok: boolean; detail: string }> };
+    const starAssets = parsed.checks.find((check) => check.name === "ilife/star-assets");
+    expect(starAssets?.ok).toBe(false);
+    expect(starAssets?.detail).toMatch(/docs\/handover\/02/);
+  });
+
   it("rejects --repos combined with --root or --readme", async () => {
     current = buildFakeRepos();
     const repos = current;

@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { resetContentCache } from "../../src/client/content";
+import { BASE_STYLE_ID } from "../../src/client/styles";
 import { BASELINE } from "../../src/core/index";
 import type { Group } from "../../src/core/types";
 
@@ -132,7 +133,7 @@ export function resetClientDom(): void {
   document.body.innerHTML = "";
   document.body.style.overflow = "";
   document.documentElement.removeAttribute("lang");
-  document.getElementById("dsh-base-style")?.remove();
+  document.getElementById(BASE_STYLE_ID)?.remove();
   resetContentCache();
   installOfflineFetch();
 }

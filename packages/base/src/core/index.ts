@@ -69,7 +69,14 @@ export function parseDateOnly(value: string): Date | null {
   return date;
 }
 
-function todayUtc(now: Date): number {
+/**
+ * Midnight of the maintainer's local calendar day, expressed as a UTC epoch.
+ *
+ * `validUntil` is a date-only value (YYYY-MM-DD) and the modal compares it
+ * against "today" as the maintainer experiences it, so the boundary follows the
+ * local calendar rather than UTC.
+ */
+function startOfLocalDay(now: Date): number {
   return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
@@ -78,7 +85,7 @@ export function isExpired(validUntil: string | undefined, now: Date = new Date()
   if (!validUntil) return false;
   const until = parseDateOnly(validUntil);
   if (!until) return false;
-  return until.getTime() < todayUtc(now);
+  return until.getTime() < startOfLocalDay(now);
 }
 
 export interface ValidityOptions {
@@ -99,7 +106,7 @@ export function formatValidity(
   if (!until) return null;
   const now = options.now ?? new Date();
   if (isExpired(validUntil, now)) return null;
-  const days = Math.round((until.getTime() - todayUtc(now)) / DAY_MS);
+  const days = Math.round((until.getTime() - startOfLocalDay(now)) / DAY_MS);
   const month = until.getUTCMonth() + 1;
   const day = until.getUTCDate();
   if (options.lang === "en") {
@@ -108,7 +115,8 @@ export function formatValidity(
   return `该二维码 ${days} 天内（${month} 月 ${day} 日前）有效，重新进入将更新`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+/** Narrow an unknown JSON value to a plain object (arrays and null excluded). */
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

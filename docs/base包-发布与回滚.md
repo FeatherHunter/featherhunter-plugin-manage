@@ -35,6 +35,8 @@ npm pack --dry-run        # 核对 files 清单：dist/ data/ README.md LICENSE
 npm view dsh-featherhunter-plugin-base version   # 线上当前版本
 ```
 
+> 若本次要升版本，先执行 `npm version patch --no-git-tag-version` 再跑 `build:data`：清单与内联基线都读 `package.json` 的版本号，先构建再升版本会写出旧版本清单。
+
 版本号按语义化推进：
 
 - 只更新数据（换码、改有效期、改文案）→ **patch**

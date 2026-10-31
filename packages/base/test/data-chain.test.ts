@@ -62,22 +62,53 @@ function realPlugins(): any {
   return readJson(join(REPO_ROOT, "contact", "plugins.json"));
 }
 
-/** 900x1600 card screenshot with a checkerboard QR square inside the crop box. */
-function makeCard(options: { blank?: boolean; box?: { x: number; y: number; size: number } } = {}): Buffer {
+/**
+ * 900x1600 card screenshot with a synthetic QR symbol (three finder patterns
+ * plus a checkerboard data area) inside the crop box, so the geometry gate in
+ * contact:update and build-data can be exercised without real screenshots.
+ */
+export function makeQrCard(
+  options: { blank?: boolean; box?: { x: number; y: number; size: number }; modules?: number; offset?: number } = {},
+): Buffer {
   const width = 900;
   const height = 1600;
   const data = new Uint8Array(width * height * 4).fill(255);
   if (!options.blank) {
     const box = options.box ?? { x: 141, y: 582, size: 620 };
-    for (let y = box.y; y < box.y + box.size; y += 1) {
-      for (let x = box.x; x < box.x + box.size; x += 1) {
-        const offset = (y * width + x) * 4;
-        const dark = ((x >> 4) + (y >> 4)) % 2 === 0;
-        const value = dark ? 0 : 255;
-        data[offset] = value;
-        data[offset + 1] = value;
-        data[offset + 2] = value;
-        data[offset + 3] = 255;
+    const modules = options.modules ?? 25;
+    const moduleSize = Math.floor(box.size / (modules + 8));
+    const margin = Math.round((box.size - modules * moduleSize) / 2) + (options.offset ?? 0);
+    const isFinder = (mx: number, my: number): boolean => {
+      const corners = [
+        [0, 0],
+        [modules - 7, 0],
+        [0, modules - 7],
+      ];
+      for (const [cx, cy] of corners) {
+        const dx = mx - cx!;
+        const dy = my - cy!;
+        if (dx < 0 || dy < 0 || dx > 6 || dy > 6) continue;
+        const ring = Math.max(Math.abs(dx - 3), Math.abs(dy - 3));
+        return ring !== 2; // 1-module dark border, 1-module light ring, 3x3 dark core
+      }
+      return false;
+    };
+    for (let my = 0; my < modules; my += 1) {
+      for (let mx = 0; mx < modules; mx += 1) {
+        const dark = isFinder(mx, my) || ((mx + my) % 2 === 1);
+        if (!dark) continue;
+        for (let py = 0; py < moduleSize; py += 1) {
+          for (let px = 0; px < moduleSize; px += 1) {
+            const x = box.x + margin + mx * moduleSize + px;
+            const y = box.y + margin + my * moduleSize + py;
+            if (x < 0 || y < 0 || x >= width || y >= height) continue;
+            const offset = (y * width + x) * 4;
+            data[offset] = 0;
+            data[offset + 1] = 0;
+            data[offset + 2] = 0;
+            data[offset + 3] = 255;
+          }
+        }
       }
     }
   }
@@ -238,9 +269,9 @@ describe("generateData", () => {
     writeFileSync(join(contact, "groups.json"), JSON.stringify(realGroups()));
     writeFileSync(join(contact, "crops.json"), JSON.stringify(readJson(join(REPO_ROOT, "contact", "crops.json"))));
     writeFileSync(join(contact, "plugins.json"), JSON.stringify(realPlugins()));
-    writeFileSync(join(contact, "src", "card-feishu.png"), makeCard({ blank: true }));
-    writeFileSync(join(contact, "src", "card-qq.jpg"), makeCard());
-    writeFileSync(join(contact, "src", "card-wechat-2026-10-23.png"), makeCard());
+    writeFileSync(join(contact, "src", "card-feishu.png"), makeQrCard({ blank: true }));
+    writeFileSync(join(contact, "src", "card-qq.jpg"), makeQrCard());
+    writeFileSync(join(contact, "src", "card-wechat-2026-10-23.png"), makeQrCard());
     writeFileSync(join(blankRoot, "package.json"), JSON.stringify({ name: "blank", version: "0.0.0" }));
     expect(() =>
       generateData({ rootDir: blankRoot, dataDir: join(blankRoot, "data"), baselineFile: join(blankRoot, "baseline.ts"), packageJsonPath: join(blankRoot, "package.json") }),
@@ -270,17 +301,17 @@ describe("contact:update", () => {
     writeFileSync(join(rootDir, "packages", "base", "package.json"), JSON.stringify({ name: "tmp", version: "0.0.0" }) + "\n");
 
     for (const group of groups.groups) {
-      writeFileSync(join(contact, "src", group.card), makeCard());
-      writeFileSync(join(contact, "src", group.qr), makeCard());
+      writeFileSync(join(contact, "src", group.card), makeQrCard());
+      writeFileSync(join(contact, "src", group.qr), makeQrCard());
     }
     // Stale + still-fresh dated images for the weekly group.
-    writeFileSync(join(contact, "src", "card-wechat-2026-08-01.png"), makeCard());
-    writeFileSync(join(contact, "src", "qr-wechat-2026-08-01.png"), makeCard());
-    writeFileSync(join(contact, "src", "card-wechat-2026-09-20.png"), makeCard());
-    writeFileSync(join(contact, "src", "qr-wechat-2026-09-20.png"), makeCard());
+    writeFileSync(join(contact, "src", "card-wechat-2026-08-01.png"), makeQrCard());
+    writeFileSync(join(contact, "src", "qr-wechat-2026-08-01.png"), makeQrCard());
+    writeFileSync(join(contact, "src", "card-wechat-2026-09-20.png"), makeQrCard());
+    writeFileSync(join(contact, "src", "qr-wechat-2026-09-20.png"), makeQrCard());
 
     const imagePath = join(rootDir, "new-screenshot.png");
-    writeFileSync(imagePath, makeCard());
+    writeFileSync(imagePath, makeQrCard());
     return { rootDir, imagePath };
   }
 
@@ -353,10 +384,10 @@ describe("contact:update", () => {
 
     const tiny = join(rootDir, "tiny.png");
     writeFileSync(tiny, encodeTruecolorPng({ width: 100, height: 100, data: new Uint8Array(100 * 100 * 4).fill(255) }));
-    expect(() => updateContact({ rootDir, imagePath: tiny, noBuild: true, stdout: () => {} })).toThrow(/expected at least 300x300/);
+    expect(() => updateContact({ rootDir, imagePath: tiny, noBuild: true, stdout: () => {} })).toThrow(/expected at least 320x320/);
 
     const blank = join(rootDir, "blank.png");
-    writeFileSync(blank, makeCard({ blank: true }));
+    writeFileSync(blank, makeQrCard({ blank: true }));
     expect(() => updateContact({ rootDir, imagePath: blank, noBuild: true, stdout: () => {} })).toThrow(/looks blank/);
 
     expect(() => updateContact({ rootDir, imagePath, group: "nope", noBuild: true, stdout: () => {} })).toThrow(/unknown group "nope"/);

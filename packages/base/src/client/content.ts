@@ -22,6 +22,32 @@ export const MANIFEST_CACHE_TTL_MS = 30 * 60 * 1000;
 /** Hard cap for a single QR image, enforced before it is shown. */
 export const MAX_IMAGE_BYTES = 512 * 1024;
 
+/**
+ * Hard cap for the manifest document itself. The size check runs before
+ * JSON.parse so a hostile or broken CDN response cannot freeze the page; a
+ * manifest that large is treated like any other transport failure (fall
+ * through to the next channel, then to the bundled baseline).
+ */
+export const MAX_MANIFEST_BYTES = 512 * 1024;
+
+/** UTF-8 byte length; TextEncoder is present in every browser and jsdom. */
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder === "function") {
+    return new TextEncoder().encode(value).byteLength;
+  }
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 /** The only hosts the client is allowed to talk to (images and manifest). */
 export const ALLOWED_CDN_HOSTS: readonly string[] = [
   "unpkg.com",
@@ -376,7 +402,17 @@ export class ContentLoader {
   private async fetchText(url: string): Promise<string> {
     const response = await this.request(url);
     if (!response.ok) throw new Error("HTTP " + response.status);
-    return response.text();
+    // Cheap pre-check: refuse an oversized body before reading it.
+    const declared = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_MANIFEST_BYTES) {
+      throw new Error("manifest text exceeds " + MAX_MANIFEST_BYTES + " bytes");
+    }
+    const text = await response.text();
+    // The header may lie or be missing: check the real UTF-8 payload too.
+    if (utf8ByteLength(text) > MAX_MANIFEST_BYTES) {
+      throw new Error("manifest text exceeds " + MAX_MANIFEST_BYTES + " bytes");
+    }
+    return text;
   }
 
   /** One request with the 1.5s abort window; the timer is always cleared. */

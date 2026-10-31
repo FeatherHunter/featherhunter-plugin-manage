@@ -843,11 +843,10 @@ function compareMoreBlocks(expectedRaw: string, actualRaw: string): Difference[]
   const sameOrder = sameValue(expectedNames, actualNames);
 
   if (!sameOrder) {
-    if (sameMemberSet) {
-      pushDifference(differences, "members", "more.items", expectedNames, actualNames);
-      return differences;
-    }
     pushDifference(differences, "members", "more.items", expectedNames, actualNames);
+    // Same members in a different order: report the order and stop here, the
+    // per-index text/link comparison below would only repeat the mismatch.
+    if (sameMemberSet) return differences;
   }
 
   const count = Math.max(expected.items.length, actual.items.length);

@@ -3,7 +3,7 @@ import { act } from "react";
 import * as React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BASE_CSS, createBaseUI } from "../../src/client/index";
+import { BASE_CSS, BASE_STYLE_ID, createBaseUI } from "../../src/client/index";
 import { resetClientDom } from "./helpers";
 
 /**
@@ -280,9 +280,9 @@ describe("author plugin card styling", () => {
   it("injects the shared stylesheet once when the card renders", () => {
     render(createBaseUI(React, { lang: "zh" }));
 
-    expect(document.getElementById("dsh-base-style")).not.toBeNull();
+    expect(document.getElementById(BASE_STYLE_ID)).not.toBeNull();
     render(createBaseUI(React, { lang: "zh" }));
-    expect(document.querySelectorAll("#dsh-base-style")).toHaveLength(1);
+    expect(document.querySelectorAll("#" + BASE_STYLE_ID)).toHaveLength(1);
   });
 
   it("ships the card skin rules from the spec", () => {

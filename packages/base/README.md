@@ -1,6 +1,8 @@
 # dsh-featherhunter-plugin-base
 
-FeatherHunter DSH 插件共用的基础包：设置面板里的**联系作者弹窗 / 作者插件推荐卡**，
+这是库，不是插件：不注册任何 DSH 槽位、不读写宿主存储，由调用方注入 React 后使用。
+
+FeatherHunter DSH 插件共用的 base 包：设置面板里的**联系作者弹窗 / 作者插件推荐卡**，
 以及 **README 四块内容**（联系区、star 历史、致谢、MORE）的渲染与同步工具。
 
 - 纯 ESM，零运行时依赖，单包三入口。

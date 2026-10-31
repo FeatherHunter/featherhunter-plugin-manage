@@ -1,11 +1,12 @@
 import type * as ReactNamespace from "react";
 import { BASELINE, resolveLang } from "../core/index";
-import type { Group, Lang } from "../core/types";
+import type { Group, Lang, PluginEntry } from "../core/types";
 import {
   createContentLoader,
   type ContentLoader,
   type LoadedContent,
 } from "./content";
+import { contactIcon, externalLinkIcon } from "./icons";
 import { mountContactModal, type ContactModalHandle } from "./modal";
 import { renderAuthorPlugins } from "./plugins";
 import { resolveText, type TextOverrides } from "./texts";
@@ -225,29 +226,14 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
     };
   }
 
+  /**
+   * Icon-only trigger: a 16px QR-code outline (14 / 16 / 18 overridable),
+   * transparent background, 6px radius. The text lives in ContactRow, so a
+   * host that only has room for one square gets the compact control.
+   */
   function ContactButton(props: ContactButtonProps): ReactNamespace.ReactElement {
     const h = React.createElement;
     const label = props.title ?? widgetText("contact");
-    const size = props.size ?? 16;
-    const icon = h(
-      "svg",
-      {
-        width: size,
-        height: size,
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        strokeWidth: 2,
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-        "aria-hidden": "true",
-        focusable: "false",
-      },
-      h("path", { d: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", key: "body" }),
-      h("circle", { cx: 9, cy: 7, r: 4, key: "head" }),
-      h("path", { d: "M23 21v-2a4 4 0 0 0-3-3.87", key: "arm" }),
-      h("path", { d: "M16 3.13a4 4 0 0 1 0 7.75", key: "arm2" }),
-    );
     return h(
       "button",
       {
@@ -259,18 +245,35 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
           openContactModal({ trigger: event.currentTarget });
         },
       },
-      h("span", { className: "dsh-base-contact-button__icon", key: "icon" }, icon),
-      props.iconOnly
-        ? null
-        : h("span", { className: "dsh-base-contact-button__label", key: "label" }, label),
+      h(
+        "span",
+        { className: "dsh-base-contact-button__icon", key: "icon", "aria-hidden": "true" },
+        contactIcon(h, props.size ?? 16),
+      ),
     );
   }
 
+  /**
+   * Whole-row variant: one button (icon + label + external-link arrow) using
+   * the same row skin as the author plugin rows, for panels that can only
+   * place a full row. Keyboard reachable for free because it is a button.
+   */
   function ContactRow(props: ContactRowProps): ReactNamespace.ReactElement {
     const h = React.createElement;
     return h(
-      "div",
-      { className: classes("dsh-base-contact-row", props.className) },
+      "button",
+      {
+        type: "button",
+        className: classes("dsh-base-contact-row", props.className),
+        onClick: (event: ReactNamespace.MouseEvent<HTMLButtonElement>) => {
+          openContactModal({ trigger: event.currentTarget });
+        },
+      },
+      h(
+        "span",
+        { className: "dsh-base-contact-row__icon", key: "icon", "aria-hidden": "true" },
+        contactIcon(h, 16),
+      ),
       h(
         "span",
         { className: "dsh-base-contact-row__label", key: "label" },
@@ -279,16 +282,49 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
           ? h("span", { className: "dsh-base-contact-row__hint", key: "hint" }, " · " + props.hint)
           : null,
       ),
-      h(ContactButton, { title: props.label ?? widgetText("contact"), key: "button" }),
+      h(
+        "span",
+        { className: "dsh-base-contact-row__ext", key: "ext", "aria-hidden": "true" },
+        externalLinkIcon(h),
+      ),
     );
   }
 
+  /**
+   * Author plugin card: the bundled baseline paints immediately; after mount
+   * the shared content loader silently swaps in the published manifest. An
+   * explicit plugins prop means the host owns the data, so no request is made.
+   */
   function AuthorPlugins(props: AuthorPluginsProps): ReactNamespace.ReactElement | null {
+    const explicitPlugins = props.plugins;
+    const [remotePlugins, setRemotePlugins] = React.useState<PluginEntry[] | null>(null);
+
+    React.useEffect(() => {
+      if (explicitPlugins !== undefined) return undefined;
+      const currentLoader = getLoader();
+      if (!currentLoader) return undefined;
+      let alive = true;
+      void (async () => {
+        try {
+          const content = await currentLoader.load();
+          if (!alive || !content) return;
+          const plugins = content.manifest.plugins;
+          if (plugins.length === 0) return;
+          setRemotePlugins(plugins);
+        } catch {
+          // Best effort: a failed refresh keeps the bundled baseline rows.
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [explicitPlugins]);
+
     const lang = props.lang ?? detectLang(options.lang);
     return renderAuthorPlugins({
       React,
       lang,
-      plugins: props.plugins ?? BASELINE.manifest.plugins,
+      plugins: explicitPlugins ?? remotePlugins ?? BASELINE.manifest.plugins,
       selfId: props.selfId ?? options.selfId,
       showSelf: props.showSelf ?? options.showSelf,
       maxRows: props.maxRows ?? options.maxRows,
@@ -330,6 +366,7 @@ export {
   MANIFEST_CACHE_TTL_MS,
   MANIFEST_TIMEOUT_MS,
   MAX_IMAGE_BYTES,
+  MAX_MANIFEST_BYTES,
   createContentLoader,
   defaultChannels,
   imageUrls,

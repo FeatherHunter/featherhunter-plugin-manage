@@ -56,6 +56,26 @@ interface ReadmeCliOptions {
   selfId?: string;
 }
 
+/** Read a flag value in either `--flag value` or `--flag=value` form. */
+function takeFlagValue(
+  args: string[],
+  prefix: string,
+  name: string,
+  argument: string,
+  position: number,
+): { value: string } | { error: string } {
+  if (argument.startsWith(name + "=")) {
+    const value = argument.slice(name.length + 1);
+    if (value.length === 0) return { error: prefix + ': "' + name + '" needs a value' };
+    return { value };
+  }
+  const value = args[position + 1];
+  if (value === undefined || value.startsWith("-")) {
+    return { error: prefix + ': "' + name + '" needs a value' };
+  }
+  return { value };
+}
+
 /** Parse the arguments of readme:init / readme:sync. */
 function parseReadmeArgs(
   command: ReadmeCommand,
@@ -68,19 +88,8 @@ function parseReadmeArgs(
   let readme: string | undefined;
   let selfId: string | undefined;
 
-  /** Read the value of a flag in either `--flag value` or `--flag=value` form. */
-  const takeValue = (name: string, argument: string, position: number): { value: string } | { error: string } => {
-    if (argument.startsWith(name + "=")) {
-      const value = argument.slice(name.length + 1);
-      if (value.length === 0) return { error: 'readme:' + command + ': "' + name + '" needs a value' };
-      return { value };
-    }
-    const value = args[position + 1];
-    if (value === undefined || value.startsWith("-")) {
-      return { error: 'readme:' + command + ': "' + name + '" needs a value' };
-    }
-    return { value };
-  };
+  const takeValue = (name: string, argument: string, position: number) =>
+    takeFlagValue(args, "readme:" + command, name, argument, position);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
@@ -171,18 +180,8 @@ function parseDoctorArgs(args: string[]): { options: DoctorCliOptions } | { erro
   let offline = false;
   let json = false;
 
-  const takeValue = (name: string, argument: string, position: number): { value: string } | { error: string } => {
-    if (argument.startsWith(name + "=")) {
-      const value = argument.slice(name.length + 1);
-      if (value.length === 0) return { error: 'doctor: "' + name + '" needs a value' };
-      return { value };
-    }
-    const value = args[position + 1];
-    if (value === undefined || value.startsWith("-")) {
-      return { error: 'doctor: "' + name + '" needs a value' };
-    }
-    return { value };
-  };
+  const takeValue = (name: string, argument: string, position: number) =>
+    takeFlagValue(args, "doctor", name, argument, position);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;

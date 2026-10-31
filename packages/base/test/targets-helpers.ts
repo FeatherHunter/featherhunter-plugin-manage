@@ -51,6 +51,7 @@ export function buildFakeRepos(): FakeRepos {
   const thanksWritten = new Set<string>();
   const packageWritten = new Set<string>();
   const workflowWritten = new Set<string>();
+  const starWritten = new Set<string>();
 
   for (const file of fixtureDoc().files) {
     const repoRoot = join(dir, file.repo);
@@ -92,6 +93,20 @@ export function buildFakeRepos(): FakeRepos {
         ),
         "utf8",
       );
+    }
+
+    if (!starWritten.has(file.repo)) {
+      starWritten.add(file.repo);
+      mkdirSync(join(repoRoot, "docs"), { recursive: true });
+      // deck / im / ilife publish a light/dark pair; palette and prompt publish
+      // one theme-neutral chart that both colour schemes reuse.
+      const charts =
+        file.repo === "dsh-opencode-palette" || file.repo === "dsh-prompt"
+          ? ["star-history.svg"]
+          : ["star-history-dark.svg", "star-history-light.svg"];
+      for (const chart of charts) {
+        writeFileSync(join(repoRoot, "docs", chart), '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n', "utf8");
+      }
     }
 
     if (!workflowWritten.has(file.repo)) {

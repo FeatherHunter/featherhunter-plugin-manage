@@ -201,6 +201,21 @@ describe("doctor repository checks", () => {
     expect(check.detail).toMatch(/inlined v0\.0\.0/);
   });
 
+  it("fails star-assets when a repository has not generated its charts yet (ilife)", async () => {
+    const repos = buildFakeRepos();
+    current = repos;
+    initFakeRepos(repos);
+    rmSync(join(repos.dir, "ilife", "docs", "star-history-dark.svg"));
+    rmSync(join(repos.dir, "ilife", "docs", "star-history-light.svg"));
+
+    const result = await runDoctor({ repoRoots: [join(repos.dir, "ilife")], offline: true });
+    const check = checkNamed(result, "ilife/star-assets");
+    expect(check.ok).toBe(false);
+    expect(check.detail).toMatch(/missing docs\/star-history-dark\.svg/);
+    expect(check.detail).toMatch(/docs\/handover\/02/);
+    expect(result.ok).toBe(false);
+  });
+
   it("flags a missing workflow mount and an unscheduled ilife workflow", async () => {
     const repos = buildFakeRepos();
     current = repos;

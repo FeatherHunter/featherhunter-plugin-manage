@@ -75,6 +75,25 @@ describe("star-history block migration", () => {
     }
   });
 
+  it("renders one plain image when both themes share a single chart asset (palette)", () => {
+    const original = "# Palette\n\n" + fixtureContactRaw("palette") + "\n\n" + fixtureStarRaw("palette") + "\n";
+    const { dir, readmePath, cleanup } = setup(original);
+    try {
+      const result = updateReadme({ root: dir, command: "init", starHistory: starDataOf("palette"), selfId: "palette" });
+      expect(result.errors).toEqual([]);
+      const starInner = innerBetween(read(readmePath), STAR_START, STAR_END);
+      // Both <source> elements would point at the same file, so the renderer
+      // keeps the plain image the repository already published.
+      expect(starInner).not.toContain("<picture>");
+      expect(starInner).not.toContain("<source ");
+      expect(starInner.match(/<img /g)).toHaveLength(1);
+      expect(starInner).toContain("docs/star-history.svg?v=202610310130");
+      expect(starInner).toContain('alt="星标增长曲线：左轴累计星标、右轴每日新增"');
+    } finally {
+      cleanup();
+    }
+  });
+
   it("appends a star-history block at EOF for a repository that has none (ilife)", () => {
     const original = "# 爱生活（iLife）\n\n" + fixtureContactRaw("ilife") + "\n";
     const { dir, readmePath, cleanup } = setup(original);
@@ -195,7 +214,7 @@ describe("thanks block migration", () => {
       const starStatuses = result.blocks.filter((block) => block.name === "star-history");
       const thanksStatuses = result.blocks.filter((block) => block.name === "thanks");
       expect(starStatuses.map((block) => block.status)).toEqual(["skipped"]);
-      expect(thanksStatuses.map((block) => block.status)).toEqual(["skipped", "skipped"]);
+      expect(thanksStatuses.map((block) => block.status)).toEqual(["skipped"]);
       const markdown = read(readmePath);
       expect(markdown).not.toContain(STAR_START);
       expect(markdown).not.toContain(THANKS_ZH_START);

@@ -39,7 +39,7 @@ _Avoid_: 群号直呼（不指明 QQ 时）、组织直呼
 _Avoid_: 有效期页脚（已删除的旧写法）、7天直呼（不指微信时）
 
 **群组**:
-管理仓维护的联系群集合，数量不限；当前 3 个成员：飞书群（常驻，主）`contact-feishu-permanent.png`、QQ 群（常驻新）`contact-qq-permanent.jpg`、微信群（限时新）`contact-wechat-weekly.png`。
+管理仓维护的联系群集合，数量不限；当前 3 个成员：飞书群（常驻，主）`contact/src/card-feishu.png`、QQ 群（常驻新）`contact/src/card-qq.jpg`、微信群（限时新）`contact/src/card-wechat-2026-10-23.png`。
 _Avoid_: 三群（已废弃，写死数量）、联系区（指整节时）、联系我（指功能时）
 
 **列序规则**:
@@ -245,19 +245,19 @@ _Avoid_: 花升级、花升级规则、换算规则
 _Avoid_: 反馈与联系（仅指 README 区块标题）、群组（仅指群集合）、三群（已废弃，写死数量）
 
 **群码**:
-一群一图的源二维码统称，`contact-*.png/jpg`，随群增减当前 3 个：飞码 / Q码 / 微码。
+一群一图的源二维码统称，`contact/src/qr-*.png/jpg`（限时码带日期文件名），随群增减当前 3 个：飞码 / Q码 / 微码。
 _Avoid_: 二维码直呼（不指明哪群时）、三码
 
 **飞码**:
-`contact-feishu-permanent.png`，飞书群（常驻、主）二维码，排序第一。
+`contact/src/qr-feishu.png`（整卡 `contact/src/card-feishu.png`），飞书群（常驻、主）二维码，排序第一。
 _Avoid_: 飞书二维码、飞书群直呼
 
 **Q码**:
-`contact-qq-permanent.jpg`，QQ 群（常驻、新）二维码，排序第二。
+`contact/src/qr-qq.jpg`（整卡 `contact/src/card-qq.jpg`），QQ 群（常驻、新）二维码，排序第二。
 _Avoid_: QQ二维码、QQ群码、QQ群直呼
 
 **微码**:
-`contact-wechat-weekly.png`，微信群（限时、新，7 天有效每周更新）二维码，排序第三。
+`contact/src/qr-wechat-2026-10-23.png`（整卡 `contact/src/card-wechat-2026-10-23.png`，限时码文件名带日期，每周换图）微信群（限时、新）二维码，排序第三。
 _Avoid_: 微信二维码、微信群码、微信群直呼
 
 ## 设置面板通用件
@@ -278,7 +278,7 @@ _Avoid_: 按钮、入口按钮、链接行
 _Avoid_: 图标按钮、二维码按钮、联系我们按钮
 
 **base 包**:
-`dsh-featherhunter-plugin-base`，本仓 `packages/base` 下开发并发布到 npm 的通用件包，三入口 `./core`（数据与纯函数）、`./client`（浏览器 UI）、`./node`（README 生成与校验）；不是 DSH 插件，不要装进 DSH。
+`dsh-featherhunter-plugin-base`，本仓 `packages/base` 下开发并发布到 npm 的通用件包，三入口 `./core`（数据与纯函数）、`./client`（浏览器 UI）、`./node`（README 生成与校验）。这是库，不是插件：不注册任何 DSH 槽位、不读写宿主存储，调用方注入 React 后使用。
 
 _Avoid_: 基础包、公共包、工具包、组件库
 
@@ -298,7 +298,7 @@ _Avoid_: 群配置、二维码项、卡片数据
 _Avoid_: 群卡图、邀请图、原图
 
 **二维码裁图**:
-从整卡截图裁出的二维码图片（`contact/src/qr-*` → 发布为 320px、16 色量化 PNG），弹窗 4 列布局下码面 ≥150px；白边外扩到至少 4 个模块。门禁不是「解码成功」——开源解码器对 QQ/微信风格码实测全部解不出，改由 `contact:update` 做「OpenCV 检测框 + 再检测覆盖比 ≥0.9 + 尺寸/方形校验」，并要求真机扫一次后发布。
+从整卡截图裁出的二维码图片（`contact/src/qr-*` → 发布为 320px、16 色量化 PNG），弹窗 4 列布局下码面 ≥150px；白边外扩到至少 4 个模块。门禁不是「解码成功」——开源解码器对 QQ/微信风格码实测全部解不出，改由纯 JS 的 `contact:update` 做几何校验：检测三个定位图案（1:1:3:1:1 扫描线）→ 紧裁 → 再检测覆盖比 ≥0.9 → 白边外扩 ≥4 模块 → 输出 ≥320px 方形，并要求真机扫一次后发布。
 
 _Avoid_: 二维码图、码图、截图
 

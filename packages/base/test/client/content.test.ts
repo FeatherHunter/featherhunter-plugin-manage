@@ -5,6 +5,7 @@ import {
   MANIFEST_CACHE_TTL_MS,
   MANIFEST_TIMEOUT_MS,
   MAX_IMAGE_BYTES,
+  MAX_MANIFEST_BYTES,
   PACKAGE_NAME,
   createContentLoader,
   defaultChannels,
@@ -16,6 +17,8 @@ import {
   type FetchLike,
   type FetchResponseLike,
 } from "../../src/client/content";
+// The public client entry must re-export the manifest budget too.
+import { MAX_MANIFEST_BYTES as MAX_MANIFEST_BYTES_FROM_ENTRY } from "../../src/client/index";
 
 const UNPKG_URL = "https://unpkg.com/" + PACKAGE_NAME + "@latest/data/manifest.json";
 const NPMMIRROR_LATEST = "https://registry.npmmirror.com/" + PACKAGE_NAME + "/latest";
@@ -70,6 +73,21 @@ function jsonResponse(body: unknown, status = 200): FetchResponseLike {
     headers: { get: () => null },
     text: async () => text,
     arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+  };
+}
+
+function textResponse(body: string, contentLength?: number): FetchResponseLike {
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "content-length" && contentLength !== undefined
+          ? String(contentLength)
+          : null,
+    },
+    text: async () => body,
+    arrayBuffer: async () => new TextEncoder().encode(body).buffer,
   };
 }
 
@@ -254,6 +272,74 @@ describe("ContentLoader fallback chain", () => {
     expect(Date.now() - started).toBeLessThan(1000);
     // One attempt per channel: unpkg, npmmirror latest, jsdelivr.
     expect(calls).toEqual([UNPKG_URL, NPMMIRROR_LATEST, JSDELIVR_URL]);
+  });
+});
+
+describe("manifest text size cap", () => {
+  it("exports the 512KB manifest budget from the content entry", () => {
+    expect(MAX_MANIFEST_BYTES).toBe(512 * 1024);
+    expect(MAX_MANIFEST_BYTES_FROM_ENTRY).toBe(MAX_MANIFEST_BYTES);
+  });
+
+  it("refuses a manifest above 512KB and falls back to the next channel", async () => {
+    const oversized = "x".repeat(MAX_MANIFEST_BYTES + 1);
+    const { fetch, calls } = scriptedFetch((url) => {
+      if (url === UNPKG_URL) return textResponse(oversized);
+      if (url === NPMMIRROR_LATEST) return jsonResponse({ version: "0.0.1" });
+      if (url === NPMMIRROR_FILES) return jsonResponse(manifest());
+      return null;
+    });
+    const loader = createContentLoader({ fetchImpl: fetch });
+    const content = await loader.load();
+    expect(content?.source).toBe("npmmirror");
+    expect(calls).toEqual([UNPKG_URL, NPMMIRROR_LATEST, NPMMIRROR_FILES]);
+  });
+
+  it("rejects on the declared content-length before reading the body", async () => {
+    let bodyRead = false;
+    const declaredTooBig: FetchResponseLike = {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "content-length" ? String(MAX_MANIFEST_BYTES + 1) : null,
+      },
+      text: async () => {
+        bodyRead = true;
+        return JSON.stringify(manifest());
+      },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    };
+    const { fetch, calls } = scriptedFetch((url) => {
+      if (url === UNPKG_URL) return declaredTooBig;
+      if (url === NPMMIRROR_LATEST) return jsonResponse({ version: "0.0.1" });
+      if (url === NPMMIRROR_FILES) return jsonResponse(manifest());
+      return null;
+    });
+    const loader = createContentLoader({ fetchImpl: fetch });
+    const content = await loader.load();
+    expect(content?.source).toBe("npmmirror");
+    expect(bodyRead).toBe(false);
+    expect(calls).toEqual([UNPKG_URL, NPMMIRROR_LATEST, NPMMIRROR_FILES]);
+  });
+
+  it("caps the real UTF-8 bytes even when content-length is missing or lies", async () => {
+    // 262145 characters, two bytes each in UTF-8: under the character count,
+    // over the byte budget. A truthful header would say 524290 bytes; the
+    // stub lies with 64 so only the payload measurement can catch it.
+    const payload = "é".repeat(MAX_MANIFEST_BYTES / 2 + 1);
+    expect(payload.length).toBeLessThan(MAX_MANIFEST_BYTES);
+    expect(new TextEncoder().encode(payload).byteLength).toBeGreaterThan(MAX_MANIFEST_BYTES);
+    const { fetch, calls } = scriptedFetch((url) => {
+      if (url === UNPKG_URL) return textResponse(payload, 64);
+      if (url === NPMMIRROR_LATEST) return jsonResponse({ version: "0.0.1" });
+      if (url === NPMMIRROR_FILES) return jsonResponse(manifest());
+      return null;
+    });
+    const loader = createContentLoader({ fetchImpl: fetch });
+    const content = await loader.load();
+    expect(content?.source).toBe("npmmirror");
+    expect(calls).toEqual([UNPKG_URL, NPMMIRROR_LATEST, NPMMIRROR_FILES]);
   });
 });
 

@@ -8,6 +8,7 @@ import {
   PACKAGE_NAME,
   expandReadmeTargets,
   readPackagedManifest,
+  missingStarChartAssets,
   readPackageVersion,
   resolveRepoReadmeTargets,
   type ResolvedReadmeTarget,
@@ -241,6 +242,27 @@ function checkInlineBundleVersion(repoRoot: string, version: string): DoctorChec
   return { name: "inline-bundle-version", ok: true, detail: "inlined v" + version };
 }
 
+/** Check that the repository ships the star-history chart assets its README needs. */
+function checkStarAssets(repoRoot: string, targets: readonly ResolvedReadmeTarget[]): DoctorCheck {
+  const missing: string[] = [];
+  for (const target of targets) {
+    for (const relative of missingStarChartAssets(repoRoot, target)) {
+      if (!missing.includes(relative)) missing.push(relative);
+    }
+  }
+  if (missing.length > 0) {
+    return {
+      name: "star-assets",
+      ok: false,
+      detail:
+        "missing " +
+        missing.join(", ") +
+        "; generate the chart in the repository before readme:init (see docs/handover/02), or the star block is skipped",
+    };
+  }
+  return { name: "star-assets", ok: true, detail: "chart assets present" };
+}
+
 /** Check that the repository workflows mount the README sync step. */
 function checkCronMounts(repoRoot: string, repo: string): DoctorCheck {
   const files = workflowFiles(repoRoot);
@@ -395,6 +417,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorResu
       checkReadmeImages(targets, version),
       checkDependencyVersion(repoRoot, version),
       checkInlineBundleVersion(repoRoot, version),
+      checkStarAssets(repoRoot, targets),
       checkCronMounts(repoRoot, repo),
     ]) {
       add({ name: repo + "/" + check.name, ok: check.ok, detail: check.detail });

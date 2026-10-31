@@ -386,11 +386,6 @@ export function blockDefinition(name: BlockName): BlockDefinition | undefined {
   return BLOCK_DEFINITIONS.find((definition) => definition.name === name);
 }
 
-/** Definitions that can be rendered today (reserved blocks are skipped). */
-export function implementedBlockDefinitions(): BlockDefinition[] {
-  return BLOCK_DEFINITIONS.filter((definition) => definition.render !== undefined);
-}
-
 /** Result of updating one README file. */
 export interface ReadmeFileResult {
   /** Absolute path of the README. */
@@ -700,12 +695,9 @@ export function updateReadme(options: ReadmeUpdateOptions): ReadmeFileResult {
 
   const context = detectContext(markdown, options);
   let next = markdown;
-  for (const definition of implementedBlockDefinitions()) {
+  for (const definition of BLOCK_DEFINITIONS) {
     if (definition.hasData !== undefined && !definition.hasData(context.options)) {
-      for (const markerSet of definition.markers) {
-        void markerSet;
-        result.blocks.push({ name: definition.name, status: "skipped" });
-      }
+      result.blocks.push({ name: definition.name, status: "skipped" });
       continue;
     }
     for (const markerSet of definition.markers) {

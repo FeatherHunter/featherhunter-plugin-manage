@@ -95,14 +95,15 @@ npm run release -- --version 0.0.2 --tag latest --image <新二维码截图> --r
 ```
 
 - 步骤顺序：preflight → worktree（脏树拒跑）→ **contact**（`--image` 时先跑 `contact:update --confirmed --no-build`）
-  → data（build:data + data:check）→ version（`npm version --no-git-tag-version`）→ typecheck/test/build →
+  → version（`npm version --no-git-tag-version`）→ data（build:data + data:check；清单与内联基线读 `package.json` 版本，必须在升版本之后构建）→ typecheck/test/build →
   pack → publish（`npm publish <tgz> --tag`）→ registry 轮询 → jsDelivr（必需）/ unpkg / npmmirror（best effort）
   → readme:sync --all --repos → readme --check → 报告写 `.tmp/release-<version>.json`。
 - `--dry-run --image <png>` 会以 `contact-update --dry-run` 校验图片并打印计划，不写任何文件。
 - 失败回滚：发布前失败 → 逐 `RELEASE_PATHS` `git checkout`，`--image` 时额外 `git clean -fdq -- contact`
   清掉新增的日期图片，并删除 `.tgz`；发布后失败 → `manual`（按 `docs/base包-发布与回滚.md` §5 走 deprecate/patch）。
-- 覆盖测试：`packages/base/test/release.test.ts`（20 例，含 contact 步骤成功/失败回滚/dry-run、脏树、发布前门禁失败、
-  publish 报错但 registry 可见、CDN 超时、skip-publish/skip-tests）。
+- 覆盖测试：`packages/base/test/release.test.ts`（21 例，含 contact 步骤成功/失败回滚/dry-run、脏树、发布前门禁失败、
+  publish 报错但 registry 可见、CDN 超时、skip-publish/skip-tests；另有一例锁住「version 必须先于 data」：
+  旧顺序会写出旧版本清单，registry 轮询永远等不到目标版本而误判 manual 回滚）。
 
 ## 5. 旧路径退役与「不新增 workflow」
 

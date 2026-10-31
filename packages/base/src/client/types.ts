@@ -41,10 +41,8 @@ export interface BaseUIOptions {
 
 export interface ContactButtonProps {
   className?: string;
-  /** Overrides the default tooltip / aria label. */
+  /** Overrides the default aria label / hover tooltip. */
   title?: string;
-  /** Render only the icon. */
-  iconOnly?: boolean;
   /** Icon size in px (14 / 16 / 18, default 16). */
   size?: 14 | 16 | 18;
 }

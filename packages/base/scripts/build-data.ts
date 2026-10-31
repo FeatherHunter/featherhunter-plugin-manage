@@ -14,8 +14,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { BaselineContent, Group, I18nText, Manifest, PluginEntry } from "../src/core/types";
-import { parseDateOnly, parseManifest, sortByOrder } from "../src/core/index";
-import { cropImage, luminanceStdDev, quantizeToPng, resizeImage } from "./image";
+import { isRecord, parseDateOnly, parseManifest, sortByOrder } from "../src/core/index";
+import { cropImage, extractQrCode, luminanceStdDev, quantizeToPng, resizeImage } from "./image";
 import { decodeImage, isJpeg, isPng } from "./png";
 import { findRepoRoot, readJsonFile, relativePosix } from "./io";
 
@@ -76,10 +76,6 @@ export interface PluginsSource {
   schema: 1;
   updatedAt: string;
   plugins: PluginEntry[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function fail(source: string, message: string): never {
@@ -446,7 +442,13 @@ export function generateData(options: GenerateDataOptions): GenerateDataResult {
     if (luminanceStdDev(cropPixels) < 6) {
       fail(CROPS_FILE, `crop box for "${group.id}" looks blank (no contrast)`);
     }
-    const qr = quantizeToPng(resizeImage(cropPixels, qrSize, qrSize), qrColors);
+    let qrPixels;
+    try {
+      qrPixels = extractQrCode(cardImage, crop, { outputSize: qrSize });
+    } catch (error) {
+      fail(CROPS_FILE, `crop box for "${group.id}": ${(error as Error).message}`);
+    }
+    const qr = quantizeToPng(qrPixels, qrColors);
     qrPng.set(group.id, qr);
     qrBase64.push(qr.toString("base64"));
     files.push({ path: join(dataDir, "img", publishedName(group.qr)), contents: qr });

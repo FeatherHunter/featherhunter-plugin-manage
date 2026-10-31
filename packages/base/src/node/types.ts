@@ -91,7 +91,7 @@ export interface VerifyResult {
 }
 
 /** Options for the README writer (ticket 08). */
-export interface ReadmeSyncOptions {
+export interface ReadmeSyncOptions extends BlockRenderOptions {
   /** Repository roots to update. */
   roots: string[];
   /** `init` may insert missing marker pairs; `sync` only rewrites marked text. */
@@ -101,26 +101,8 @@ export interface ReadmeSyncOptions {
   /** Process every target root and keep going after per-file errors. */
   all?: boolean;
   dryRun?: boolean;
-  /** Manifest to render from; defaults to the packaged baseline manifest. */
-  manifest?: Manifest;
-  /** Published package version, used for precise CDN URLs. */
-  version?: string;
-  /** CDN base URL override (tests / mirrors). */
-  cdnBase?: string;
-  /** Target language override; detected from the README when omitted. */
-  lang?: Lang;
-  /** Heading form override; detected from the README when omitted. */
-  variant?: HeadingVariant;
-  /** Plugin id of the repository being rendered; the MORE block excludes it. */
-  selfId?: string;
-  /** Heading text override; detected from the README when omitted. */
-  headingText?: string;
   /** README path relative to each root; default `README.md`. */
   readme?: string;
-  /** Star-history data; the block is skipped when absent. */
-  starHistory?: StarHistoryData;
-  /** Thanks table data; the block is skipped when absent. */
-  thanks?: ThanksData;
 }
 
 export interface DoctorCheck {

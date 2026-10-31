@@ -297,15 +297,23 @@ export function renderStarHistoryBlock(options: BlockRenderOptions = {}): string
   const dark = rawImageUrl(repo, branch, data.darkPath ?? "docs/star-history-dark.svg", data.version);
   const light = rawImageUrl(repo, branch, data.lightPath ?? "docs/star-history-light.svg", data.version);
   const alt = escapeAttribute(data.alt ?? STAR_HISTORY_DEFAULT_ALT);
+  const img = "  <img alt=\"" + alt + "\"" + (data.width === undefined ? "" : ' width="' + data.width + '"') + ' src="' + light + '" />';
   const lines: string[] = ['<div align="center">', ""];
   if (data.pageUrl !== undefined) lines.push('<a href="' + escapeAttribute(data.pageUrl) + '">');
-  lines.push(
-    "  <picture>",
-    '    <source media="(prefers-color-scheme: dark)" srcset="' + dark + '" />',
-    '    <source media="(prefers-color-scheme: light)" srcset="' + light + '" />',
-    "    <img alt=\"" + alt + "\"" + (data.width === undefined ? "" : ' width="' + data.width + '"') + ' src="' + light + '" />',
-    "  </picture>",
-  );
+  if (dark === light) {
+    // The repository publishes one theme-neutral chart (palette / prompt): a
+    // picture pair would point both sources at the same file, so emit the
+    // plain image the repository already used.
+    lines.push(img);
+  } else {
+    lines.push(
+      "  <picture>",
+      '    <source media="(prefers-color-scheme: dark)" srcset="' + dark + '" />',
+      '    <source media="(prefers-color-scheme: light)" srcset="' + light + '" />',
+      img,
+      "  </picture>",
+    );
+  }
   if (data.pageUrl !== undefined) lines.push("</a>");
   if (data.note !== undefined && data.note.trim() !== "") {
     lines.push("", "<sub>" + escapeAttribute(data.note) + "</sub>");
@@ -409,4 +417,3 @@ export function renderThanksBlock(options: BlockRenderOptions = {}): string {
   }
   return lines.join("\n");
 }
-

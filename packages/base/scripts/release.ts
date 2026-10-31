@@ -5,10 +5,14 @@
  *
  *   npm run release -- --repos D:/dsh-plugin
  *
- * Steps: regenerate + validate data -> bump the patch version -> typecheck,
+ * Steps: bump the patch version -> regenerate + validate data -> typecheck,
  * test and build -> npm pack -> npm publish -> wait for the registry and the
  * CDN channels -> `readme:sync --all` over the five repositories and report the
  * rewritten image URLs.
+ *
+ * The version bump must come before data generation: build-data.ts stamps the
+ * version read from packages/base/package.json into data/manifest.json, and the
+ * CDN probes below compare the served manifest against the target version.
  *
  * Any failure before the package is published rolls the working tree back with
  * `git checkout` (the release refuses to start on a dirty tree, so that is
@@ -358,7 +362,23 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
       );
     }
 
-    // 2. Data ------------------------------------------------------------
+    // 2. Version ---------------------------------------------------------
+    // Must run before the data step: build-data.ts stamps the version read
+    // from packages/base/package.json into data/manifest.json (and the bundled
+    // baseline), while the CDN probes below require the manifest to report
+    // `version` — the target of this release, not the previous one.
+    if (dryRun) {
+      mark("version", true, "would run: npm version " + version + " --no-git-tag-version");
+    } else {
+      const bumped = await run("npm", ["version", version, "--no-git-tag-version"], { cwd: pkgDir, env });
+      if (bumped.code !== 0) {
+        mark("version", false, "npm version failed: " + tail(bumped.stderr || bumped.stdout));
+        return await fail("npm version failed");
+      }
+      mark("version", true, "package.json + package-lock.json set to " + version);
+    }
+
+    // 3. Data ------------------------------------------------------------
     if (dryRun) {
       const check = await run("npm", ["run", "data:check"], { cwd: pkgDir, env });
       if (check.code !== 0) {
@@ -378,18 +398,6 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
         return await fail("data:check failed");
       }
       mark("data", true, "data regenerated and deterministic");
-    }
-
-    // 3. Version ---------------------------------------------------------
-    if (dryRun) {
-      mark("version", true, "would run: npm version " + version + " --no-git-tag-version");
-    } else {
-      const bumped = await run("npm", ["version", version, "--no-git-tag-version"], { cwd: pkgDir, env });
-      if (bumped.code !== 0) {
-        mark("version", false, "npm version failed: " + tail(bumped.stderr || bumped.stdout));
-        return await fail("npm version failed");
-      }
-      mark("version", true, "package.json + package-lock.json set to " + version);
     }
 
     // 4. Gates -----------------------------------------------------------
