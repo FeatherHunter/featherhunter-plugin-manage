@@ -17,11 +17,29 @@
 - [ ] 票 14 与 HUMAN-GATE 清单已更新
 - [ ] 规格「完成」提醒已发出
 
+## 2026-10-31 23:45 0.1.4 重装完成：二维码居中已修，等 owner 复验
+
+- base **0.1.4** 已发布（manage 仓 commit 4555f74，publish workflow run 41214781218 success），五仓全部升 0.1.4 并重建产物（详见票 07），五份 tarball 落在 `D:\temp\hac2-pack\b014\`。
+- web profile 已用 0.1.4 产物重装并重启：备份 `D:\temp\hac2-pack\web-profile-backup-20261031-1538`；安装 `dsh plugin --profile web add D:\temp\hac2-pack\b014x\*-b014.tgz`（Packages: +5，pnpm v11.28.5）；profile dependencies 全部指向 b014x；node_modules 五包 banner 均 v0.1.4 且各含 `.dsh-base-modal__qr{box-sizing:border-box`。
+- 实例：pid 42648 监听 127.0.0.1:3080，日志无插件加载报错；带令牌地址 `http://127.0.0.1:3080/?token=SfVX_LrGn8xfnbH7rCmu3sUBZDxIn6fjiTNGU_LgyY8`（重启即换新 token）。
+- 代理侧 CDP 复验（1440×1000）：联系弹窗三卡 feishu/qq/wechat 的 img 均为 data:image/png 内联码、natural 320×320、显示 215.33×215.33、computed `box-sizing=border-box`，左右留白 **gapLeft=gapRight=1px**（修复前 13/1）。截图 `.tmp/web3-contact-modal.png`。
+- 问题二复核：作者插件卡渲染 4 行（dsh-prompt / dsh-opencode-palette / dsh-im-companion / ilife），用 CDP `Input.dispatchMouseEvent` 真实鼠标移入第一行 1.5s 后：`.dsh-base-tip` 与任何 `[role=tooltip]`/`[class*=tip]` 命中 0、body 元素数不变、行内无 title/aria-label/--data-tip。当前 0.1.4 产物里该卡不接气泡（公用控件仍叫 **HoverTip**，`packages/base/src/client/hover-tip.ts`）。
+- 待 owner 复验：① 联系弹窗三张卡二维码都有码且水平居中；② 页头三枚彩色图标与 hover 气泡；③ 深浅色 / 窄宽；④ 若「作者插件 item 悬浮出气泡」仍复现，请截图并说明在哪个分区（可能是 desktop profile 的旧版插件或宿主自身气泡）。
+
 ## Comments
 
+### local — 2026-10-31T23:45:00.000Z
 ### local — 2026-10-31T13:45:19.492Z
 
 ### local — 2026-10-31T15:11:26.346Z
+
+### local — 2026-10-31T15:29:22.239Z
+## 2026-10-31 23:30 owner 首轮目验反馈 → 0.1.4 热修（进行中）
+owner 反馈两条：
+1. 联系弹窗二维码没有水平居中：左侧有空白、右侧贴边。**已确认为真实缺陷**：`.dsh-base-modal__qr` 是 `width:100%` + `padding:6px` 且 `box-sizing:content-box`（base 注入样式没有全局 border-box 重置），图片盒子比卡片内容列宽 12px 并整体向右溢出。真机 CDP 实测三卡：card 宽 241.3px、img 框 227.3px、左侧留白 13px、右侧仅 1px；浅/深两套卡片一致。
+   修法：`.dsh-base-modal__qr` 改 `box-sizing:border-box;max-width:100%`。本地 demo 复测：三卡左右留白均 13px/13px（修复前 13/1），截图 .tmp/base-demo/modal-fixed-crop.png。base 升 **0.1.4**（commit 4555f74，publish workflow run 41214781218 success，npmmirror 已可读，tarball 386,124B，产物含 `box-sizing:border-box` 修复）；unpkg/jsDelivr 传播稍后复查。
+2. 「作者的其他插件」条目悬停出现完整介绍气泡，问公用控件叫什么。**已核实**：该卡由 base `renderAuthorPlugins` 渲染（packages/base/src/client/plugins.ts），源码里没有接任何 HoverTip / 无 `title` 属性；在本轮 web profile 真机 DOM 复核：card 内 `[title]/[data-tip]` 命中 0，hover 后 `.dsh-base-tip` 命中 0。公用气泡控件名是 **HoverTip**（packages/base/src/client/hover-tip.ts，`mountTip`；ActionCluster 三按钮与联系弹窗都用它）。若 owner 仍能复现，请给一张带位置的截图（可能是宿主自己的插件列表/旧版插件里的气泡），再定位。
+下一步：五仓升 0.1.4 重建产物（已派单 task-20..24）→ 重装 web profile → 重新给 owner 带 token 地址复验二维码居中。
 ## 2026-10-31 23:10 重装说明（0.1.3 轮）
 
 票 07 修完二维码降级缺陷后，web profile 已用 base 0.1.3 的新产物重装并重启：
@@ -51,5 +69,6 @@
 
 ## 进度
 
+- 进度：90%（2026-10-31T23:45:00+08:00）：0.1.4 已重装并重启（二维码居中代理侧复验通过），等 owner 人眼复验
 - 进度：85%（2026-10-31T23:11:25+08:00）：0.1.3 产物已装入 web profile 并重启，等 owner 人眼看五项
 - 进度：70%（2026-10-31T21:45:19+08:00）：安装+代理级真机取证完成；发现微信二维码降级缺陷已开票 07；用户目验待做
