@@ -89,3 +89,12 @@ CLI：`D:\dsh-plugin\dsh-prompt\node_modules\dsh-featherhunter-plugin-base\dist\
   - 真机证据：三群体扫码、浏览器内联系弹窗顶层与焦点、GitHub 页面观感、大陆网络三通道降级——代理不可自判。
   - 五仓提交已「本地提交」，推送 GitHub 默认分支与 CI 实跑在票 13 之后统一进行（deck 需与并发会话协调）。
   - 已知偏离：deck/palette 本地 pnpm 11 需 `--config.verify-deps-before-run=false`；base CLI 在 pnpm 软链下需 `--preserve-symlinks-main`（ilife/deck 脚本已带，建议回馈 base 仓）。
+
+## 7. 推送与 GitHub CI（补记，2026-10-31 14:15–14:55 +08:00）
+
+- 五仓接入提交已推送到 GitHub 默认分支：dsh-prompt `944905c`（此前已推送，Check run 41168116795 success）；deck `42280a82`（已包含在 origin/main `bd3039bd` 中，由并发会话推送）；palette `862a4c2`；im-companion `76dd0f6`；ilife `d7cdda30`。推送后五仓 `git status -sb` 均显示与 origin 同步。
+- 推送触发 CI 情况：
+  - dsh-prompt：push 触发 Check → success。
+  - deck / palette / im：其 workflow 只有 schedule 与 workflow_dispatch，没有 push 触发，推送不产生 CI run（deck 的全量 verify 已由 Lead 本机跑完 459/459）。
+  - ilife：push 触发 ci run `41175482738`——ubuntu-latest（22.13.0 / 24.x）与 macos-latest（24.x / 22.13.0）四个矩阵 job success；windows-latest 两个 job 在 gen:check 失败（与父提交 e7da164d 的 run `40070419410` 同一步骤，属既有失败），其后的 test 阶段运行超过 40 分钟仍未结束；publish-gates 在 publish:pre 失败（同样在父提交上就失败，既有问题）。判定：本次接入改动未引入新的 CI 失败。
+- 因此票 13 的自动验收结论不受影响；人手侧仍需票 14 的真机证据。
