@@ -174,7 +174,7 @@ export function createActions(
     return actionSet(props, false);
   }
 
-  /** All three in one 1px capsule with hairline dividers (tight headers). */
+  /** All three sit in one 1px tray frame; the buttons stay independent (tight headers). */
   function ActionGroup(props: ActionGroupProps): ReactNamespace.ReactElement {
     return actionSet(props, true);
   }

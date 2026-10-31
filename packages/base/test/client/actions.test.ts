@@ -101,7 +101,7 @@ describe("header actions", () => {
     const group = container.querySelector<HTMLElement>(".dsh-base-actions--group");
     expect(group).not.toBeNull();
     expect(group?.getAttribute("role")).toBe("group");
-    expect(group?.getAttribute("aria-label")).toBe("联系、Star 与 Issue");
+    expect(group?.getAttribute("aria-label")).toBe("快捷操作");
     expect(group?.children).toHaveLength(3);
     expect(group?.querySelectorAll(".dsh-base-icon-action")).toHaveLength(3);
   });

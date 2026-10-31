@@ -118,6 +118,13 @@ export function formatValidity(
   const days = Math.round((until.getTime() - startOfLocalDay(now)) / DAY_MS);
   const month = until.getUTCMonth() + 1;
   const day = until.getUTCDate();
+  if (days <= 0) {
+    // Last valid day: the code still works today but not tomorrow.
+    if (options.lang === "en") {
+      return `Valid today (until ${month}/${day}), refreshed on re-entry`;
+    }
+    return `该二维码今天（${month} 月 ${day} 日前）有效，重新进入将更新`;
+  }
   if (options.lang === "en") {
     return `Valid for ${days} day${days === 1 ? "" : "s"} (until ${month}/${day}), refreshed on re-entry`;
   }

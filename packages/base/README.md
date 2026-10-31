@@ -30,7 +30,7 @@ const base = createBaseUI(React, {
 });
 // 联系 / Star / Issue 三枚独立图标按钮：
 // <base.ActionButtons size={18} />
-// 窄页头用三项合一的胶囊（1px 边框 + 细分隔线）：
+// 窄页头用一个 1px 外框的容器托住三枚独立按钮（容器不分区、不切段）：
 // <base.ActionGroup size={18} />
 // 鼠标悬停文案由公共 HoverTip 提供（Star：您的🌟是我夜空中最亮的星🌹）：
 // <base.HoverTip content="任何建议都欢迎">…</base.HoverTip>
@@ -45,7 +45,7 @@ npx dsh-base doctor
 ## 页头三件套
 
 - **`ActionButtons`**：联系（QR 线稿，点开弹窗）/ Star（五角星线稿，跳仓库）/ Issue（圆形感叹号线稿，跳 issues）三枚独立按钮，2px 间距，14 / 16 / 18 三档图标尺寸。
-- **`ActionGroup`**：同样三项收进一枚胶囊（1px 边框 + 内部分隔线），适合放不下三枚独立按钮的窄页头。
+- **`ActionGroup`**：同样三枚独立按钮收进一个 1px 外框的容器（容器只表达归组，不分区、不把按钮切段），适合放不下三枚独立按钮的窄页头。
 - **`HoverTip`**：公共悬浮文案控件（移植自 deck）。文案在触发控件上方，靠近视口边缘自动翻到下方并左右让位；同一时刻只显示一个悬浮提示；键盘聚焦同样触发，Esc 隐藏。三句内置文案可用 `texts` 覆盖，Star 默认「您的🌟是我夜空中最亮的星🌹」。
 - 图标全部 24×24 viewBox、`currentColor`、1.8 线宽圆头，跟随宿主深浅色。
 

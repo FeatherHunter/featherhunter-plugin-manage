@@ -52,10 +52,9 @@ export const BASE_CSS = [
   ".dsh-base-icon-action__icon svg{display:block}",
   // Three separate buttons: 2px apart, no background of their own.
   ".dsh-base-actions{display:inline-flex;flex:0 0 auto;align-items:center;gap:2px}",
-  // Combined capsule: 1px frame + hairline dividers between the three actions.
+  // One container, N independent buttons: the tray only groups the buttons, it
+  // never splits them into segments (no dividers, buttons keep their own radius).
   ".dsh-base-actions--group{gap:0;padding:1px;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.2));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.04))}",
-  ".dsh-base-actions--group>.dsh-base-icon-action{border-radius:7px}",
-  ".dsh-base-actions--group>.dsh-base-icon-action+.dsh-base-icon-action{box-shadow:inset 1px 0 0 var(--dsw-alias-border-l1,rgba(127,127,127,.2))}",
   // --- hover tooltip (deck-style): dark one-liner above the trigger ----------
   ".dsh-base-tip-anchor{display:inline-flex;align-items:center}",
   ".dsh-base-tip{position:fixed;z-index:2147483000;max-width:320px;padding:6px 10px;border-radius:8px;background:rgba(23,23,26,.94);color:#fff;font-size:12px;font-weight:400;line-height:1.55;letter-spacing:0;text-align:left;white-space:normal;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.28);opacity:0;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease}",

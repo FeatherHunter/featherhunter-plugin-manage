@@ -49,7 +49,7 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     issueTip: "任何功能需求、故障、建议、意见都可以提 ISSUE",
     starLabel: "Star 这个项目",
     issueLabel: "提交 Issue",
-    actionsLabel: "联系、Star 与 Issue",
+    actionsLabel: "快捷操作",
   },
   en: {
     contact: "Contact us",
@@ -71,7 +71,7 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     issueTip: "Report bugs or request features in Issues",
     starLabel: "Star this project",
     issueLabel: "Open an issue",
-    actionsLabel: "Contact, Star and Issue",
+    actionsLabel: "Quick actions",
   },
 };
 
