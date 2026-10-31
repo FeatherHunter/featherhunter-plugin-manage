@@ -140,3 +140,4 @@
 
 - **dsh-prompt 0.4.40 已正式发布到 npm**（GitHub Actions run [41223953408](https://github.com/FeatherHunter/dsh-prompt/actions/runs/41223953408) success；commit `ae7c6b5`）：npmmirror `latest=0.4.40`、jsDelivr `@0.4.40` 200、`npm install dsh-prompt@0.4.40` 实测可装，包内内联 base v0.1.5（彩色快捷操作簇 + 作者插件卡 tooltip + 二维码居中）。
 - 用途：若要做 **D 组正式版安装形态**（而非 file: tarball 临时验证），可用带版本号的正式包：`dsh plugin --profile <profile> add dsh-prompt@0.4.40`；本机 npmjs TLS 受限时需该 profile 的 `.npmrc` 指向 `https://registry.npmmirror.com/`（web profile 已如此配置）。其余四仓尚未发版。
+- **发版口径**：dsh-prompt 的「发版」现在是 **npm publish + GitHub Release 一步完成**（`publish.yml` 的 `Create GitHub release` 步骤，按 CHANGELOG 版本段写 notes、附两个 tarball 资产、设为 Latest；publish 步骤幂等）。v0.4.40 release 已补齐并设为 Latest：https://github.com/FeatherHunter/dsh-prompt/releases/tag/v0.4.40 。

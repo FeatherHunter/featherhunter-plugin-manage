@@ -78,4 +78,7 @@
 - npmmirror tarball 998,150B 解包：`package/package.json` version 0.4.40；`lib/client.js` 942,485B，`dsh-base-cluster` ×115、`__btn` ×49、`createTipController` ×3、`rowTip` ×2、`dsh-base-modal__qr{box-sizing:border-box` ×1、`linearGradient` ×4、旧 `dsh-base-actions--group` ×2（兼容代码）。
 - unpkg 在发布后 ~10 分钟仍 404（同步滞后），以 npmmirror、jsDelivr 与 registry 实际安装为证据；npmjs 本体不可直连（本机 TLS），发版成功与 jsDelivr 200 共同证明 npmjs 侧已收录。
 - 其余四仓尚未发版；如需，可按同一 workflow 模式逐个加 `publish.yml`。
+- **GitHub Release 补齐（2026-11-01 01:36）**：此前只做了 npm publish，GitHub 仓库页的 Releases 仍停在 v0.4.39（owner 反馈「没看到 dsh-prompt 有发布最新版本」即此）。已补：tag `v0.4.40` → commit `ae7c6b5`；GitHub Release [v0.4.40](https://github.com/FeatherHunter/dsh-prompt/releases/tag/v0.4.40) 设为 **Latest**，notes 取自 CHANGELOG 0.4.40 段，资产 `dsh-prompt-0.4.40.tgz` 与 `dsh-prompt.tgz`（各 998,150B）。
+- **发版口径修正为「npm publish + GitHub Release 一次完成」**：`publish.yml` 新增 `Create GitHub release` 步骤（`permissions: contents: write`；发 latest 时按 CHANGELOG 对应版本段建 release，附 `npm pack` 产物 `<pkg>-<ver>.tgz` 与稳定名 `dsh-prompt.tgz`）；`Publish to npm` 改为幂等（`npm view <pkg>@<ver>` 已存在则跳过）。commit `f140852`；run [41225497257](https://github.com/FeatherHunter/dsh-prompt/actions/runs/41225497257) 验证幂等路径 success（npm 已有该版本、release 已存在，两处均跳过）。
+
 ## 进度
