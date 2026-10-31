@@ -31,3 +31,10 @@
 
 ## 票号说明
 最早建的 01–07 是在本规格容器存在之前以普通 issue 建的，挂不到规格下；已按规格体系重建为 08–14（kind=spec-ticket、父票 00、依赖边齐全），01–07 已作为重复票关闭。
+
+## 验收记录（票 13 回填，2026-10-31 14:10 +08:00）
+- 五仓自动验收全部通过：聚合 `readme:sync --check --all --repos D:\dsh-plugin` exit 0（11 份 README up to date）、`doctor --repos D:\dsh-plugin` exit 0 全绿；五仓构建/测试通过（prompt check+build、deck verify-parallel 459/459、palette build+312 tests、im check 595、ilife tsc -b+build+97 定向测试）；git 对比确认未新增 workflow 文件；base 仓 typecheck + vitest（314 pass）全绿。
+- 证据与逐仓明细：`docs/五仓接入-base-0.0.2-验收记录.md`。
+- 五仓接入提交（本地提交，尚未推送）：dsh-prompt `944905c`、deck `42280a82`、palette `862a4c2`、im-companion `76dd0f6`、ilife `d7cdda30`。
+- 票 08–13 已全部关闭；票 14 HUMAN-GATE 待仓主真机/真实页面证据（扫码三群、浏览器内 dialog 顶层与焦点、GitHub 观感、大陆网络三通道降级）。
+- 注：markdown 后端的 spec 容器不支持 deck_issue_patch 评论（工具报 `map.md not-found`），本条按工作区约定直接回填在 spec.md 正文。

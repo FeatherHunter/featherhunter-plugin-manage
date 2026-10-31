@@ -9,7 +9,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 依赖钉精确版本 dsh-featherhunter-plugin-base@0.0.2（写入 package.json，peer react 与宿主一致；0.0.2 尚未发布时先用手工 tarball 验证，发布后更新 lock）
 - [ ] 设置面板推荐卡改用 base 的 AuthorPlugins：不注册 settings.section、不读写宿主存储；首帧基线、到货静默替换；整行可点开新标签页
@@ -45,6 +45,13 @@ prompt 仓接入已在本机全绿（commit `944905c`，未推送）。
 - 因此本仓 commit 944905c 暂未 push：push 会触发 CI `npm ci`，registry 上还没有 0.0.2。
 - base 仓配套修复已提交并推送 manage main `6e3f7c2`（含 `3b7563d`：Markdown 形态保留、`--repo` 单仓模式、星图数据文件版本、居中 wrapper 边界修复）。
 
+### local — 2026-10-31T04:28:14.819Z
+票 08 收尾（2026-10-31）：base 0.0.2 已发布到 npm registry，prompt 仓 commit 944905c 已推送 origin/main。GitHub Check workflow run 41168116795 attempt 4 全绿（37s，含 Install dependencies / Typecheck / Check(static gates) / Check managed README blocks）。本票所有验收项完成。
+
+### local — 2026-10-31T04:28:14.974Z
+prompt 仓接入完成并推送，CI 全绿
+
 ## 进度
 
+- 进度：100%（2026-10-31T12:28:14+08:00）：CI 全绿（run 41168116795 attempt 4 success）
 - 进度：75%（2026-10-31T11:55:23+08:00）：prompt 本机全绿（commit 944905c），等 base 0.0.2 发布后核验 lock 并推送
