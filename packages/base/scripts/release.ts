@@ -421,24 +421,21 @@ export async function runRelease(options: ReleaseOptions): Promise<ReleaseReport
     if (dryRun) {
       mark("pack", true, "dry run: would run npm pack --json");
     } else {
-    const pack = await run("npm", ["pack", "--json"], { cwd: pkgDir, env });
-    if (pack.code !== 0) {
-      mark("pack", false, tail(pack.stderr || pack.stdout));
-      return await fail("npm pack failed");
-    }
-    try {
-      const parsed = JSON.parse(pack.stdout.trim().split(/\r?\n/).pop() ?? "[]") as Array<{
-        filename?: string;
-        files?: unknown[];
-      }>;
-      const filename = parsed[0]?.filename;
-      if (typeof filename !== "string") throw new Error("npm pack --json returned no filename");
-      tgzPath = join(pkgDir, filename);
-      mark("pack", true, filename + " (" + (parsed[0]?.files?.length ?? 0) + " files)");
-    } catch (error) {
-      mark("pack", false, "cannot parse npm pack output: " + (error as Error).message);
-      return await fail("npm pack output unreadable");
-    }
+      const pack = await run("npm", ["pack", "--json"], { cwd: pkgDir, env });
+      if (pack.code !== 0) {
+        mark("pack", false, tail(pack.stderr || pack.stdout));
+        return await fail("npm pack failed");
+      }
+      try {
+        const parsed = parsePackReport(pack.stdout);
+        const filename = parsed[0]?.filename;
+        if (typeof filename !== "string") throw new Error("npm pack --json returned no filename");
+        tgzPath = join(pkgDir, filename);
+        mark("pack", true, filename + " (" + (parsed[0]?.files?.length ?? 0) + " files)");
+      } catch (error) {
+        mark("pack", false, "cannot parse npm pack output: " + (error as Error).message);
+        return await fail("npm pack output unreadable");
+      }
     }
 
     // 6. Publish + registry readiness ------------------------------------
@@ -727,6 +724,28 @@ function parseArgs(args: string[]): CliOptions | { error: string } {
     }
   }
   return options;
+}
+
+interface PackReportEntry {
+  filename?: string;
+  files?: unknown[];
+}
+
+/**
+ * Read the JSON array npm pack --json prints. npm pretty-prints it across many
+ * lines, and a warning line may precede it, so parse the whole stdout first and
+ * fall back to the first bracketed array.
+ */
+export function parsePackReport(stdout: string): PackReportEntry[] {
+  const raw = stdout.trim();
+  try {
+    return JSON.parse(raw) as PackReportEntry[];
+  } catch {
+    const start = raw.indexOf("[");
+    const end = raw.lastIndexOf("]");
+    if (start === -1 || end <= start) throw new Error("npm pack printed no JSON array");
+    return JSON.parse(raw.slice(start, end + 1)) as PackReportEntry[];
+  }
 }
 
 /** Spawn a command, capture stdout/stderr, never throw on a non-zero exit. */

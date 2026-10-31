@@ -9,6 +9,7 @@ import {
   bumpVersion,
   countReadmeReferences,
   countVersionReferences,
+  parsePackReport,
   readPackageVersion,
   resolveTargetVersion,
   runRelease,
@@ -56,6 +57,7 @@ interface RunnerOptions {
   failCommand?: (command: string, args: string[]) => boolean;
   registry?: () => string;
   packFilename?: string;
+  packStdout?: string;
 }
 
 interface Runner {
@@ -87,11 +89,10 @@ function makeRunner(options: RunnerOptions = {}): Runner {
     }
     if (command === "npm" && args[0] === "pack") {
       const filename = options.packFilename ?? PACKAGE_NAME + "-0.0.2.tgz";
-      return {
-        code: 0,
-        stdout: JSON.stringify([{ filename, files: ["package.json", "dist/client/index.js"] }]) + "\n",
-        stderr: "",
-      };
+      const stdout =
+        options.packStdout ??
+        JSON.stringify([{ filename, files: ["package.json", "dist/client/index.js"] }]) + "\n";
+      return { code: 0, stdout, stderr: "" };
     }
     return { code: 0, stdout: "ok\n", stderr: "" };
   };
@@ -264,6 +265,24 @@ describe("runRelease", () => {
     const written = JSON.parse(readFileSync(reportPath, "utf8")) as { version: string; ok: boolean };
     expect(written.version).toBe("0.0.2");
     expect(written.ok).toBe(true);
+  });
+
+  it("reads a pretty-printed npm pack report", async () => {
+    const pretty =
+      JSON.stringify([{ filename: PACKAGE_NAME + "-0.0.2.tgz", files: ["package.json"] }], null, 2) + "\n";
+    expect(parsePackReport(pretty)[0]?.filename).toBe(PACKAGE_NAME + "-0.0.2.tgz");
+    expect(parsePackReport("npm warn something\n" + pretty)[0]?.files).toEqual(["package.json"]);
+    expect(() => parsePackReport("no json here")).toThrow(/no JSON array/);
+
+    const root = makeTemp("release-pack-pretty-");
+    makePackage(root);
+    const runner = makeRunner({ packStdout: pretty, registry: () => "0.0.2" });
+    const { deps } = makeDeps({ run: runner.run });
+    const report = await runRelease({ rootDir: root, deps });
+    expect(report.ok).toBe(true);
+    expect(report.steps.find((step) => step.name === "pack")?.detail).toContain(
+      PACKAGE_NAME + "-0.0.2.tgz (1 files)",
+    );
   });
 
   it("bumps the package version before build:data so the manifest carries the new version", async () => {
