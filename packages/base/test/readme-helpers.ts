@@ -81,7 +81,7 @@ export function expectMigratedContactSources(raw: string): string {
     .replace(/src="[^"]*contact-qq-permanent\.(?:png|jpg)"/g, 'src="' + cardUrl("card-qq.png") + '"')
     .replace(
       /src="[^"]*contact-wechat-weekly\.png"/g,
-      'src="' + cardUrl("card-wechat-2026-10-23.png") + '?v=20261023"',
+      'src="' + cardUrl("card-wechat-2026-10-31.png") + '?v=20261031"',
     );
 }
 

@@ -5,8 +5,8 @@ export const BASELINE: BaselineContent = {
   "manifest": {
     "schema": 1,
     "version": "0.0.1",
-    "revision": 1,
-    "updatedAt": "2026-10-23T00:00:00+08:00",
+    "revision": 2,
+    "updatedAt": "2026-10-31T00:00:00+08:00",
     "fallbackUrl": "https://github.com/FeatherHunter/featherhunter-plugin-manage",
     "groups": [
       {
@@ -81,10 +81,10 @@ export const BASELINE: BaselineContent = {
           "zh": "DSH 插件交流群微信群二维码",
           "en": "DSH plugin community group WeChat QR code"
         },
-        "card": "card-wechat-2026-10-23.png",
+        "card": "card-wechat-2026-10-31.png",
         "qr": {
           "kind": "remote",
-          "path": "qr-wechat-2026-10-23.png"
+          "path": "qr-wechat-2026-10-31.png"
         },
         "title": {
           "zh": "DSH 插件交流群",
@@ -94,7 +94,7 @@ export const BASELINE: BaselineContent = {
           "zh": "群聊：DSH 插件交流群",
           "en": "Group chat: DSH Plugin Community"
         },
-        "validUntil": "2026-10-30"
+        "validUntil": "2026-11-07"
       }
     ],
     "plugins": [

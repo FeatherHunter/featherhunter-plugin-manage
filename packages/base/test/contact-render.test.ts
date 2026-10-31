@@ -53,7 +53,7 @@ describe("renderContactBlock", () => {
     for (const src of sources) expect(src.startsWith("https://")).toBe(true);
     expect(sources[0]).toBe(cardUrl("card-feishu.png"));
     expect(sources[1]).toBe(cardUrl("card-qq.png"));
-    expect(sources[2]).toBe(cardUrl("card-wechat-2026-10-23.png") + "?v=20261023");
+    expect(sources[2]).toBe(cardUrl("card-wechat-2026-10-31.png") + "?v=20261031");
     expect(sources[0]).not.toContain("?v=");
     expect(sources[1]).not.toContain("?v=");
   });
@@ -74,7 +74,7 @@ describe("renderContactBlock", () => {
     wechat.card = "card-wechat.png";
     wechat.validUntil = "2026-10-30";
     expect(renderContactBlock({ manifest })).toContain(
-      'src="' + cardUrl("card-wechat.png") + '?v=20261023"',
+      'src="' + cardUrl("card-wechat.png") + '?v=20261031"',
     );
   });
 

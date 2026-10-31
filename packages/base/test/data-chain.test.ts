@@ -175,7 +175,7 @@ describe("buildManifest", () => {
     const manifest = buildManifest({ version: "1.2.3", source, plugins });
 
     expect(manifest.version).toBe("1.2.3");
-    expect(manifest.updatedAt).toBe("2026-10-23T00:00:00+08:00");
+    expect(manifest.updatedAt).toBe("2026-10-31T00:00:00+08:00");
     expect(manifest.groups.map((group) => group.id)).toEqual(["feishu", "qq", "wechat"]);
     for (const group of manifest.groups) {
       expect(group.qr.kind).toBe("remote");
@@ -184,7 +184,7 @@ describe("buildManifest", () => {
     }
     expect(() => parseManifest(manifest)).not.toThrow();
     expect(publishedName("card-qq.jpg")).toBe("card-qq.png");
-    expect(publishedName("qr-wechat-2026-10-23.png")).toBe("qr-wechat-2026-10-23.png");
+    expect(publishedName("qr-wechat-2026-10-31.png")).toBe("qr-wechat-2026-10-31.png");
   });
 
   it("inlines only the permanent codes into the baseline", () => {
@@ -200,7 +200,7 @@ describe("buildManifest", () => {
       expect(uri.startsWith("data:image/png;base64,")).toBe(true);
     }
     const wechat = baseline.manifest.groups.find((group: Group) => group.id === "wechat")!;
-    expect(wechat.qr).toEqual({ kind: "remote", path: "qr-wechat-2026-10-23.png" });
+    expect(wechat.qr).toEqual({ kind: "remote", path: "qr-wechat-2026-10-31.png" });
     expect(BUNDLED_PLATFORMS.has("wechat")).toBe(false);
 
     expect(() => buildBaseline(manifest, new Map())).toThrow(/missing generated QR for group "feishu"/);
@@ -272,7 +272,7 @@ describe("generateData", () => {
     writeFileSync(join(contact, "plugins.json"), JSON.stringify(realPlugins()));
     writeFileSync(join(contact, "src", "card-feishu.png"), makeQrCard({ blank: true }));
     writeFileSync(join(contact, "src", "card-qq.jpg"), makeQrCard());
-    writeFileSync(join(contact, "src", "card-wechat-2026-10-23.png"), makeQrCard());
+    writeFileSync(join(contact, "src", "card-wechat-2026-10-31.png"), makeQrCard());
     writeFileSync(join(blankRoot, "package.json"), JSON.stringify({ name: "blank", version: "0.0.0" }));
     expect(() =>
       generateData({ rootDir: blankRoot, dataDir: join(blankRoot, "data"), baselineFile: join(blankRoot, "baseline.ts"), packageJsonPath: join(blankRoot, "package.json") }),
@@ -343,7 +343,7 @@ describe("contact:update", () => {
     expect(wechat.qr).toBe("qr-wechat-2026-10-24.png");
     expect(wechat.validUntil).toBe("2026-10-31");
     expect(groups.updatedAt).toBe("2026-10-24");
-    expect(groups.revision).toBe(2);
+    expect(groups.revision).toBe(realGroups().revision + 1);
     expect(() => validateGroupsSource(groups)).not.toThrow();
 
     // Older than 8 weeks (2026-08-29) is removed; 2026-09-20 stays.
