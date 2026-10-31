@@ -1,21 +1,21 @@
 # base 包最终验收记录
 
 适用范围：规格 `.scratch/base-package/spec.md`（票 00），实施票 01–13。
-验收时间：2026-10-31（Asia/Shanghai）；长期分支 `main`。第一轮交付提交 `1fd97558d83bd42664fbefc93c832fccff1180a3`（`feat/base-package` fast-forward 合入后删除）；评审后修复提交 `bb6db1f`（本轮代码与文档修复，随后本记录单独提交，仅文档变更）。两轮均已推送 `origin/main`。
-结论：**自动部分 7/7 全绿**；`/code-review` 两轴 23 条发现已全部处置（修复 / 补测试 / ADR 记录 / 环境遗留说明，见 §1.1）；人工项（HUMAN-GATE）逐条列出，**待各仓仓主确认**，代理不自判。
+验收时间：2026-10-31（Asia/Shanghai）；长期分支 `main`。第一轮交付提交 `1fd97558d83bd42664fbefc93c832fccff1180a3`（`feat/base-package` fast-forward 合入后删除）；评审后修复提交 `bb6db1f`；复评后收尾提交 `6755eae`（helper 收敛、剩余主题颜色令牌化、末尾换行补齐），本记录随其后单独提交，仅文档变更。三轮均已推送 `origin/main`。
+结论：**自动部分 7/7 全绿**；`/code-review` 两轴 23 条发现与两轴复评的 12+11 条复核意见均已处置（修复 / 补测试 / ADR 记录 / 环境遗留说明，见 §1.1）；人工项（HUMAN-GATE）逐条列出，**待各仓仓主确认**，代理不自判。
 
 ## 1. 自动验收（7/7 PASS）
 
-运行 `.tmp/final-acceptance.ps1`（日志 `.tmp/acceptance-final.log`），结果 `RESULT: 7/7 checks passed`：
+运行 `.tmp/final-acceptance.ps1`（最新日志 `.tmp/acceptance-round3.log`），结果 `RESULT: 7/7 checks passed`：
 
 | 检查 | 命令 | 本次结果 |
 | --- | --- | --- |
 | typecheck | `npm run typecheck` | tsc clean |
-| test | `npm test` | 305 passed / 6 skipped（24 个测试文件通过 + 1 个 network 文件默认 skip） |
+| test | `npm test` | 306 passed / 6 skipped（24 个测试文件通过 + 1 个 network 文件默认 skip） |
 | build | `npm run build` | build ok: core, client, node |
-| three-entry-import | `node --input-type=module -e "import(...)"` | core=9 client=19 node=58 个导出，三入口均非空 |
+| three-entry-import | `node --input-type=module -e "import(...)"` | core=10 client=19 node=58 个导出，三入口均非空 |
 | demo-build | `npm run build:demo` | demo/dist 构建成功 |
-| packlist | `npm pack --dry-run --json` | files=33、size=283848；含 package.json / README.md / LICENSE / data/manifest.json / dist 三入口 |
+| packlist | `npm pack --dry-run --json` | files=34、size=284342；含 package.json / README.md / LICENSE / data/manifest.json / dist 三入口 |
 | real-repos-unchanged | 运行前后对比五仓 HEAD + `git status --porcelain` | 5 repos unchanged during the run |
 
 补充说明：
@@ -23,7 +23,7 @@
 - `npm test` 里的 network 用例（`test/network/cdn-smoke.test.ts`）需要真实发布 + 网络，按规格默认 `describe.skipIf` 跳过；
   发布侧的真实证据见 `docs/base包-发布演练记录.md`。
 - packlist 的 33 个文件全部来自 `dist/`、`data/`、README、LICENSE、package.json；发布包不含源码与测试。
-- 上面是评审后修复提交 `bb6db1f` 上的复跑结果（测试数由 280 增至 305，新增 `test/qr-gate.test.ts`、client 清单体积上限与控件契约用例、release 顺序回归用例）。
+- 上面是复评后收尾提交 `6755eae` 上的复跑结果（测试数由 280 → 305 → 306：新增 `test/qr-gate.test.ts`、client 清单体积上限与控件契约用例、release 顺序回归用例、样式令牌用例）。
 
 ### 1.1 评审后修复（第二轮，提交 `bb6db1f`）
 
@@ -38,6 +38,7 @@
 | 文档纪律（Standards） | GLOSSARY 图名与「base 包」术语、F13「这是库，不是插件」首行声明、handover 01–03 与发布/回滚顺序说明 | `GLOSSARY.md`、`packages/base/README.md`、`docs/handover/*.md`、`docs/base包-发布与回滚.md` |
 | Standards smells | `isRecord`/`pickText`/`takeFlagValue` 收敛为单一实现；`ReadmeSyncOptions extends BlockRenderOptions`；删除 `sortedPlugins`、`implementedBlockDefinitions`、死分支与死循环 | `src/core/index.ts`、`src/node/{cli,types,index,readme-compare,readme-sync}.ts` |
 | 与规格有意的偏离 | 9 条决定记录成 ADR（doctor 检查多于四项、`contact:update` 不进发布包 CLI、发布前自动回滚/发布后 manual 等） | `docs/adr/0001-base-package-implementation-deviations.md` |
+| 复评建议（第三轮） | 剩余主题颜色全部改读宿主令牌（过期卡 `state-warn-tertiary/secondary/label`、链接与复制确认 `alias-link`、hover 填充 `fill-tsp-secondary`）；`isRecord`/`pluginHref`/`takeFlagValue`/星图默认路径收敛为单一实现；删除 `ReadmeSyncOptions` 重复字段、星图硬编码常量与过期注释；29 个文件补末尾换行 | `packages/base/src/client/styles.ts`、`src/core/index.ts`、`src/node/{cli,renderers,targets,star-assets}.ts`；`test/client/widgets.test.ts`（新增令牌用例，共 99 例） |
 
 ## 2. 三份交接文档走查（票 13 验收第 1 条）
 
@@ -102,7 +103,7 @@ npx -y dsh-featherhunter-plugin-base@1 doctor --repos <五仓父目录>
 - npmmirror 通道 403 是 cnpm 白名单政策，需要时可向 `cnpm/unpkg-white-list` 提 PR；客户端已回退 jsDelivr。
 - npm staged publishing 有约 1.5 分钟审核延迟（0.0.1 实测），发布脚本已内置 registry 轮询。
 - 规格票 00 的收口：实施票 01–13 全部关闭只是触发条件；按收口协议在规格票上留一段可独立复核的收尾评论并关闭（等价于规格详情页的「完成」动作）。本记录与票 13 关票不是完成证据。
-- `/code-review` 两轴 23 条发现的处置见 §1.1（修复提交 `bb6db1f`，已推送 `origin/main`）；仍未关闭的只有 HUMAN-GATE 五项与上面列出的环境项。
+- `/code-review` 两轴 23 条发现与两轴复评意见的处置见 §1.1（修复提交 `bb6db1f`、收尾提交 `6755eae`，均已推送 `origin/main`）；仍未关闭的只有 HUMAN-GATE 五项与上面列出的环境项。
 - 本地分支 `ticket/11-sync-doctor`（`88f0948`）的实现已被 `5ff50de` 取代，未合并也未删除；按「丢弃改动前先征得同意」保留，需要清理时由仓主确认后删除。
 
 ## 6. 证据索引
@@ -111,6 +112,7 @@ npx -y dsh-featherhunter-plugin-base@1 doctor --repos <五仓父目录>
 | --- | --- |
 | `.tmp/final-acceptance.ps1` / `.tmp/acceptance-final.log` | 第一轮 7/7 自动验收脚本与日志 |
 | `.tmp/acceptance-round2.log` | 评审后修复提交上的 7/7 复跑日志 |
+| `.tmp/acceptance-round3.log` | 复评后收尾提交 `6755eae` 上的 7/7 复跑日志 |
 | `docs/adr/0001-base-package-implementation-deviations.md` | 评审后确认的 9 条有意偏离及理由 |
 | `docs/base包-发布演练记录.md` | 两次真实发布演练、三通道耗时、jsDelivr 图片头、README 改写结果、HUMAN-GATE 清单 |
 | `.tmp/drill-rewrite.log` / `.tmp/drill-before` / `.tmp/drill-repos` | README 全量同步演练日志与前后快照 |
