@@ -137,7 +137,7 @@ describe("hover tips", () => {
       contact.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(tips()).toHaveLength(1);
-    expect(tips()[0].textContent).toBe("扫码加入交流群，反馈、建议、idea 都欢迎");
+    expect(tips()[0].textContent).toBe("扫码加入交流群，反馈、建议、idea 都欢迎🎉");
 
     act(() => {
       contact.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
@@ -153,14 +153,14 @@ describe("hover tips", () => {
       root.render(
         React.createElement(
           ui.HoverTip,
-          { content: "任何功能需求、故障、建议、意见都可以提 ISSUE", visible: true },
+          { content: "任何功能需求、故障、建议、意见都可以提ISSUE问题单🙏", visible: true },
           React.createElement("button", { type: "button" }, "issue"),
         ),
       ),
     );
 
     expect(tips()).toHaveLength(1);
-    expect(tips()[0].textContent).toBe("任何功能需求、故障、建议、意见都可以提 ISSUE");
+    expect(tips()[0].textContent).toBe("任何功能需求、故障、建议、意见都可以提ISSUE问题单🙏");
 
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));

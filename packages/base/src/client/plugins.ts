@@ -1,8 +1,9 @@
 import type * as ReactNamespace from "react";
 import { pickText, pluginHref, sortByOrder } from "../core/index";
 import type { Lang, PluginEntry } from "../core/types";
-import { externalLinkIcon, gridIcon } from "./icons";
 import { ensureBaseStyles } from "./styles";
+import type { TipController } from "./hover-tip";
+import { externalLinkIcon, gridIcon } from "./icons";
 
 /**
  * Default row cap of the author plugin card. The list is the five finalised
@@ -50,6 +51,13 @@ export interface RenderAuthorPluginsOptions extends AuthorPluginRowsOptions {
   /** Already localised, already overridden card title. */
   title: string;
   className?: string;
+  /**
+   * Shared tooltip controller. When present, hovering or focusing a row shows
+   * the full description through the same engine as the header actions; the
+   * visible line is clipped with an ellipsis, so the tooltip is the only place
+   * the complete copy can be read.
+   */
+  tip?: TipController;
 }
 
 /**
@@ -85,8 +93,25 @@ export function renderAuthorPlugins(
     h(
       "ul",
       { className: "dsh-base-plugins__list", key: "list" },
-      rows.map((plugin) =>
-        h(
+      rows.map((plugin) => {
+        const desc = pickText(plugin.desc, options.lang);
+        const tip = options.tip;
+        // The rows keep their own <a> (flex layout + ellipsis); the tooltip is
+        // attached to that same element instead of wrapping it.
+        const rowTip =
+          tip && desc
+            ? {
+                onMouseEnter: (event: ReactNamespace.MouseEvent<HTMLAnchorElement>) => {
+                  tip.show(event.currentTarget, desc);
+                },
+                onMouseLeave: () => tip.hideSoon(),
+                onFocus: (event: ReactNamespace.FocusEvent<HTMLAnchorElement>) => {
+                  tip.show(event.currentTarget, desc);
+                },
+                onBlur: () => tip.hideSoon(),
+              }
+            : {};
+        return h(
           "li",
           { className: "dsh-base-plugins__item", key: plugin.id },
           h(
@@ -96,6 +121,7 @@ export function renderAuthorPlugins(
               href: pluginHref(plugin),
               target: "_blank",
               rel: "noopener noreferrer",
+              ...rowTip,
             },
             h(
               "span",
@@ -103,19 +129,15 @@ export function renderAuthorPlugins(
               gridIcon(h, 12),
             ),
             h("span", { className: "dsh-base-plugins__name", key: "name" }, plugin.name),
-            h(
-              "span",
-              { className: "dsh-base-plugins__desc", key: "desc" },
-              pickText(plugin.desc, options.lang),
-            ),
+            h("span", { className: "dsh-base-plugins__desc", key: "desc" }, desc),
             h(
               "span",
               { className: "dsh-base-plugins__ext", key: "ext", "aria-hidden": "true" },
               externalLinkIcon(h),
             ),
           ),
-        ),
-      ),
+        );
+      }),
     ),
   );
 }

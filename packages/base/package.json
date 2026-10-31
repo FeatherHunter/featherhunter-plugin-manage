@@ -1,6 +1,6 @@
 {
   "name": "dsh-featherhunter-plugin-base",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "FeatherHunter DSH plugin shared base: settings-panel contact modal / author plugins card widgets and README block renderers",
   "keywords": [
     "dsh",

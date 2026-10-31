@@ -2,7 +2,7 @@
 import { act } from "react";
 import * as React from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BASE_CSS, BASE_STYLE_ID, createBaseUI } from "../../src/client/index";
 import { resetClientDom } from "./helpers";
 
@@ -35,7 +35,27 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   restoreNavigatorLanguages();
+  vi.useRealTimers();
 });
+
+function tips(): HTMLElement[] {
+  return Array.from(document.body.querySelectorAll<HTMLElement>(".dsh-base-tip"));
+}
+
+function rowOf(name: string): HTMLElement {
+  const rows = Array.from(container.querySelectorAll<HTMLElement>(".dsh-base-plugins__row"));
+  const row = rows.find(
+    (node) => node.querySelector(".dsh-base-plugins__name")?.textContent === name,
+  );
+  if (!row) throw new Error("row not found: " + name);
+  return row;
+}
+
+function hover(row: HTMLElement): void {
+  act(() => {
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  });
+}
 
 function rowNames(): string[] {
   return Array.from(container.querySelectorAll(".dsh-base-plugins__name")).map(
@@ -303,5 +323,94 @@ describe("author plugin card styling", () => {
     ]) {
       expect(BASE_CSS, rule).toContain(rule);
     }
+  });
+});
+describe("author plugin card description tooltip", () => {
+  const PROMPT_DESC =
+    "经常反复重复的模板化提示词，存成自定义模板，选中后直接注入，不再需要耗费精力。";
+
+  it("shows the full description through the shared HoverTip on row hover", () => {
+    vi.useFakeTimers();
+    render(createBaseUI(React, { lang: "zh", selfId: "deck" }));
+
+    const row = rowOf("dsh-prompt");
+    hover(row);
+
+    expect(tips()).toHaveLength(1);
+    expect(tips()[0].textContent).toBe(PROMPT_DESC);
+    expect(tips()[0].getAttribute("role")).toBe("tooltip");
+    expect(row.getAttribute("aria-describedby")).toBe(tips()[0].id);
+  });
+
+  it("hides the tooltip after the shared leave delay", () => {
+    vi.useFakeTimers();
+    render(createBaseUI(React, { lang: "zh", selfId: "deck" }));
+
+    const row = rowOf("dsh-prompt");
+    hover(row);
+    expect(tips()).toHaveLength(1);
+
+    act(() => {
+      row.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(tips()).toHaveLength(0);
+    expect(row.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  it("keeps one tooltip while the pointer moves across rows", () => {
+    vi.useFakeTimers();
+    render(createBaseUI(React, { lang: "zh", selfId: "deck" }));
+
+    const prompt = rowOf("dsh-prompt");
+    const palette = rowOf("dsh-opencode-palette");
+    hover(prompt);
+    expect(tips()).toHaveLength(1);
+
+    act(() => {
+      prompt.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      palette.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+
+    expect(tips()).toHaveLength(1);
+    expect(tips()[0].textContent).toContain("38 款 opencode");
+    expect(prompt.hasAttribute("aria-describedby")).toBe(false);
+    expect(palette.getAttribute("aria-describedby")).toBe(tips()[0].id);
+  });
+
+  it("hides the tooltip on Escape", () => {
+    vi.useFakeTimers();
+    render(createBaseUI(React, { lang: "zh", selfId: "deck" }));
+
+    const row = rowOf("dsh-prompt");
+    hover(row);
+    expect(tips()).toHaveLength(1);
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    expect(tips()).toHaveLength(0);
+    expect(row.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  it("exposes the tip to assistive tech when the row takes keyboard focus", () => {
+    vi.useFakeTimers();
+    render(createBaseUI(React, { lang: "zh", selfId: "deck" }));
+
+    const row = rowOf("dsh-prompt");
+    act(() => {
+      row.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+
+    expect(tips()).toHaveLength(1);
+    expect(tips()[0].textContent).toBe(PROMPT_DESC);
+
+    act(() => {
+      row.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      vi.advanceTimersByTime(200);
+    });
+    expect(tips()).toHaveLength(0);
   });
 });

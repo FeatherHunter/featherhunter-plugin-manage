@@ -3,12 +3,12 @@
 <!-- DSH-LABELS: ready-for-agent -->
 <!-- DSH-IDEMPOTENCY-KEY: hac2-t6 -->
 <!-- DSH-CREATED: 2026-10-31T10:35:07.461Z -->
-<!-- DSH-BLOCKED-BY: 05 -->
+<!-- DSH-BLOCKED-BY: 08 -->
 # 06: 装进 web profile + 用户本人目验 + HUMAN-GATE 收口
 
 **What to build:** 把票 05 的五个 tarball 装进 web profile 并由用户本人目验：先备份 ~/.dsh/profiles/web/package.json 与 pnpm-lock.yaml；执行 dsh plugin --profile web add <五个 tarball>（自动装配 bundle 层，不手改 profile；im-companion 本次不需要 dsh-im 宿主）；重启 web-profile 实例加载新 bundle，给用户带令牌的访问地址；用户逐项人眼验收：页头操作组形态、hover 气泡、联系弹窗、深浅色、窄宽、作者插件卡、第 4 钮溢出，逐项记录通过/不通过；不通过回开对应仓修复；通过后更新 HUMAN-GATE 清单与票 14，并提醒用户在规格详情页点「完成」。默认保留本地构建产物直到正式发版，备份可一键回滚。
 
-**Blocked by:** #05
+**Blocked by:** #08
 
 **Status:** ready-for-agent
 
@@ -34,6 +34,15 @@
 ### local — 2026-10-31T15:11:26.346Z
 
 ### local — 2026-10-31T15:29:22.239Z
+
+### local — 2026-10-31T16:15:03.994Z
+## 2026-11-01 00:00 owner 首轮复验结论
+
+- 联系弹窗二维码居中：owner 确认「看了已经居中了」→ 通过（详见票 07 关闭记录）
+- 页头三钮、hover 气泡、深浅色：上一轮 web profile 真机取证已通过
+- 遗留：owner 新增两项要求（作者插件卡完整介绍用 HoverTip 弹出；两处气泡文案结尾调整）→ 已转 **票 08（base 0.1.5）**，本票改为 blocked by 票 08
+
+票 08 完成并重装 web profile 后，本票再请 owner 做最后一轮人眼验收并关闭。
 ## 2026-10-31 23:30 owner 首轮目验反馈 → 0.1.4 热修（进行中）
 owner 反馈两条：
 1. 联系弹窗二维码没有水平居中：左侧有空白、右侧贴边。**已确认为真实缺陷**：`.dsh-base-modal__qr` 是 `width:100%` + `padding:6px` 且 `box-sizing:content-box`（base 注入样式没有全局 border-box 重置），图片盒子比卡片内容列宽 12px 并整体向右溢出。真机 CDP 实测三卡：card 宽 241.3px、img 框 227.3px、左侧留白 13px、右侧仅 1px；浅/深两套卡片一致。

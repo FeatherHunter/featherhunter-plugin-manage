@@ -31,6 +31,114 @@ export interface TipHandle {
   dispose(): void;
 }
 
+/** Default delay before hiding a tooltip after pointer leave (ms). */
+export const TIP_HIDE_DELAY = 160;
+
+export interface TipControllerOptions {
+  /** Delay before hiding after pointer leave (default {@link TIP_HIDE_DELAY}). */
+  hideDelay?: number;
+  /** Max tooltip width in px (default 320). */
+  maxWidth?: number;
+}
+
+export interface TipController {
+  /** Mount the tooltip above (or below) the trigger and describe it. */
+  show(anchor: HTMLElement, content: string): void;
+  /** Hide after the shared leave delay; a re-enter cancels it. */
+  hideSoon(): void;
+  /** Hide immediately; also drops the aria wiring. */
+  hideNow(): void;
+  /** Permanent teardown for unmounting hosts. */
+  dispose(): void;
+}
+
+/**
+ * Imperative tooltip controller for controls that must keep their own DOM and
+ * cannot add a wrapper element (header cluster buttons cannot, nor can author
+ * plugin rows whose layout is driven by flex + text-overflow).
+ *
+ * It is the same engine as {@link createHoverTip} and {@link mountTip}: one
+ * tooltip on screen at a time, the shared 160ms leave delay, aria-describedby
+ * wired to the live trigger and Escape hides it at once.
+ */
+export function createTipController(options: TipControllerOptions = {}): TipController {
+  const hideDelay = options.hideDelay ?? TIP_HIDE_DELAY;
+  let handle: TipHandle | null = null;
+  let described: HTMLElement | null = null;
+  let hideTimer: ReturnType<typeof setTimeout> | null = null;
+  let onKeyDown: ((event: KeyboardEvent) => void) | null = null;
+
+  function boundedDocument(): Document | null {
+    return typeof document === "undefined" ? null : document;
+  }
+
+  function unbindEscape(): void {
+    const doc = boundedDocument();
+    if (!doc || !onKeyDown) return;
+    doc.removeEventListener("keydown", onKeyDown, true);
+    onKeyDown = null;
+  }
+
+  function clearDescribed(): void {
+    if (!described) return;
+    described.removeAttribute("aria-describedby");
+    described = null;
+  }
+
+  function hideNow(): void {
+    if (hideTimer !== null) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+    unbindEscape();
+    if (handle) {
+      handle.dispose();
+      handle = null;
+    }
+    clearDescribed();
+  }
+
+  return {
+    show(anchor: HTMLElement, content: string): void {
+      if (typeof document === "undefined") return;
+      if (hideTimer !== null) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      if (handle) {
+        handle.dispose();
+        handle = null;
+      }
+      clearDescribed();
+      const tip = mountTip(anchor, content, {
+        exclusive: true,
+        maxWidth: options.maxWidth,
+      });
+      handle = tip;
+      if (tip.id) {
+        anchor.setAttribute("aria-describedby", tip.id);
+        described = anchor;
+      }
+      const doc = boundedDocument();
+      if (doc && !onKeyDown) {
+        onKeyDown = (event: KeyboardEvent): void => {
+          if (event.key === "Escape") hideNow();
+        };
+        doc.addEventListener("keydown", onKeyDown, true);
+      }
+    },
+    hideSoon(): void {
+      if (hideTimer !== null) clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        hideTimer = null;
+        hideNow();
+      }, hideDelay);
+    },
+    hideNow,
+    dispose: hideNow,
+  };
+}
+
 /**
  * Mount one tooltip for an anchor.
  *

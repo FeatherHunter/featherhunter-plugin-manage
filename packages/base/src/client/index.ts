@@ -9,6 +9,7 @@ import {
   type ContentLoader,
   type LoadedContent,
 } from "./content";
+import { createTipController } from "./hover-tip";
 import { contactIcon, externalLinkIcon } from "./icons";
 import { mountContactModal, type ContactModalHandle } from "./modal";
 import { renderAuthorPlugins } from "./plugins";
@@ -321,6 +322,10 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
   function AuthorPlugins(props: AuthorPluginsProps): ReactNamespace.ReactElement | null {
     const explicitPlugins = props.plugins;
     const [remotePlugins, setRemotePlugins] = React.useState<PluginEntry[] | null>(null);
+    // The description line is clipped with an ellipsis, so every row explains
+    // itself through the shared HoverTip engine on hover / focus.
+    const tip = React.useMemo(() => createTipController(), []);
+    React.useEffect(() => () => tip.dispose(), [tip]);
 
     React.useEffect(() => {
       if (explicitPlugins !== undefined) return undefined;
@@ -353,6 +358,7 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
       maxRows: props.maxRows ?? options.maxRows,
       title: props.title ?? resolveText("plugins", lang, options.texts),
       className: props.className,
+      tip,
     });
   }
 

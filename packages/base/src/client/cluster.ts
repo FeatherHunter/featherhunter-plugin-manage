@@ -5,7 +5,7 @@ import {
   moreClusterIcon,
   starClusterIcon,
 } from "./cluster-icons";
-import { mountTip, type TipHandle } from "./hover-tip";
+import { createTipController } from "./hover-tip";
 import type { TextKey } from "./texts";
 import type { ActionClusterItem, ActionClusterProps } from "./types";
 
@@ -24,8 +24,6 @@ export interface ActionClusterDeps {
 
 const DEFAULT_SIZE = 16;
 const DEFAULT_GAP = 4;
-/** Same leave delay as the public HoverTip control. */
-const TIP_HIDE_DELAY = 160;
 /** Button box around the icon: 16 + 12 = 28 (matches the design spec). */
 const BUTTON_PADDING = 12;
 
@@ -40,92 +38,6 @@ function classes(...parts: Array<string | false | undefined>): string {
 /** Accessible per-action glow colour and stable test hook live on this class. */
 function actionClass(id: string): string {
   return "dsh-base-cluster__btn--" + id.replace(/[^a-zA-Z0-9_-]/g, "-");
-}
-
-interface ClusterTip {
-  show(anchor: HTMLElement, content: string): void;
-  hideSoon(): void;
-  hideNow(): void;
-  dispose(): void;
-}
-
-/**
- * Per-cluster tooltip controller built on the shared tip engine (mountTip):
- * one tooltip at a time, 160ms leave delay, aria-describedby wired while it is
- * visible, Escape hides it. The buttons stay direct children of the cluster;
- * nothing wraps them.
- */
-function createClusterTip(): ClusterTip {
-  let handle: TipHandle | null = null;
-  let described: HTMLElement | null = null;
-  let hideTimer: ReturnType<typeof setTimeout> | null = null;
-  let onKeyDown: ((event: KeyboardEvent) => void) | null = null;
-
-  function boundedDocument(): Document | null {
-    return typeof document === "undefined" ? null : document;
-  }
-
-  function unbindEscape(): void {
-    const doc = boundedDocument();
-    if (!doc || !onKeyDown) return;
-    doc.removeEventListener("keydown", onKeyDown, true);
-    onKeyDown = null;
-  }
-
-  function clearDescribed(): void {
-    if (!described) return;
-    described.removeAttribute("aria-describedby");
-    described = null;
-  }
-
-  function hideNow(): void {
-    if (hideTimer !== null) {
-      clearTimeout(hideTimer);
-      hideTimer = null;
-    }
-    unbindEscape();
-    if (handle) {
-      handle.dispose();
-      handle = null;
-    }
-    clearDescribed();
-  }
-
-  return {
-    show(anchor: HTMLElement, content: string): void {
-      if (hideTimer !== null) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-      if (handle) {
-        handle.dispose();
-        handle = null;
-      }
-      clearDescribed();
-      const tip = mountTip(anchor, content, { exclusive: true });
-      handle = tip;
-      if (tip.id) {
-        anchor.setAttribute("aria-describedby", tip.id);
-        described = anchor;
-      }
-      const doc = boundedDocument();
-      if (doc && !onKeyDown) {
-        onKeyDown = (event: KeyboardEvent): void => {
-          if (event.key === "Escape") hideNow();
-        };
-        doc.addEventListener("keydown", onKeyDown, true);
-      }
-    },
-    hideSoon(): void {
-      if (hideTimer !== null) clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => {
-        hideTimer = null;
-        hideNow();
-      }, TIP_HIDE_DELAY);
-    },
-    hideNow,
-    dispose: hideNow,
-  };
 }
 
 /**
@@ -178,7 +90,7 @@ export function createActionCluster(
     const size = props.size ?? DEFAULT_SIZE;
     const gap = props.gap ?? DEFAULT_GAP;
     const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
-    const tip = React.useMemo(() => createClusterTip(), []);
+    const tip = React.useMemo(() => createTipController(), []);
     const [menuOpen, setMenuOpen] = React.useState(false);
     const moreRef = React.useRef<HTMLButtonElement | null>(null);
     const menuRef = React.useRef<HTMLDivElement | null>(null);
