@@ -20,6 +20,22 @@
 ## Comments
 
 ### local — 2026-10-31T13:45:19.492Z
+
+### local — 2026-10-31T15:11:26.346Z
+## 2026-10-31 23:10 重装说明（0.1.3 轮）
+
+票 07 修完二维码降级缺陷后，web profile 已用 base 0.1.3 的新产物重装并重启：
+- 备份：`D:\temp\hac2-pack\web-profile-backup-20261031-230429`（回滚就把它复制回 `C:\Users\辰辰洋洋\.dsh\profiles\web` 再重启）
+- 安装方式：`dsh plugin --profile web add D:\temp\hac2-pack\b013\<五个 tarball>`；之后 `dsh --profile web --port 3080 --no-open` 启动
+- 当前访问地址（token 每次启动随机，进程重启即失效）：`http://127.0.0.1:3080/?token=zJs6HIwZTHO9QiH8n_ncbB_2Kf9kbS-Mlb48puQEpMM`
+- 日志：`D:\temp\hac2-pack\web-serve.log`
+
+请 owner 本人按下面顺序人眼看一遍（每项都点开左侧「设置」→ 对应插件分区）：
+1. 五个设置分区页头右侧各有一排三枚彩色图标（蓝紫对话气泡 / 金色星 / 珊瑚粉气泡），无外框、无底色；鼠标悬停 0.2 秒内弹出深色气泡文案，三句分别对应联系群 / Star / Issue。
+2. 点「联系我们」弹窗：三张卡（飞书 / QQ / 微信群）都要有二维码；微信群卡有效期写着 11 月 7 日前。
+3. 深浅色切换（设置 → 通用设置里切主题）后再看三枚图标是否仍清晰。
+4. MattSkills 分区底部作者插件卡、IM 分区底部作者插件卡是否各只有一张、不重复。
+5. 把设置窗拉窄，看页头三枚图标是否被挤掉或换行错位。
 ## 真机取证记录（2026-10-31 21:00–22:00，代理侧）
 
 **安装**：profile 目录写 .npmrc（registry=https://registry.npmmirror.com/）绕过本机对 registry.npmjs.org 的 TLS 阻断后，`dsh plugin --profile web add` 五个 tarball 成功（Packages: +6，pnpm v11.28.5，964ms）。profile package.json 的 dependencies 已全部指向 file:D:/temp/hac2-pack/*.tgz，bundles 由 6 个增至 8 个（新增 dsh-im-companion、dsh-life-pack）。安装前备份：D:\temp\hac2-pack\web-profile-backup-20261031-204444（package.json / pnpm-lock.yaml / cordis.patch.yml / cordis.yml / pnpm-workspace.yaml）。
@@ -35,4 +51,5 @@
 
 ## 进度
 
+- 进度：85%（2026-10-31T23:11:25+08:00）：0.1.3 产物已装入 web profile 并重启，等 owner 人眼看五项
 - 进度：70%（2026-10-31T21:45:19+08:00）：安装+代理级真机取证完成；发现微信二维码降级缺陷已开票 07；用户目验待做
