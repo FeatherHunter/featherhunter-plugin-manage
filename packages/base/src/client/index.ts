@@ -66,8 +66,18 @@ function resolveBaselineQr(group: Group): string | null {
 }
 
 /**
- * Resolve a card image. Remote codes only use bytes that were prefetched and
- * size-checked by the content loader; anything else degrades to a link.
+ * The offline code for a group, matched by id. Remote groups use the same
+ * lookup as their safety net: the published manifest may win on copy while its
+ * image is still in flight (or never arrives), and a card with no code is
+ * worse than a card with yesterday's code.
+ */
+function resolveBundledQrForGroupId(id: string): string | null {
+  return BASELINE.qr["qr-" + id] ?? null;
+}
+
+/**
+ * Resolve a card image: prefetched and size-checked remote bytes first, the
+ * bundled copy as the safety net, and only then a degraded link.
  */
 function resolveGroupQr(
   group: Group,
@@ -75,8 +85,8 @@ function resolveGroupQr(
   loader: ContentLoader | null,
 ): string | null {
   if (group.qr.kind === "bundled") return resolveBaselineQr(group);
-  if (!content || !loader) return null;
-  return loader.imageFor(content, group.qr.path);
+  const remote = content && loader ? loader.imageFor(content, group.qr.path) : null;
+  return remote ?? resolveBundledQrForGroupId(group.id);
 }
 
 function mergeTexts(overrides?: TextOverrides, extra?: TextOverrides): TextOverrides | undefined {

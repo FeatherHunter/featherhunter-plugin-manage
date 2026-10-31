@@ -187,21 +187,26 @@ describe("buildManifest", () => {
     expect(publishedName("qr-wechat-2026-10-31.png")).toBe("qr-wechat-2026-10-31.png");
   });
 
-  it("inlines only the permanent codes into the baseline", () => {
+  it("inlines every published code into the baseline", () => {
     const source = validateGroupsSource(realGroups());
     const plugins = validatePluginsSource(realPlugins()).plugins;
     const manifest = buildManifest({ version: "0.0.1", source, plugins });
     const png = encodeTruecolorPng({ width: 2, height: 2, data: new Uint8Array(16).fill(255) });
-    const qrPng = new Map<string, Buffer>([["feishu", png], ["qq", png]]);
+    const qrPng = new Map<string, Buffer>([["feishu", png], ["qq", png], ["wechat", png]]);
     const baseline = buildBaseline(manifest, qrPng);
 
-    expect(Object.keys(baseline.qr).sort()).toEqual(["qr-feishu", "qr-qq"]);
+    expect(Object.keys(baseline.qr).sort()).toEqual(["qr-feishu", "qr-qq", "qr-wechat"]);
     for (const uri of Object.values(baseline.qr)) {
       expect(uri.startsWith("data:image/png;base64,")).toBe(true);
     }
+    // The bundled copy is a safety net, so every group ships with a code even
+    // while the remote manifest (still remote on purpose) is unavailable.
+    for (const group of baseline.manifest.groups) {
+      expect(group.qr.kind).toBe("bundled");
+    }
     const wechat = baseline.manifest.groups.find((group: Group) => group.id === "wechat")!;
-    expect(wechat.qr).toEqual({ kind: "remote", path: "qr-wechat-2026-10-31.png" });
-    expect(BUNDLED_PLATFORMS.has("wechat")).toBe(false);
+    expect(wechat.qr).toEqual({ kind: "bundled", key: "qr-wechat" });
+    expect(BUNDLED_PLATFORMS.has("wechat")).toBe(true);
 
     expect(() => buildBaseline(manifest, new Map())).toThrow(/missing generated QR for group "feishu"/);
   });
@@ -228,7 +233,7 @@ describe("generateData", () => {
       const png = decodeImage(Buffer.from(uri.slice("data:image/png;base64,".length), "base64"));
       expect(png.width).toBe(QR_SIZE);
       expect(png.height).toBe(QR_SIZE);
-      expect(key).toMatch(/^qr-(feishu|qq)$/);
+      expect(key).toMatch(/^qr-(feishu|qq|wechat)$/);
     }
 
     const baselineText = readFileSync(baselineFile, "utf8");

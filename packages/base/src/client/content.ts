@@ -13,11 +13,24 @@ import type { Group, Manifest } from "../core/types";
 /** Published package name; the CDN URLs below are derived from it. */
 export const PACKAGE_NAME = "dsh-featherhunter-plugin-base";
 
-/** One request may take at most 1.5s; there are no retries. */
+/** One manifest request may take at most 1.5s; there are no retries inside a load. */
 export const MANIFEST_TIMEOUT_MS = 1500;
 
-/** A fetched manifest (success or failure) is reused for 30 minutes. */
+/**
+ * QR images get a much longer window than the manifest. A cold TLS handshake
+ * to a CDN measured 2.0s on the maintainer network, and a missing code is
+ * user-visible while a slow manifest only delays the background refresh.
+ */
+export const CONTENT_IMAGE_TIMEOUT_MS = 6000;
+
+/** A successful manifest is reused for 30 minutes. */
 export const MANIFEST_CACHE_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * A failed manifest fetch is only remembered for a minute, so reopening the
+ * dialog retries instead of losing the remote cards for half an hour.
+ */
+export const MANIFEST_FAILURE_TTL_MS = 60 * 1000;
 
 /** Hard cap for a single QR image, enforced before it is shown. */
 export const MAX_IMAGE_BYTES = 512 * 1024;
@@ -95,7 +108,12 @@ export interface ContentLoaderOptions {
   manifestUrl?: string;
   packageName?: string;
   fetchImpl?: FetchLike;
+  /** Window for one manifest request (default 1.5s). */
   timeoutMs?: number;
+  /** Window for one QR image request (default 6s). */
+  imageTimeoutMs?: number;
+  /** How long a completely failed load is remembered (default 60s). */
+  failureTtlMs?: number;
   maxImageBytes?: number;
   /** Clock override (testing seam). */
   now?: () => number;
@@ -254,6 +272,8 @@ export function resetContentCache(): void {
 export class ContentLoader {
   readonly packageName: string;
   readonly timeoutMs: number;
+  readonly imageTimeoutMs: number;
+  readonly failureTtlMs: number;
   readonly maxImageBytes: number;
   private readonly fetchImpl: FetchLike;
   private readonly now: () => number;
@@ -265,6 +285,8 @@ export class ContentLoader {
       throw new Error("invalid package name: " + this.packageName);
     }
     this.timeoutMs = options.timeoutMs ?? MANIFEST_TIMEOUT_MS;
+    this.imageTimeoutMs = options.imageTimeoutMs ?? CONTENT_IMAGE_TIMEOUT_MS;
+    this.failureTtlMs = options.failureTtlMs ?? MANIFEST_FAILURE_TTL_MS;
     this.maxImageBytes = options.maxImageBytes ?? MAX_IMAGE_BYTES;
     this.now = options.now ?? (() => Date.now());
     const injected = options.fetchImpl ?? (globalThis.fetch as unknown as FetchLike | undefined);
@@ -283,21 +305,26 @@ export class ContentLoader {
     }
   }
 
-  /** Cached content when it is still inside the 30 minute window. */
+  /** Success lives 30 minutes; a hard failure only 60 seconds. */
+  private ttlFor(content: LoadedContent | null): number {
+    return content === null ? this.failureTtlMs : MANIFEST_CACHE_TTL_MS;
+  }
+
+  /** Cached result while it is still inside its own window. */
   getCached(): LoadedContent | null {
     if (!sessionCache) return null;
-    if (this.now() - sessionCache.at >= MANIFEST_CACHE_TTL_MS) return null;
+    if (this.now() - sessionCache.at >= this.ttlFor(sessionCache.content)) return null;
     return sessionCache.content;
   }
 
   /**
-   * Fetch and validate the manifest once per 30 minutes; concurrent callers
-   * share one request. Resolves to null when every channel failed.
+   * Fetch and validate the manifest once per window; concurrent callers share
+   * one request. Resolves to null when every channel failed, and that empty
+   * result is only kept for a minute so the next open can retry.
    */
   load(): Promise<LoadedContent | null> {
-    const cached = this.getCached();
-    if (cached !== null || (sessionCache !== null && this.now() - sessionCache.at < MANIFEST_CACHE_TTL_MS)) {
-      return Promise.resolve(cached);
+    if (sessionCache !== null && this.now() - sessionCache.at < this.ttlFor(sessionCache.content)) {
+      return Promise.resolve(sessionCache.content);
     }
     if (inFlight) return inFlight;
     const startedAt = this.now();
@@ -357,7 +384,7 @@ export class ContentLoader {
   }
 
   private async fetchImage(url: string): Promise<string | null> {
-    const response = await this.request(url);
+    const response = await this.request(url, this.imageTimeoutMs);
     if (!response.ok) return null;
     const declared = Number(response.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > this.maxImageBytes) return null;
@@ -400,16 +427,16 @@ export class ContentLoader {
     return text;
   }
 
-  /** One request with the 1.5s abort window; the timer is always cleared. */
-  private async request(url: string): Promise<FetchResponseLike> {
+  /** One request with its own abort window; the timer is always cleared. */
+  private async request(url: string, timeoutMs: number = this.timeoutMs): Promise<FetchResponseLike> {
     if (!isAllowedCdnUrl(url)) throw new Error("blocked url: " + url);
     const controller = typeof AbortController === "function" ? new AbortController() : null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         if (controller) controller.abort();
-        reject(new Error("timeout after " + this.timeoutMs + "ms"));
-      }, this.timeoutMs);
+        reject(new Error("timeout after " + timeoutMs + "ms"));
+      }, timeoutMs);
     });
     try {
       const request = this.fetchImpl(url, {

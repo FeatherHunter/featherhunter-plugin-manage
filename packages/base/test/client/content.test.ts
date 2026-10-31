@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CONTENT_IMAGE_TIMEOUT_MS,
   ContentLoader,
   MANIFEST_CACHE_TTL_MS,
+  MANIFEST_FAILURE_TTL_MS,
   MANIFEST_TIMEOUT_MS,
   MAX_IMAGE_BYTES,
   MAX_MANIFEST_BYTES,
@@ -378,8 +380,31 @@ describe("ContentLoader cache", () => {
     expect(calls).toHaveLength(attempts);
   });
 
-  it("exposes the 1.5s default timeout", () => {
+  it("retries a failed fetch after the 60s failure window, not before", async () => {
+    let clock = 1_000_000;
+    let fail = true;
+    const { fetch, calls } = scriptedFetch(() => (fail ? null : jsonResponse(manifest())));
+    const loader = createContentLoader({ fetchImpl: fetch, now: () => clock });
+
+    expect(await loader.load()).toBeNull();
+    const failedAttempts = calls.length;
+
+    clock += MANIFEST_FAILURE_TTL_MS - 1;
+    expect(await loader.load()).toBeNull();
+    expect(calls).toHaveLength(failedAttempts);
+
+    clock += 1;
+    fail = false;
+    expect(await loader.load()).not.toBeNull();
+    expect(calls.length).toBeGreaterThan(failedAttempts);
+  });
+
+  it("exposes the 1.5s manifest window, the 6s image window and the 60s failure window", () => {
     expect(MANIFEST_TIMEOUT_MS).toBe(1500);
+    expect(CONTENT_IMAGE_TIMEOUT_MS).toBe(6000);
+    expect(CONTENT_IMAGE_TIMEOUT_MS).toBeGreaterThan(MANIFEST_TIMEOUT_MS);
+    expect(MANIFEST_FAILURE_TTL_MS).toBe(60_000);
+    expect(MANIFEST_FAILURE_TTL_MS).toBeLessThan(MANIFEST_CACHE_TTL_MS);
   });
 });
 
@@ -454,6 +479,39 @@ describe("image prefetch and size cap", () => {
     await expect(loader.preload()).resolves.toBeUndefined();
     expect(loader.getCached()).not.toBeNull();
     expect(calls.length).toBeGreaterThan(1);
+  });
+});
+
+describe("image timeout", () => {
+  const imageUrlsFor = (version = "0.0.1") => imageUrls(version, "qr-wechat.png");
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  it("lets an image slower than the manifest window still arrive", async () => {
+    const [primary] = imageUrlsFor();
+    const { fetch } = scriptedFetch((url) => {
+      if (url === UNPKG_URL) return jsonResponse(manifest());
+      if (url === primary) return sleep(60).then(() => imageResponse(64));
+      return null;
+    });
+    // Manifest window 20ms, image window 6000ms: only a shared window fails here.
+    const loader = createContentLoader({ fetchImpl: fetch, timeoutMs: 20 });
+    const content = await loader.load();
+    expect(content).not.toBeNull();
+    await loader.ensureImages(content!);
+    expect(loader.imageFor(content, "qr-wechat.png") ?? "").toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("gives up on an image slower than the image window", async () => {
+    const [primary, mirror] = imageUrlsFor();
+    const { fetch } = scriptedFetch((url) => {
+      if (url === UNPKG_URL) return jsonResponse(manifest());
+      if (url === primary || url === mirror) return sleep(200).then(() => imageResponse(64));
+      return null;
+    });
+    const loader = createContentLoader({ fetchImpl: fetch, imageTimeoutMs: 30 });
+    const content = await loader.load();
+    await loader.ensureImages(content!);
+    expect(loader.imageFor(content, "qr-wechat.png")).toBeNull();
   });
 });
 

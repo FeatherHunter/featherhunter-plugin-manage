@@ -6,7 +6,7 @@
  *   contact/src/card-*.   -> data/img/card-*.png (260px wide, palette PNG)
  *   contact/crops.json    -> QR crop boxes used to cut the crops out of cards
  *   contact/plugins.json  -> data/manifest.json plugins
- *   everything above      -> src/core/baseline.ts (feishu/QQ QR codes inlined)
+ *   everything above      -> src/core/baseline.ts (every QR code inlined)
  *
  * Run with `npm run build:data`; pass `--check` to compare without writing.
  * The output is deterministic: the same input always produces the same bytes.
@@ -27,8 +27,12 @@ export const QR_COLORS = 16;
 export const CARD_WIDTH = 260;
 /** Palette size of the card screenshots (8-bit palette PNG). */
 export const CARD_COLORS = 256;
-/** Platforms whose QR code is inlined into the offline baseline. */
-export const BUNDLED_PLATFORMS: ReadonlySet<string> = new Set(["feishu", "qq"]);
+/**
+ * Platforms whose QR code is inlined into the offline baseline. Every group is
+ * bundled: the published manifest keeps all codes remote so a refresh can swap
+ * in a newer code, and the bundled copy is the offline safety net behind it.
+ */
+export const BUNDLED_PLATFORMS: ReadonlySet<string> = new Set(["feishu", "qq", "wechat"]);
 /** Baseline size budget for the QR crops (base64, three codes). */
 export const QR_BASE64_BUDGET = 80 * 1024;
 
@@ -320,8 +324,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
 }
 
 /**
- * Turn the published manifest into the offline baseline: the permanent codes
- * (feishu/QQ) are switched to `bundled` and their PNGs inlined as data URIs.
+ * Turn the published manifest into the offline baseline: every group's code is
+ * switched to `bundled` and its PNG inlined as a data URI, so a card still
+ * shows a scannable code when the CDN is slow or unreachable.
  */
 export function buildBaseline(manifest: Manifest, qrPng: ReadonlyMap<string, Buffer>): BaselineContent {
   const qr: Record<string, string> = {};

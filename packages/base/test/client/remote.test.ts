@@ -161,6 +161,21 @@ describe("remote manifest refresh", () => {
     expect(cardFor("wechat").classList.contains("dsh-base-modal__card--expired")).toBe(false);
   });
 
+  it("falls back to the bundled code when a remote image never arrives", async () => {
+    const fetch: FetchLike = async (url) => {
+      if (url === UNPKG_URL) return jsonResponse(remoteManifest());
+      throw new Error("image unavailable");
+    };
+    const ui = createBaseUI(React, { lang: "zh", fetchImpl: fetch });
+    ui.openContactModal({ now: NOW });
+    await settle();
+
+    // The remote manifest is authoritative for the card copy, but a code that
+    // never arrives must not leave the card empty: the bundled copy stands in.
+    const image = cardFor("wechat").querySelector("img");
+    expect(image?.getAttribute("src")).toBe(BASELINE.qr["qr-wechat"]);
+  });
+
   it("degrades an expired remote code to the manifest fallback link", async () => {
     const manifest = remoteManifest({
       groups: [
