@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createBaseUI } from "../src/client/index";
+import { createBaseUI, resolveText } from "../src/client/index";
 
 /**
  * Demo-only QR placeholder: the real baseline images land with ticket 03 and
@@ -17,7 +17,10 @@ const DEMO_QR_SVG =
 
 const DEMO_QR = "data:image/svg+xml;utf8," + encodeURIComponent(DEMO_QR_SVG);
 
-const demoOptions = { lang: "zh" as const, selfId: "deck", resolveQr: () => DEMO_QR };
+/** Demo host repo: the real deck, so the links point somewhere sensible. */
+const REPO = "https://github.com/FeatherHunter/dsh-mattpocock-skills-deck";
+
+const demoOptions = { lang: "zh" as const, selfId: "deck", resolveQr: () => DEMO_QR, repoUrl: REPO };
 const base = createBaseUI(React, demoOptions);
 const baseEn = createBaseUI(React, { ...demoOptions, lang: "en" as const });
 
@@ -29,20 +32,102 @@ const pageStyle: React.CSSProperties = {
   color: "#1f2329",
 };
 
+const captionStyle: React.CSSProperties = {
+  fontSize: 13,
+  opacity: 0.65,
+  margin: "0 0 8px",
+};
+
+/** A settings-panel header mock: title on the left, actions on the right. */
+function HeaderMock({ ui, dark }: { ui: typeof base; dark?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "12px 16px",
+        borderRadius: 10,
+        border: "1px solid " + (dark ? "#3a3f4b" : "#e5e8ee"),
+        background: dark ? "#17181c" : "#fff",
+        color: dark ? "#e8eaed" : "#1f2329",
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>插件设置</div>
+        <div style={{ fontSize: 12, opacity: 0.6 }}>页头右组 · ActionGroup</div>
+      </div>
+      <ui.ActionGroup size={18} />
+    </div>
+  );
+}
+
+/**
+ * Static proof of the three hover copies: HoverTip pinned open with
+ * visible, so a screenshot can review the wording and the pill styling.
+ */
+function TipShowcase({ ui, lang }: { ui: typeof base; lang: "zh" | "en" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 56, paddingTop: 56 }}>
+      <div>
+        <ui.HoverTip content={resolveText("contactTip", lang)} visible>
+          <ui.ContactButton size={18} tip="" />
+        </ui.HoverTip>
+      </div>
+      <div>
+        <ui.HoverTip content={resolveText("starTip", lang)} visible>
+          <ui.StarButton size={18} tip="" />
+        </ui.HoverTip>
+      </div>
+      <div>
+        <ui.HoverTip content={resolveText("issueTip", lang)} visible>
+          <ui.IssueButton size={18} tip="" />
+        </ui.HoverTip>
+      </div>
+    </div>
+  );
+}
+
 function App() {
-  const [english, setEnglish] = useState(false);
+  // ?lang=en renders the English copy straight away (screenshots / review).
+  const [english, setEnglish] = useState(
+    () => new URLSearchParams(window.location.search).get("lang") === "en",
+  );
   const ui = english ? baseEn : base;
+  const lang = english ? ("en" as const) : ("zh" as const);
   return (
     <main style={pageStyle}>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>dsh-featherhunter-plugin-base</h1>
       <p style={{ fontSize: 14, opacity: 0.7, marginTop: 0 }}>
-        演示：联系弹窗（票 04）与作者插件卡（票 06）。弹窗支持零参打开、4 列上限、窄屏降列、Esc / 遮罩 /
-        关闭按钮关闭、焦点回归、群号点击复制、过期降级链接；插件卡默认排除自己（deck）后显示 4 项，
-        行内是图标 + 包名 + 一句话描述 + 外链图标，整行点击在新标签打开仓库。
+        演示：联系弹窗（票 04）、作者插件卡（票 06），以及新增的页头三件套——联系 / Star / Issue
+        三枚线稿图标按钮、三项合一的胶囊控件、公共 HoverTip 悬浮文案。弹窗支持零参打开、4
+        列上限、窄屏降列、Esc / 遮罩 / 关闭按钮关闭、焦点回归、群号点击复制、过期降级链接。
       </p>
 
+      <section style={{ marginTop: 24 }}>
+        <p style={captionStyle}>页头右组：三项合一（浅色 / 深色跟随 currentColor）</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <HeaderMock ui={ui} />
+          <HeaderMock ui={ui} dark />
+        </div>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <p style={captionStyle}>三个独立按钮（ActionButtons，14 / 16 / 18 三档）</p>
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <ui.ActionButtons size={14} />
+          <ui.ActionButtons />
+          <ui.ActionButtons size={18} />
+        </div>
+      </section>
+
+      <section style={{ marginTop: 8 }}>
+        <p style={captionStyle}>悬浮文案（此处用 visible 常驻展示，真机是鼠标悬停 / 键盘聚焦出）</p>
+        <TipShowcase ui={ui} lang={lang} />
+      </section>
+
       <section style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "24px 0" }}>
-        <ui.ContactButton />
         <button
           type="button"
           onClick={() => ui.openContactModal()}
@@ -69,14 +154,12 @@ function App() {
       <ui.ContactRow hint="设置面板里的一行" />
 
       <section style={{ marginTop: 24 }}>
-        <p style={{ fontSize: 13, opacity: 0.65, margin: "0 0 8px" }}>
-          作者插件卡：默认排除自己（{english ? "4 rows" : "4 项"}）
-        </p>
+        <p style={captionStyle}>作者插件卡：默认排除自己（{english ? "4 rows" : "4 项"}）</p>
         <ui.AuthorPlugins />
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <p style={{ fontSize: 13, opacity: 0.65, margin: "0 0 8px" }}>
+        <p style={captionStyle}>
           作者插件卡：showSelf（{english ? "5 rows" : "含自己在内 5 项"}）
         </p>
         <ui.AuthorPlugins showSelf maxRows={5} />

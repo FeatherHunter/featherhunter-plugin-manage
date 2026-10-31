@@ -56,6 +56,55 @@ export function gridIcon(h: H, size: number): ReactNamespace.ReactElement {
   );
 }
 
+/**
+ * Five-point star outline: the Star affordance. Same line grammar as
+ * contactIcon (24px grid, currentColor, 1.8 stroke, round joins), so the three
+ * header actions read as one family.
+ */
+export function starIcon(h: H, size: number): ReactNamespace.ReactElement {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.8,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      "aria-hidden": "true",
+      focusable: "false",
+    },
+    h("path", {
+      d: "M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.6-5.1-2.7-5.1 2.7 1-5.6-4.1-4 5.7-.8Z",
+      key: "star",
+    }),
+  );
+}
+
+/** Circled exclamation: the Issue affordance (GitHub "issue opened" meaning). */
+export function issueIcon(h: H, size: number): ReactNamespace.ReactElement {
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.8,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      "aria-hidden": "true",
+      focusable: "false",
+    },
+    h("circle", { cx: 12, cy: 12, r: 9, key: "ring" }),
+    h("path", { d: "M12 7.8v4.8", key: "stem" }),
+    h("path", { d: "M12 16.2h.01", key: "dot" }),
+  );
+}
+
 /** Square + diagonal arrow: the "opens in a new tab" affordance. */
 export function externalLinkIcon(h: H): ReactNamespace.ReactElement {
   return h(

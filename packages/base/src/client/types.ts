@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { Group, Lang, PluginEntry } from "../core/types";
 import type { ContentLoader, FetchLike } from "./content";
 import type { TextOverrides } from "./texts";
@@ -37,14 +37,72 @@ export interface BaseUIOptions {
   showSelf?: boolean;
   /** Max rows of the author plugin list (default 5). */
   maxRows?: number;
+  /** GitHub repo URL used by StarButton / ActionButtons (Star target). */
+  repoUrl?: string;
+  /** Issues URL used by IssueButton; derived from repoUrl when omitted. */
+  issuesUrl?: string;
 }
 
-export interface ContactButtonProps {
+/** Icon size in px: compact 14, header default 16, roomy 18. */
+export type ActionIconSize = 14 | 16 | 18;
+
+/** Hover copy and accessible name shared by every header action. */
+export interface ActionButtonProps {
   className?: string;
-  /** Overrides the default aria label / hover tooltip. */
-  title?: string;
   /** Icon size in px (14 / 16 / 18, default 16). */
-  size?: 14 | 16 | 18;
+  size?: ActionIconSize;
+  /** Overrides the built-in hover copy. */
+  tip?: string;
+  /** Overrides the accessible name (the icon carries no visible text). */
+  label?: string;
+}
+
+export interface ContactButtonProps extends ActionButtonProps {
+  /** Overrides the aria label of the contact dialog trigger. */
+  title?: string;
+}
+
+export interface StarButtonProps extends ActionButtonProps {
+  /** Repo quoted in the star link; defaults to the createBaseUI option. */
+  repoUrl?: string;
+}
+
+export interface IssueButtonProps extends ActionButtonProps {
+  /** Issues URL; defaults to `<repo>/issues` when only a repo is known. */
+  issuesUrl?: string;
+  /** Repo used to derive the issues URL when issuesUrl is omitted. */
+  repoUrl?: string;
+}
+
+/** The three header actions as separate icon buttons. */
+export interface ActionButtonsProps {
+  className?: string;
+  size?: ActionIconSize;
+  repoUrl?: string;
+  issuesUrl?: string;
+}
+
+/** The three header actions packed into one bordered capsule. */
+export type ActionGroupProps = ActionButtonsProps;
+
+/**
+ * One-line hover copy anchored to a trigger. The tooltip renders in
+ * document.body (fixed), flips below near the top edge and is clamped inside
+ * the viewport; only one tooltip is visible at a time.
+ */
+export interface HoverTipProps {
+  /** Tooltip copy; an empty string renders the trigger without a tooltip. */
+  content: string;
+  children?: ReactNode;
+  className?: string;
+  /** Max tooltip width in px (default 320). */
+  maxWidth?: number;
+  /** Preferred side; flips automatically when the viewport has no room. */
+  placement?: "top" | "bottom";
+  /** Delay before hiding after pointer leave, in ms (default 160). */
+  hideDelay?: number;
+  /** Controlled visibility (demo / screenshot); omit for hover behaviour. */
+  visible?: boolean;
 }
 
 export interface ContactRowProps {
@@ -87,6 +145,14 @@ export interface OpenContactModalOptions {
 /** Widget set returned by createBaseUI. */
 export interface BaseUI {
   ContactButton: ComponentType<ContactButtonProps>;
+  StarButton: ComponentType<StarButtonProps>;
+  IssueButton: ComponentType<IssueButtonProps>;
+  /** Contact + Star + Issue as separate icon buttons. */
+  ActionButtons: ComponentType<ActionButtonsProps>;
+  /** Contact + Star + Issue inside one 1px capsule (tight page headers). */
+  ActionGroup: ComponentType<ActionGroupProps>;
+  /** Public hover-copy control (deck-style tooltip) for host use. */
+  HoverTip: ComponentType<HoverTipProps>;
   ContactRow: ComponentType<ContactRowProps>;
   AuthorPlugins: ComponentType<AuthorPluginsProps>;
   openContactModal: (options?: OpenContactModalOptions) => () => void;

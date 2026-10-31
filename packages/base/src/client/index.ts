@@ -1,6 +1,7 @@
 import type * as ReactNamespace from "react";
 import { BASELINE, resolveLang } from "../core/index";
 import type { Group, Lang, PluginEntry } from "../core/types";
+import { createActions } from "./actions";
 import {
   createContentLoader,
   type ContentLoader,
@@ -14,7 +15,6 @@ import type {
   AuthorPluginsProps,
   BaseUI,
   BaseUIOptions,
-  ContactButtonProps,
   ContactRowProps,
   OpenContactModalOptions,
   QrResolver,
@@ -227,31 +227,17 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
   }
 
   /**
-   * Icon-only trigger: a 16px QR-code outline (14 / 16 / 18 overridable),
-   * transparent background, 6px radius. The text lives in ContactRow, so a
-   * host that only has room for one square gets the compact control.
+   * Header actions: contact / star / issue as separate icon buttons, one
+   * combined capsule, and the public HoverTip that gives all three their copy.
    */
-  function ContactButton(props: ContactButtonProps): ReactNamespace.ReactElement {
-    const h = React.createElement;
-    const label = props.title ?? widgetText("contact");
-    return h(
-      "button",
-      {
-        type: "button",
-        className: classes("dsh-base-contact-button", props.className),
-        title: label,
-        "aria-label": label,
-        onClick: (event: ReactNamespace.MouseEvent<HTMLButtonElement>) => {
-          openContactModal({ trigger: event.currentTarget });
-        },
-      },
-      h(
-        "span",
-        { className: "dsh-base-contact-button__icon", key: "icon", "aria-hidden": "true" },
-        contactIcon(h, props.size ?? 16),
-      ),
-    );
-  }
+  const actions = createActions(React, {
+    text: widgetText,
+    openContact: (trigger) => {
+      openContactModal({ trigger });
+    },
+    repoUrl: options.repoUrl,
+    issuesUrl: options.issuesUrl,
+  });
 
   /**
    * Whole-row variant: one button (icon + label + external-link arrow) using
@@ -347,7 +333,12 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
   }
 
   return {
-    ContactButton,
+    ContactButton: actions.ContactButton,
+    StarButton: actions.StarButton,
+    IssueButton: actions.IssueButton,
+    ActionButtons: actions.ActionButtons,
+    ActionGroup: actions.ActionGroup,
+    HoverTip: actions.HoverTip,
     ContactRow,
     AuthorPlugins,
     openContactModal,

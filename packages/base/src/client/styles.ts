@@ -43,6 +43,24 @@ export const BASE_CSS = [
   ".dsh-base-contact-row__hint{font-size:12px;color:var(--dsw-alias-label-tertiary,#a9aeb8)}",
   ".dsh-base-contact-row__ext{display:inline-flex;flex:0 0 auto;align-items:center;color:var(--dsw-alias-label-tertiary,#a9aeb8)}",
   ".dsh-base-contact-row__ext svg{display:block}",
+  // --- header actions: contact / star / issue --------------------------------
+  // Icon-only actions share one skin and the deck line-icon grammar (16px).
+  ".dsh-base-icon-action{display:inline-flex;align-items:center;justify-content:center;padding:6px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;line-height:0;text-decoration:none;cursor:pointer;transition:background .15s ease,color .15s ease}",
+  ".dsh-base-icon-action:hover{background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.12))}",
+  ".dsh-base-icon-action:focus-visible{outline:2px solid var(--dsw-alias-link,#4d6bfe);outline-offset:2px}",
+  ".dsh-base-icon-action__icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}",
+  ".dsh-base-icon-action__icon svg{display:block}",
+  // Three separate buttons: 2px apart, no background of their own.
+  ".dsh-base-actions{display:inline-flex;flex:0 0 auto;align-items:center;gap:2px}",
+  // Combined capsule: 1px frame + hairline dividers between the three actions.
+  ".dsh-base-actions--group{gap:0;padding:1px;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.2));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.04))}",
+  ".dsh-base-actions--group>.dsh-base-icon-action{border-radius:7px}",
+  ".dsh-base-actions--group>.dsh-base-icon-action+.dsh-base-icon-action{box-shadow:inset 1px 0 0 var(--dsw-alias-border-l1,rgba(127,127,127,.2))}",
+  // --- hover tooltip (deck-style): dark one-liner above the trigger ----------
+  ".dsh-base-tip-anchor{display:inline-flex;align-items:center}",
+  ".dsh-base-tip{position:fixed;z-index:2147483000;max-width:320px;padding:6px 10px;border-radius:8px;background:rgba(23,23,26,.94);color:#fff;font-size:12px;font-weight:400;line-height:1.55;letter-spacing:0;text-align:left;white-space:normal;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.28);opacity:0;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease}",
+  ".dsh-base-tip[data-side='bottom']{transform:translateY(-2px)}",
+  ".dsh-base-tip[data-show='true']{opacity:1;transform:none}",
   // --- dialog shell -----------------------------------------------------------
   ".dsh-base-modal{position:fixed;inset:0;margin:auto;width:min(800px,92vw);max-width:min(800px,92vw);max-height:88vh;padding:0;border:0;border-radius:18px;background:var(--dsw-alias-bg-layer-2,#fff);color:var(--dsw-alias-label-primary,#1f2329);box-shadow:0 24px 64px rgba(0,0,0,.24);overflow:hidden}",
   ".dsh-base-modal[open]{display:block}",
@@ -96,7 +114,7 @@ export const BASE_CSS = [
   "@media (max-width:719px){.dsh-base-modal__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}",
   "@media (max-width:479px){.dsh-base-modal__grid{grid-template-columns:minmax(0,1fr)}}",
   "@media (max-width:719px){.dsh-base-modal__mobile-hint{display:inline}}",
-  "@media (prefers-reduced-motion:reduce){.dsh-base-modal__close,.dsh-base-modal__card-subtitle,.dsh-base-contact-button,.dsh-base-contact-row,.dsh-base-plugins__row{transition:none}}",
+  "@media (prefers-reduced-motion:reduce){.dsh-base-modal__close,.dsh-base-modal__card-subtitle,.dsh-base-contact-button,.dsh-base-contact-row,.dsh-base-plugins__row,.dsh-base-icon-action,.dsh-base-tip{transition:none}}",
 ].join("\n");
 
 /** Inject the stylesheet once per document. */

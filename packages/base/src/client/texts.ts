@@ -14,7 +14,13 @@ export type TextKey =
   | "copied"
   | "expired"
   | "fallback"
-  | "plugins";
+  | "plugins"
+  | "contactTip"
+  | "starTip"
+  | "issueTip"
+  | "starLabel"
+  | "issueLabel"
+  | "actionsLabel";
 
 export type TextOverrides = Partial<Record<string, string>>;
 
@@ -38,6 +44,12 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     expired: "该二维码已过期，请点击下方链接获取最新群码",
     fallback: "点此获取最新群二维码",
     plugins: "作者的其他插件",
+    contactTip: "扫码加入交流群，反馈、建议、idea 都欢迎",
+    starTip: "您的🌟是我夜空中最亮的星🌹",
+    issueTip: "任何功能需求、故障、建议、意见都可以提 ISSUE",
+    starLabel: "Star 这个项目",
+    issueLabel: "提交 Issue",
+    actionsLabel: "联系、Star 与 Issue",
   },
   en: {
     contact: "Contact us",
@@ -54,6 +66,12 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     expired: "This QR code has expired. Use the link below for the latest one.",
     fallback: "Get the latest QR code",
     plugins: "More plugins by the author",
+    contactTip: "Scan to join the community — feedback, ideas and rants are all welcome",
+    starTip: "Your ⭐ is the brightest star in my night sky 🌹",
+    issueTip: "Report bugs or request features in Issues",
+    starLabel: "Star this project",
+    issueLabel: "Open an issue",
+    actionsLabel: "Contact, Star and Issue",
   },
 };
 

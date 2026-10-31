@@ -111,7 +111,8 @@ describe("contact button", () => {
     const trigger = button("button.dsh-base-contact-button");
     expect(trigger).not.toBeNull();
     expect(trigger?.getAttribute("aria-label")).toBe("联系我们");
-    expect(trigger?.getAttribute("title")).toBe("联系我们");
+    // Hover copy now comes from the shared HoverTip, never the native title.
+    expect(trigger?.hasAttribute("title")).toBe(false);
     expect(trigger?.getAttribute("type")).toBe("button");
 
     const svg = trigger?.querySelector("svg") ?? null;
