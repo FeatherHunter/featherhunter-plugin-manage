@@ -8,7 +8,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 依赖钉精确版本 dsh-featherhunter-plugin-base@0.0.1（写入 package.json，peer react 与宿主一致）
 - [ ] 设置面板推荐卡改用 base 的 AuthorPlugins：不注册 settings.section、不读写宿主存储；首帧基线、到货静默替换；整行可点开新标签页
@@ -18,5 +18,13 @@
 - [ ] `npm run check` 全绿（typecheck、既有全部 check:* 与 test:*）
 - [ ] `npx dsh-featherhunter-plugin-base@0.0.1 readme:sync --check` 对本仓退出 0
 - [ ] 其他四个仓零改动
+
+## Comments
+
+### local — 2026-10-31T03:47:33.149Z
+这张票作废：建票时规格容器 #00 还不存在，票是以 kind=issue 直接建的，无法挂到规格下（deck_map_link 补 parent 会被后端拒绝）。已按规格体系重建为 #08（kind=spec-ticket、父票 #00、依赖边齐全），正文与验收条目一致，后续以 #08 为准。
+
+### local — 2026-10-31T03:47:33.300Z
+重复票，已由 #08 取代（规格容器 #00 建立前误建为普通 issue）
 
 ## 进度
