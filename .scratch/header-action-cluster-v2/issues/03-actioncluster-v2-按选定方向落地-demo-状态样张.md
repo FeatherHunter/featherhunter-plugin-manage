@@ -23,7 +23,7 @@
 
 **Blocked by:** #01, #02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 四种状态（含 hover 与 focus）在 demo 浅色、深色下肉眼可辨
 - [ ] 溢出与第 4 钮按 maxVisible 行为正确
@@ -38,4 +38,28 @@
 ### local — 2026-10-31T11:04:05.580Z
 按用户反馈迭代图标样张 v2（prototype 分支最新 commit）：去掉悬浮/按下的灰色背景，改为 1) 悬浮=同色柔光晕 + 图标动效（联系双气泡上浮+三个白点轮流亮；Star 大星缩放旋转提亮循环+四周四颗小星光错峰眨眼+光晕呼吸；Issue 气泡左右轻摇+感叹号弹跳+小星光闪）；2) 按下=整枚下沉 1px 缩到 .88、光晕放大回落，不再有灰底；3) focus 环、disabled 去饱和保留；prefers-reduced-motion 全关。样张：packages/base/prototype/action-icon-set-v2.html，截图 .tmp/ui-mock/icon-v2-full.png，逐帧动效 .tmp/ui-mock/anim-demo.gif 与 anim-star-grid.png。等用户确认后进实现。
 
+### local — 2026-10-31T11:20:14.056Z
+
+### local — 2026-10-31T11:20:17.718Z
+commit 495c6b7 落地 ActionCluster v2（B 静默簇 + 彩色图标 + 动效 + 共享 HoverTip + maxVisible 溢出）；typecheck exit 0、vitest 338 passed（6 个 CDN smoke skipped）、build 与 build:demo exit 0，demo 浅/深五状态截图已核对
+## 实现完成（B 静默簇 + 彩色图标 + 动效）
+
+**代码**：commit 495c6b7（9 files, +1314/-81）
+- 新增 `packages/base/src/client/cluster.ts`：`createActionCluster(React, deps)` → `ActionCluster` 组件。items 数组驱动（id/icon/label/tip/href/onClick/disabled/className），默认三条目 contact + star(repoUrl) + issue(`issuesUrl` 或 `<repo>/issues`，不再 /issues/new)；`size` 14|16|18（默认 16，按钮 = 图标 + 12）、`gap`（默认 4）、`variant` quiet|tray、`maxVisible` 溢出「⋯」菜单。B 静默簇 = 无外框、无分隔线、容器不响应 hover，只有 N 枚独立按钮。
+- 新增 `packages/base/src/client/cluster-icons.ts`：三枚彩色渐变 SVG（联系=蓝紫叠气泡+白点呼吸；Star=金色渐变星+径向光晕+四颗小星光；Issue=珊瑚粉气泡+白色感叹号）+ 溢出三点图标。
+- 新增 `packages/base/src/client/hover-tip.ts` 共享 `mountTip` 引擎：气泡挂在 body、160ms 离开延迟、同屏一枚、视口钳制、Escape 关闭，按钮 `aria-describedby` 指向气泡；按钮本身直接渲染（不再被 HoverTip 的 span 包裹）。
+- 改写 `styles.ts`：去掉 hover/active 灰底，改为每枚按钮的径向柔光（蓝/金/粉）；hover 动效（气泡轻浮 + 白点脉冲 / 星光闪烁 + 光晕呼吸 / 气泡轻晃 + 感叹号弹跳）；active 收紧、focus 2px 蓝环、disabled 去饱和；`prefers-reduced-motion: reduce` 全关动画。
+- 接线 `index.ts`（`ui.ActionCluster` + `ui.clusterIcons`，host 侧 uid 保证 SVG 渐变 id 唯一）、`types.ts`（ActionClusterItem/Props、ClusterIconSet）、`texts.ts`（moreActions / 更多操作）。旧 `ActionGroup`/`ActionButtons` 保留一版兼容。
+- demo/main.tsx 重写：浅/深两套五状态样张（默认 / 悬浮 / 按下 / focus / disabled）、14/16/18 三档、第 4 项溢出菜单、旧控件对照、常驻气泡与弹窗/ContactRow/作者插件卡。
+
+**验证**：
+- `npm run typecheck` exit 0
+- `npx vitest run` → 27 files passed | 1 skipped；338 tests passed | 6 skipped（6 个为 CDN 网络 smoke）
+- `npm run build` 与 `npm run build:demo` 均 exit 0
+- demo 截图：`.tmp/ui-mock/cluster-demo-crop.png`（整页）、`cluster-demo-part1/2.png`；页头浅/深色、五状态、三档尺寸、溢出菜单、focus 环、disabled 灰态均肉眼确认（彩图 16px 清晰，深浅色都可读）
+
+**遗留**：`packages/base/.tmp-render-trio.mjs` 为临时脚本未跟踪；尺寸三档仅 demo 展示，五仓实际统一 16（票 05 落地）。
+
 ## 进度
+
+- 进度：100%（2026-10-31T19:20:12+08:00）：ActionCluster v2、彩色三图标、五状态动效、共享气泡与溢出菜单落盘；typecheck/build/build:demo/vitest 全绿，demo 截图人工确认
