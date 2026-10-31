@@ -1,8 +1,8 @@
 # base 包最终验收记录
 
 适用范围：规格 `.scratch/base-package/spec.md`（票 00），实施票 01–13。
-验收时间：2026-10-31（Asia/Shanghai）；长期分支 `main`，HEAD `1fd97558d83bd42664fbefc93c832fccff1180a3`（集成分支 `feat/base-package` 以 fast-forward 合入后删除；该提交已推送 `origin/main`，远端 tip 相同）。
-结论：**自动部分 7/7 全绿**；人工项（HUMAN-GATE）逐条列出，**待各仓仓主确认**，代理不自判。
+验收时间：2026-10-31（Asia/Shanghai）；长期分支 `main`。第一轮交付提交 `1fd97558d83bd42664fbefc93c832fccff1180a3`（`feat/base-package` fast-forward 合入后删除）；评审后修复提交 `bb6db1f`（本轮代码与文档修复，随后本记录单独提交，仅文档变更）。两轮均已推送 `origin/main`。
+结论：**自动部分 7/7 全绿**；`/code-review` 两轴 23 条发现已全部处置（修复 / 补测试 / ADR 记录 / 环境遗留说明，见 §1.1）；人工项（HUMAN-GATE）逐条列出，**待各仓仓主确认**，代理不自判。
 
 ## 1. 自动验收（7/7 PASS）
 
@@ -11,18 +11,33 @@
 | 检查 | 命令 | 本次结果 |
 | --- | --- | --- |
 | typecheck | `npm run typecheck` | tsc clean |
-| test | `npm test` | 280 passed / 6 skipped（23 个测试文件；network 冒烟默认 skip） |
+| test | `npm test` | 305 passed / 6 skipped（24 个测试文件通过 + 1 个 network 文件默认 skip） |
 | build | `npm run build` | build ok: core, client, node |
-| three-entry-import | `node --input-type=module -e "import(...)"` | core=8 client=18 node=56 个导出，三入口均非空 |
+| three-entry-import | `node --input-type=module -e "import(...)"` | core=9 client=19 node=58 个导出，三入口均非空 |
 | demo-build | `npm run build:demo` | demo/dist 构建成功 |
-| packlist | `npm pack --dry-run --json` | files=32、size=324201；含 package.json / README.md / LICENSE / data/manifest.json / dist 三入口 |
+| packlist | `npm pack --dry-run --json` | files=33、size=283848；含 package.json / README.md / LICENSE / data/manifest.json / dist 三入口 |
 | real-repos-unchanged | 运行前后对比五仓 HEAD + `git status --porcelain` | 5 repos unchanged during the run |
 
 补充说明：
 
 - `npm test` 里的 network 用例（`test/network/cdn-smoke.test.ts`）需要真实发布 + 网络，按规格默认 `describe.skipIf` 跳过；
   发布侧的真实证据见 `docs/base包-发布演练记录.md`。
-- packlist 的 32 个文件全部来自 `dist/`、`data/`、README、LICENSE、package.json；发布包不含源码与测试。
+- packlist 的 33 个文件全部来自 `dist/`、`data/`、README、LICENSE、package.json；发布包不含源码与测试。
+- 上面是评审后修复提交 `bb6db1f` 上的复跑结果（测试数由 280 增至 305，新增 `test/qr-gate.test.ts`、client 清单体积上限与控件契约用例、release 顺序回归用例）。
+
+### 1.1 评审后修复（第二轮，提交 `bb6db1f`）
+
+`/code-review`（938787a→2a24072，Standards 12 条 + Spec 11 条）的发现逐条处置：
+
+| 类别 | 处置 | 证据 |
+| --- | --- | --- |
+| 发布顺序缺陷（Spec） | `release.ts` 改为 `version` → `data`，清单与内联基线不再写旧版本；回归用例锁顺序 | `packages/base/scripts/release.ts`；`test/release.test.ts`（21 例，含「version must precede data」） |
+| 客户端契约（Spec 5 条） | 纯图标 `ContactButton`（16px 线框 SVG、aria-label/title、6px 圆角、hover 令牌）；整行 `ContactRow`；`AuthorPlugins` 首帧基线后从共享 loader 静默替换；清单文本 512KB 上限；`dsh-base-ui-style` 与弹窗颜色令牌化 | `packages/base/src/client/{index,icons,styles,content}.ts`；`test/client/widgets.test.ts`（10 例）、`content.test.ts`（+4 例） |
+| 星图策略（Spec） | palette/prompt 单主题资产只输出单张 `<img>`（不伪造双 source）；ilife 以资产存在为前置（缺资产跳过 + `doctor` 报 `star-assets`） | `src/node/{renderers,targets,doctor}.ts`；`test/readme-star-thanks-sync.test.ts`、`readme-targets.test.ts`、`doctor.test.ts` |
+| 裁图门禁（Spec） | 纯 JS 定位图案检测替换固定 crops 框：紧裁 → 覆盖比 ≥0.9 → 白边 ≥4 模块 → ≥320px；重生成 `data/img` 与 `src/core/baseline.ts` | `packages/base/scripts/image.ts`；`test/qr-gate.test.ts`（10 例）、`test/data-chain.test.ts` |
+| 文档纪律（Standards） | GLOSSARY 图名与「base 包」术语、F13「这是库，不是插件」首行声明、handover 01–03 与发布/回滚顺序说明 | `GLOSSARY.md`、`packages/base/README.md`、`docs/handover/*.md`、`docs/base包-发布与回滚.md` |
+| Standards smells | `isRecord`/`pickText`/`takeFlagValue` 收敛为单一实现；`ReadmeSyncOptions extends BlockRenderOptions`；删除 `sortedPlugins`、`implementedBlockDefinitions`、死分支与死循环 | `src/core/index.ts`、`src/node/{cli,types,index,readme-compare,readme-sync}.ts` |
+| 与规格有意的偏离 | 9 条决定记录成 ADR（doctor 检查多于四项、`contact:update` 不进发布包 CLI、发布前自动回滚/发布后 manual 等） | `docs/adr/0001-base-package-implementation-deviations.md` |
 
 ## 2. 三份交接文档走查（票 13 验收第 1 条）
 
@@ -30,9 +45,9 @@
 
 | 文档 | 覆盖内容 | 失败/回退 | 结论 |
 | --- | --- | --- | --- |
-| `docs/handover/01-接入联系弹窗与推荐卡.md`（157 行） | 安装（钉精确版本）、`createBaseUI` 三行接入、选项表、组件 props、JSX 与 `createElement` 两套最小示例、逐仓落点表（槽位/入口/推荐卡/产物托管）、ilife 特例、旧实现逐仓清理清单 | §8 七类（构建链吃不下、多 React 实例、CSP、SSR、清单拉不到、临时换源、整体回退） | 通过：任一仓可独立完成接入 |
-| `docs/handover/02-README四块迁移.md`（114 行） | 四块标记与渲染口径、11 个目标文件表、每仓迁移步骤、逐文件 diff 预期（含 deck en 行删除、im 脏行、prompt Markdown 标题、ilife 新增块）、`--check` 四类错误 | §6 五类（缺旧块、脏行、标记外改动、整体回退、暂停某块） | 通过：任一仓可独立完成迁移 |
-| `docs/handover/03-CI与发布.md`（154 行） | 主路径 `readme:sync --all --repos`、在已有 workflow 挂 sync（不新增 workflow）、ilife `ci.yml` 加 schedule 特例、`doctor` 检查项表、发布侧一条命令（含 `--image` 换码、回滚语义、真实演练数据）、凭据不落库 | §5 十二类失败（drift、缺标记、脏行、标记错误、npmmirror 403、unpkg 滞后、依赖版本、内联版本、cron 缺失、脏树、客户端缓存） | 通过：任一仓可独立照做 |
+| `docs/handover/01-接入联系弹窗与推荐卡.md`（157 行） | 安装（钉精确版本）、`createBaseUI` 三行接入、选项表、组件 props（纯图标 `ContactButton` / 整行 `ContactRow`）、JSX 与 `createElement` 两套最小示例、逐仓落点表（槽位/入口/推荐卡/产物托管）、ilife 特例、旧实现逐仓清理清单 | §8 七类（构建链吃不下、多 React 实例、CSP、SSR、清单拉不到、临时换源、整体回退） | 通过：任一仓可独立完成接入 |
+| `docs/handover/02-README四块迁移.md`（117 行） | 四块标记与渲染口径、星图资产前置条件（ilife 缺资产先补、palette/prompt 单图）、11 个目标文件表、每仓迁移步骤、逐文件 diff 预期（含 deck en 行删除、im 脏行、prompt Markdown 标题、ilife 新增块）、`--check` 四类错误 | §6 五类（缺旧块、脏行、标记外改动、整体回退、暂停某块） | 通过：任一仓可独立完成迁移 |
+| `docs/handover/03-CI与发布.md`（156 行） | 主路径 `readme:sync --all --repos`、在已有 workflow 挂 sync（不新增 workflow）、ilife `ci.yml` 加 schedule 特例、`doctor` 检查项表（含 `copy-freshness` 与 `star-assets`）、发布侧一条命令（`version` 先于 `data`、含 `--image` 换码、回滚语义、真实演练数据）、凭据不落库 | §5 十二类失败（drift、缺标记、脏行、标记错误、npmmirror 403、unpkg 滞后、依赖版本、内联版本、cron 缺失、脏树、客户端缓存） | 通过：任一仓可独立照做 |
 
 ## 3. HUMAN-GATE 五项（逐条，状态：待仓主确认）
 
@@ -72,7 +87,7 @@ npx -y dsh-featherhunter-plugin-base@1 doctor --repos <五仓父目录>
 | 仓 | README 文件 | 首次接入 | CI 挂载 | 该仓额外动作 |
 | --- | --- | --- | --- | --- |
 | deck | `README.md`、`package/README.md`、`docs/README.en.md` | `readme:init --all --repos` | 现有 `star-history.yml` / `thanks.yml` 加 sync 步骤 | 重新内联 `dist/client/index.js` 并提交（`inline-bundle-version`）；删除旧 `assets/contact-*.png` |
-| palette | `README.md`、`package/README.md`、`docs/README.en.md` | 同上 | 同上 | `INLINE_PACKAGES`（runtime/client.ts）重新登记产物；星图从单图升双图 |
+| palette | `README.md`、`package/README.md`、`docs/README.en.md` | 同上 | 同上 | `INLINE_PACKAGES`（runtime/client.ts）重新登记产物；星图保留单张主题中性图（`docs/star-history.svg`） |
 | im-companion | `README.md`、`docs/README.en.md` | 先修 `</div>>>>>>>> origin/master` 脏行，再 `readme:init --all` | 现有 `thanks.yml` 加 sync | 自绘二维码弹窗改 `base.openContactModal`，删旧样式/群码/i18n |
 | prompt | `README.md`、`docs/README.en.md` | 同上 | 现有 `thanks.yml` 加 sync | 替换 `src/client/settings-links.ts` 的 `MORE_PLUGINS` 为 `<base.AuthorPlugins />` |
 | ilife | `README.md` | 同上 | `ci.yml` 加 `schedule:` + sync 步骤（03 §2 ilife 特例） | 总管卡加入口 + 内联 base client；新增星图与 MORE 块；六 skill 不加独立入口 |
@@ -87,12 +102,16 @@ npx -y dsh-featherhunter-plugin-base@1 doctor --repos <五仓父目录>
 - npmmirror 通道 403 是 cnpm 白名单政策，需要时可向 `cnpm/unpkg-white-list` 提 PR；客户端已回退 jsDelivr。
 - npm staged publishing 有约 1.5 分钟审核延迟（0.0.1 实测），发布脚本已内置 registry 轮询。
 - 规格票 00 的收口：实施票 01–13 全部关闭只是触发条件；按收口协议在规格票上留一段可独立复核的收尾评论并关闭（等价于规格详情页的「完成」动作）。本记录与票 13 关票不是完成证据。
+- `/code-review` 两轴 23 条发现的处置见 §1.1（修复提交 `bb6db1f`，已推送 `origin/main`）；仍未关闭的只有 HUMAN-GATE 五项与上面列出的环境项。
+- 本地分支 `ticket/11-sync-doctor`（`88f0948`）的实现已被 `5ff50de` 取代，未合并也未删除；按「丢弃改动前先征得同意」保留，需要清理时由仓主确认后删除。
 
 ## 6. 证据索引
 
 | 文件 | 内容 |
 | --- | --- |
-| `.tmp/final-acceptance.ps1` / `.tmp/acceptance-final.log` | 本次 7/7 自动验收脚本与日志 |
+| `.tmp/final-acceptance.ps1` / `.tmp/acceptance-final.log` | 第一轮 7/7 自动验收脚本与日志 |
+| `.tmp/acceptance-round2.log` | 评审后修复提交上的 7/7 复跑日志 |
+| `docs/adr/0001-base-package-implementation-deviations.md` | 评审后确认的 9 条有意偏离及理由 |
 | `docs/base包-发布演练记录.md` | 两次真实发布演练、三通道耗时、jsDelivr 图片头、README 改写结果、HUMAN-GATE 清单 |
 | `.tmp/drill-rewrite.log` / `.tmp/drill-before` / `.tmp/drill-repos` | README 全量同步演练日志与前后快照 |
 | `.tmp/real-repos-baseline.json` | 五仓基线快照（HEAD + porcelain） |
