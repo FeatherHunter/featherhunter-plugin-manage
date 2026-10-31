@@ -326,6 +326,20 @@ packages/base/                  # npm 包本身
 ### local — 2026-10-30T20:10:21.498Z
 关闭后补充（2026-10-31T04:10+08:00）：规格关闭写回的文件改动已单独提交 `0969bb1`（仅 `.scratch/base-package/spec.md`：收口评论、状态 closed、进度 100%，不改实现代码），已推送 `origin/main`；在该提交上复跑 `.tmp/final-acceptance.ps1` = 7/7（typecheck/test/build/三入口/demo-build/packlist/五仓 unchanged，日志 `.tmp/acceptance-closeout.log`），工作树仅 `?? .scratch/desktop-crash/`（非本实施）。
 
+### local — 2026-10-31T02:06:22.751Z
+复评后收尾（第三轮）：两轴复评提出的建议已处置并推送 main。
+
+处置内容（提交 6755eae，35 files, +109/−100）：
+- 主题令牌：src/client/styles.ts 剩余硬编码颜色全部改读宿主令牌并保留回退——过期卡 background var(--dsw-alias-state-warn-tertiary)、border-color var(--dsw-alias-state-warn-secondary)、过期说明 color var(--dsw-alias-state-warn-label)、复制确认/兜底链接/focus 环 color var(--dsw-alias-link)、hover 填充 var(--dsw-alias-fill-tsp-secondary)；二维码白底保留并注明是扫码对比度所需。新增 test/client/widgets.test.ts「themes expired cards, copied numbers and links through host tokens」断言令牌存在且这些规则不再出现裸字面量。
+- helper 收敛：isRecord 只在 src/core/index.ts 一处实现（scripts/build-data.ts、scripts/contact-update.ts、src/client/content.ts 改为 import）；pluginHref 进 core，renderers.ts 的 pluginLink 与 client/plugins.ts 共用同一实现；src/node/cli.ts 两处 takeValue 合并为 takeFlagValue；星图默认路径收敛到 src/node/star-assets.ts；删 ReadmeSyncOptions 重复字段、readme-compare 死分支、readme-sync 死循环；29 个文件补末尾换行。
+- 复评确认已闭环的 11 条 Spec 轴发现（远程作者卡、整行 ContactRow、512KB 清单上限、星图单图/资产前置、ADR 偏离、裁图门禁、style id、发布顺序、npmmirror 回退）不再改动。
+
+验证（在提交 6755eae 的树上）：.tmp/final-acceptance.ps1 → RESULT 7/7（typecheck、test 306 passed/6 skipped、build、three-entry core=10 client=19 node=58、demo-build、packlist 34 files/284342、五仓 unchanged）；日志 .tmp/acceptance-round3.log。文档提交 2da9920（仅改 docs/base包-最终验收记录.md）上复跑同样 7/7，日志 .tmp/acceptance-round3-final.log。
+
+交付：main = origin/main = 2da9920（推送链 06ee129..2da9920）；验收记录已补第三轮行与证据索引（docs/base包-最终验收记录.md §1.1、§6）。
+
+仍未关闭（不属于本仓可自动完成）：HUMAN-GATE 五项待各仓仓主确认；ilife 星图资产缺失、palette/prompt 单图按 ADR §1 降级、npmmirror /files 403 白名单、真实新群码未提供、本地分支 ticket/11-sync-doctor（88f0948，需仓主同意后删除）。
+
 ## 一、逐票核对（打开每张票对照判据，看最终代码与测试，不只看关闭状态）
 
 - **01 包骨架与三入口契约**（`e801688`）：查 `packages/base/package.json`（`exports` 的 `./core` `./client` `./node`、`bin` `dsh-base`、`peerDependencies` react `^18 || ^19`）、`packages/base/build.mjs`、`packages/base/tsconfig.build.json`、`packages/base/test/dist-contract.test.ts`（8 例）；命令 `npm run typecheck` / `npm run build` / `npm test` 全绿；client 产物零 import、node 产物只 import `node:`、packlist 含 dist/data/README。
