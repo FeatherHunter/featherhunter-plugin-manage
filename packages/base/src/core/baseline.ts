@@ -4,7 +4,7 @@ import type { BaselineContent } from "./types";
 export const BASELINE: BaselineContent = {
   "manifest": {
     "schema": 1,
-    "version": "0.0.1",
+    "version": "0.1.1",
     "revision": 2,
     "updatedAt": "2026-10-31T00:00:00+08:00",
     "fallbackUrl": "https://github.com/FeatherHunter/featherhunter-plugin-manage",
