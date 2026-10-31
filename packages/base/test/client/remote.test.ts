@@ -11,7 +11,8 @@ import {
 import { BASELINE } from "../../src/core/index";
 import { installDialogPolyfill, resetClientDom } from "./helpers";
 
-const NOW = new Date("2026-10-31T00:00:00+08:00");
+// Noon UTC keeps the local calendar day identical on UTC (CI) and UTC+8 (maintainer) hosts.
+const NOW = new Date("2026-10-31T12:00:00Z");
 const UNPKG_URL = "https://unpkg.com/" + PACKAGE_NAME + "@latest/data/manifest.json";
 
 let polyfill: ReturnType<typeof installDialogPolyfill>;

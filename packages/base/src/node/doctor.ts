@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parseManifest } from "../core";
 import type { Manifest } from "../core/types";
 import { updateReadme } from "./readme-sync";
@@ -277,7 +277,7 @@ function checkCronMounts(repoRoot: string, repo: string): DoctorCheck {
       detail: "no readme:sync step in .github/workflows (see docs/handover/03)",
     };
   }
-  const names = mounted.map((file) => file.slice(file.lastIndexOf("\\") + 1)).join(", ");
+  const names = mounted.map((file) => basename(file)).join(", ");
   if (repo === "ilife") {
     const scheduled = mounted.some((file) => /^\s*schedule:/m.test(tryRead(file) ?? ""));
     if (!scheduled) {
