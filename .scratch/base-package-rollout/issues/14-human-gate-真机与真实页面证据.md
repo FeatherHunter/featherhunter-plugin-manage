@@ -47,6 +47,11 @@
 3) 仍需仓主真机：B1/B2 扫码进群（飞书/QQ/微信新码）、B3 弹窗过期降级（旧码 10-30 已过期可验）、C 组浏览器 dialog 9 项、D 组安装本次构建产物后 5 仓入口、E 组断网三通道降级。B 组建议手机打开 unpkg 直链长按识别：https://unpkg.com/dsh-featherhunter-plugin-base@0.1.1/data/img/card-wechat-2026-10-31.png
 
 ### local — 2026-10-31T16:51:36.866Z
+
+### local — 2026-10-31T16:58:29.693Z
+2026-11-01 00:58 B 组复验结论：owner 口头确认「B 组没问题」→ 手机扫码三码（飞书/QQ/微信）真机可通过；微信码 2026-10-31 换新（validUntil=2026-11-07），过期表现一行改判为「已不适用」（0.1.3 起微信内置基线码，0.1.5 弹窗三卡均为 data:image/png 内联码）。证据落在 docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md §1 表与 §7.2。
+
+D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」）：D 组是**临时验证，不需要发版本**。装进 desktop profile 的是本次本地构建的 tarball（file: 依赖），五个包的版本号不变（prompt 0.4.39 / deck 1.9.0-beta.33 / palette 2.1.10 / im 0.2.25 / life-pack 0.3.85），验证完可按备份回滚；正式发版（npm publish 各仓新版）是独立的一件事，等 owner 决定再做。注意 desktop profile 正是当前 DSH Desktop 会话所在 profile，安装后需重启桌面应用，须 owner 授权/操作。剩余：D（desktop 安装形态，待授权）、E（断网降级）。
 ## 2026-11-01 00:55 0.1.5 轮：A/C 组代理实测补齐，B/D/E 仍待仓主
 
 - 规格 `.scratch/header-action-cluster-v2` 的票 01–08 已全部关闭；base 已发到 0.1.5，五仓换代（HEAD==origin，依赖精确 0.1.5）并装入 web profile，owner 2026-11-01 00:44 人眼验收通过。
@@ -67,6 +72,7 @@
 
 ## 进度
 
+- 进度：80%（2026-11-01T00:58:29+08:00）：B 组 owner 确认通过；D 组定性为临时验证（不发版），待 owner 授权在 desktop profile 安装验形态；剩 D/E
 - 进度：75%（2026-11-01T00:51:36+08:00）：A/C 组代理实测补齐并写入 HUMAN-GATE §7；B/D/E 待仓主真机，票保持 open
 - 进度：60%（2026-10-31T17:35:34+08:00）：新微信群码（validUntil 2026-11-07）已发布到 base 0.1.1 与五仓 README，deck GitHub 页面实测新卡渲染正常；B3 过期降级场景需仓主等 11-07 后再验
 - 进度：50%（2026-10-31T15:26:09+08:00）：A 组 deck 页代理实测通过；剩余 B/C/D/E 待仓主取证，B3 缺新微信群码
