@@ -107,3 +107,32 @@
 - [ ] E3 恢复网络后刷新：回源清单更新，微信群卡仍按 `validUntil` 判断
 
 > 做完按 §1–§4 的表格填结果，或把结论发给代理回填；**未验的项标「待确认」，不得默认通过**。
+
+## 7. 2026-11-01 更新：0.1.5 收口状态（代理实测 vs 待仓主）
+
+> 本清单写于 base 0.0.2 时期；此后已发布到 **0.1.5**，五仓换代并装入 web profile 由 owner 人眼验收（2026-11-01 00:44 owner 确认「我目前看到的效果都满意」）。以下为按最新形态重算的覆盖状态。
+
+### 7.1 代理已实测、可作证据（web profile 0.1.5 真机 CDP，1416×845）
+
+- 五仓设置分区（提示词模板 / MattSkills / OpenCode调色板 / 爱生活 / IM机器人增强）各 1 个 `.dsh-base-cluster`（92×28、gap 4、透明底、0 边框、role=group、aria-label=快捷操作）+ 3 枚 28×28 彩色图标按钮；旧 `.dsh-base-actions--group` 命中 0；面板底部联系整行命中 0（按 owner 拍板：只保留页头图标）。
+- 三钮气泡文案：联系我们「扫码加入交流群，反馈、建议、idea 都欢迎🎉」/ Star「您的🌟是我夜空中最亮的星🌹」/ Issue「任何功能需求、故障、建议、意见都可以提ISSUE问题单🙏」；同屏 1 枚、opacity 1。
+- 落点：联系我们开弹窗；Star → 各仓首页；Issue → 各仓 `/issues` 列表。
+- 作者插件卡 4 行，悬停出 1 枚 role=tooltip 完整介绍词（aria-describedby 指向气泡）——覆盖旧 §6 C9 的「行可点 + 卡片数据一致」与新增 tooltip 行为。
+- 联系弹窗（覆盖旧 §6 C1/C2/C3/C5 的代理可验部分）：3 卡 data:image/png、natural 320×320、显示 215×215、左右留白 13/13px；Esc 关闭且焦点回触发按钮；Tab×4 焦点困在 dialog；初始焦点为关闭按钮；深色 `prefers-color-scheme:dark` 下可读；窄 viewport 1000/900 无横向溢出（旧 §6 C4 的列数变化属更窄宽度，代理未在 420px 档复测）。
+- base demo 0.1.5 五状态 computed 值：默认 `::before opacity 0`；is-hover .85；is-active `matrix(.88,…,1)` + .95；is-focus `outline 2px solid rgb(77,107,254)` offset 2；disabled `opacity .38 + grayscale(1) saturate(.25)`；`prefers-reduced-motion` 规则在 `packages/base/src/client/styles.ts:105`（覆盖旧 §6 C5/C6 的组件侧证据）。
+- 截图：`.tmp/web4-author-tip.png`、`web4-header-tip.png`、`web4-modal.png`、`web4-dark.png`、`demo015-part0.png`、`demo015-part1.png`。
+
+### 7.2 待仓主亲验（代理不可代劳）
+
+- **B 组**：手机扫码飞书 / QQ / 微信三码在真机是否可加群（B3 微信码已于 2026-10-31 换新，validUntil=2026-11-07）。
+- **C4 更窄档**：420px 左右单元格换行表现（代理只验到 900/1000 无溢出）。
+- **C6 语言切换**：中英切换在真实浏览器（demo 与插件面板内）的观感。
+- **D 组（已按新形态改写）**：五仓插件要装进 **desktop profile** 才有「插件详情面板 / 总管页」真机入口；当前只验了 web profile 设置分区，desktop 安装形态待 owner 或代理在授权后补。
+- **E 组**：断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）。
+
+### 7.3 旧条目过期说明
+
+- §0 版本与提交为 0.0.2 时期快照，最新为 base 0.1.5 + 五仓 0.1.5（commits 见规格 `.scratch/header-action-cluster-v2/spec.md` 验收记录）。
+- §6 D1–D5 的「面板底部联系入口 + 推荐卡」形态已被 owner 拍板取代：只保留页头三枚图标入口，底部联系整行已从五仓移除（base 的 ContactRow 组件保留给其他使用者）。
+- §6 B3 的过期降级已不再适用（微信码已换新并内置基线码，0.1.3 起离线也有码）。
+

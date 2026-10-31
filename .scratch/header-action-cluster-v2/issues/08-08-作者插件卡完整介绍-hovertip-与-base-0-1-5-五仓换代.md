@@ -9,19 +9,37 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] base 源码含通用 createTipController + 作者插件行接入 tooltip（不新增包裹层、不改省略号布局），单测覆盖 hover/离开/跨行/Escape/键盘聚焦
 - [x] 两处文案中英同步改好，actions.test.ts 断言同步，base typecheck / vitest / build / build:demo / data:check 全绿
 - [x] base 版本 0.1.5，发布后 npmmirror / unpkg / jsDelivr 三通道可读 0.1.5，发布 tarball 解包含 createTipController 与 v0.1.5 banner
 - [x] 五仓依赖精确 0.1.5、内联/派生产物 banner v0.1.5（file:line 证据）、各仓门禁与定向测试绿、五份 tarball 落到 D:/temp/hac2-pack/b015
-- [~] web profile 重装 0.1.5 并重启实例，CDP + owner 人眼复验：作者插件卡悬停出完整介绍气泡、页头三钮气泡结尾 🎉 / ISSUE问题单🙏 正确
+- [x] web profile 重装 0.1.5 并重启实例，CDP + owner 人眼复验：作者插件卡悬停出完整介绍气泡、页头三钮气泡结尾 🎉 / ISSUE问题单🙏 正确
 
 ## Comments
 
 ### local — 2026-10-31T16:22:04.010Z
 
 ### local — 2026-10-31T16:35:32.206Z
+
+### local — 2026-10-31T16:49:42.217Z
+
+### local — 2026-10-31T16:49:42.307Z
+0.1.5 已发布并五仓换代；作者插件卡 HoverTip 与两处文案经 web profile 真机 CDP 矩阵 + owner 人眼复验通过（owner 2026-11-01 00:44 确认满意）
+## 2026-11-01 00:44 owner 人眼复验通过，票关闭
+
+- owner 原话：「效果蛮好的，有你可以自行验证的你可以直接验证了。我目前看到的效果都满意」
+- 代理自行验证矩阵（web profile 0.1.5 真机 CDP）：
+  - 五个设置分区（提示词模板 / MattSkills / OpenCode调色板 / 爱生活 / IM机器人增强）各 1 个 `.dsh-base-cluster`（92×28、gap 4、透明底、0 边框、role=group、aria-label=快捷操作），各 3 枚 28×28 按钮；旧 `.dsh-base-actions--group` 命中 0；面板底部联系整行命中 0。
+  - 三钮气泡文案五区一致：「扫码加入交流群，反馈、建议、idea 都欢迎🎉」「您的🌟是我夜空中最亮的星🌹」「任何功能需求、故障、建议、意见都可以提ISSUE问题单🙏」。
+  - 作者插件卡 4 行，悬停任一分区首行均弹 1 枚 role=tooltip 完整介绍词（pickText(plugin.desc)），行上 aria-describedby 指向气泡。
+  - Issue 落点五仓全部 `<repo>/issues` 列表（prompt/deck/palette/im/ilife），Star 指向各自仓库，联系我们无 href（开弹窗）。
+  - 联系弹窗：三卡 data:image/png、natural 320×320、显示 215×215、左右留白 13/13px；Esc 关闭且焦点回到「联系我们」按钮；Tab×4 焦点始终困在 dialog 内；初始焦点落关闭按钮。
+  - 窄宽：viewport 1000 与 900 下五区 cluster 均在 dialog 内、无横向溢出（documentElement.scrollWidth == innerWidth）。
+  - 深色：prefers-color-scheme:dark 下 body bg rgb(10,10,10)，cluster 透明底、按钮 28×28、气泡正常。
+  - base demo（0.1.5）五状态 computed：默认 ::before opacity 0；is-hover ::before .85；is-active transform matrix(.88,…,1) + ::before .95；is-focus outline 2px solid rgb(77,107,254) offset 2；disabled opacity .38 + grayscale(1) saturate(.25)。prefers-reduced-motion 规则在 styles.ts:105。
+- 证据截图：.tmp/web4-author-tip.png、web4-header-tip.png、web4-modal.png、web4-dark.png、demo015-part0/1.png。
 ## 2026-11-01 00:40 0.1.5 五仓换代 + web profile 重装 + 真机 CDP 取证完成（等 owner 人眼复验）
 
 - **五仓升级完成（HEAD==origin，base devDep 精确 0.1.5）**
