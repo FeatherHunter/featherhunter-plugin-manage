@@ -11,6 +11,8 @@ import {
   writeFileAtomic,
 } from "../src/node/index";
 import {
+  PKG_VERSION,
+  cardUrl,
   expectMigratedContactSources,
   fixtureContactRaw,
   fixtureMoreRaw,
@@ -72,9 +74,7 @@ describe("readme:init", () => {
       const markdown = readFileSync(readmePath, "utf8");
       expect(markdown).toContain(START);
       expect(markdown).toContain(END);
-      expect(markdown).toContain(
-        "cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base@0.0.1/data/img/card-feishu.png",
-      );
+      expect(markdown).toContain(cardUrl("card-feishu.png"));
       expect(markdown.startsWith("# Demo plugin\n\nSome intro paragraph.\n\n")).toBe(true);
       expect(markdown).toContain("## Footer\n\nFooter text.");
       // The unmarked README also gains the brand-new MORE block at the end.
@@ -291,7 +291,7 @@ describe("readme:sync", () => {
     const { dir, readmePath, markdown, cleanup } = seeded();
     try {
       const drifted = markdown
-        .replace("@0.0.1", "@0.0.0")
+        .replace("@" + PKG_VERSION, "@0.0.0")
         .replace("</div>", "<em>hand edit</em>\n</div>");
       writeFileSync(readmePath, drifted, "utf8");
 

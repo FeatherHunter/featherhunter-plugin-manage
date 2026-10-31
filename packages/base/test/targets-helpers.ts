@@ -3,10 +3,10 @@ import { dirname, join } from "node:path";
 import type { Manifest } from "../src/core/types";
 import { updateReadmeTargets } from "../src/node/readme-sync";
 import { expandReadmeTargets, readPackagedManifest } from "../src/node/targets";
-import { fixtureDoc, loadThanksData, makeTempDir, thanksDatasetOf } from "./readme-helpers";
+import { PKG_VERSION, fixtureDoc, loadThanksData, makeTempDir, thanksDatasetOf } from "./readme-helpers";
 
 /** Version the fake repositories pin (matches the packaged manifest). */
-export const DEP_VERSION = "0.0.1";
+export const DEP_VERSION = PKG_VERSION;
 
 /** Inlined-bundle banner esbuild prepends to the built client entry. */
 export const INLINE_BANNER = "/*! dsh-featherhunter-plugin-base v" + DEP_VERSION + " */";

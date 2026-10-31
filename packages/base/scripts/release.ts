@@ -37,7 +37,6 @@ export const RELEASE_PATHS = [
   "packages/base/package.json",
   "packages/base/package-lock.json",
   "contact",
-  "data",
   "packages/base/data",
   "packages/base/src/core/baseline.ts",
 ] as const;

@@ -74,7 +74,7 @@ describe("renderContactBlock", () => {
     wechat.card = "card-wechat.png";
     wechat.validUntil = "2026-10-30";
     expect(renderContactBlock({ manifest })).toContain(
-      'src="' + CDN_BASE + '@0.0.1/data/img/card-wechat.png?v=20261023"',
+      'src="' + cardUrl("card-wechat.png") + '?v=20261023"',
     );
   });
 
@@ -84,7 +84,7 @@ describe("renderContactBlock", () => {
     wechat.card = "card-wechat-2026-10-30.png";
     wechat.validUntil = "2026-11-06";
     expect(renderContactBlock({ manifest })).toContain(
-      'src="' + CDN_BASE + '@0.0.1/data/img/card-wechat-2026-10-30.png?v=20261030"',
+      'src="' + cardUrl("card-wechat-2026-10-30.png") + '?v=20261030"',
     );
   });
   it("never renders the modal-only title/subtitle/note/qr fields", () => {

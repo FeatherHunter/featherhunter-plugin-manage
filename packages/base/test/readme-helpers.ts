@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 export const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 export const PKG_ROOT = resolve(TEST_DIR, "..");
 
+/** Version of the package under test; every CDN URL the renderers emit carries it. */
+export const PKG_VERSION = (
+  JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as { version: string }
+).version;
+
 export interface FixtureBlock {
   raw: string | null;
   missing: boolean;
@@ -60,7 +65,7 @@ export function fixtureMoreRaw(id: string): string {
 export const CDN_BASE = "https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base";
 
 /** Precise-version CDN URL for one published card file. */
-export function cardUrl(card: string, version = "0.0.1"): string {
+export function cardUrl(card: string, version = PKG_VERSION): string {
   return CDN_BASE + "@" + version + "/data/img/" + card;
 }
 

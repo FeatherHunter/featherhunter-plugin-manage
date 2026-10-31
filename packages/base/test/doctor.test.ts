@@ -6,6 +6,7 @@ import { main } from "../src/node/cli";
 import { MAX_COPY_AGE_DAYS, formatDoctorReport, runDoctor } from "../src/node/doctor";
 import { readPackagedManifest } from "../src/node/targets";
 import type { DoctorCheck, DoctorResult } from "../src/node/types";
+import { PKG_VERSION } from "./readme-helpers";
 import { buildFakeRepos, fakeReadmePath, initFakeRepos, type FakeRepos } from "./targets-helpers";
 
 /** Capture stdout/stderr while main() runs. */
@@ -65,11 +66,11 @@ describe("doctor core checks", () => {
 
     for (const repo of ["dsh-mattpocock-skills-deck", "dsh-opencode-palette", "dsh-im-companion", "dsh-prompt", "ilife"]) {
       expect(checkNamed(result, repo + "/readme-blocks").ok, repo).toBe(true);
-      expect(checkNamed(result, repo + "/readme-images").detail, repo).toMatch(/image URL\(s\) at @0\.0\.1/);
-      expect(checkNamed(result, repo + "/dependency-version").detail, repo).toBe("pinned at 0.0.1");
+      expect(checkNamed(result, repo + "/readme-images").detail, repo).toContain("image URL(s) at @" + PKG_VERSION);
+      expect(checkNamed(result, repo + "/dependency-version").detail, repo).toBe("pinned at " + PKG_VERSION);
       expect(checkNamed(result, repo + "/cron-mounts").ok, repo).toBe(true);
     }
-    expect(checkNamed(result, "dsh-mattpocock-skills-deck/inline-bundle-version").detail).toBe("inlined v0.0.1");
+    expect(checkNamed(result, "dsh-mattpocock-skills-deck/inline-bundle-version").detail).toBe("inlined v" + PKG_VERSION);
     expect(checkNamed(result, "ilife/inline-bundle-version").detail).toBe("not inlined");
     expect(checkNamed(result, "ilife/cron-mounts").detail).toMatch(/with schedule/);
     expect(checkNamed(result, "dsh-prompt/cron-mounts").detail).toMatch(/mounted in star-history\.yml/);
@@ -168,11 +169,11 @@ describe("doctor repository checks", () => {
     current = repos;
     initFakeRepos(repos);
     const readmePath = fakeReadmePath(repos, "dsh-prompt");
-    writeFileSync(readmePath, readFileSync(readmePath, "utf8").replaceAll("@0.0.1/data/img/", "@0.0.0/data/img/"));
+    writeFileSync(readmePath, readFileSync(readmePath, "utf8").replaceAll("@" + PKG_VERSION + "/data/img/", "@0.0.0/data/img/"));
     const result = await runDoctor({ repoRoots: [join(repos.dir, "dsh-prompt")], offline: true });
     const check = checkNamed(result, "dsh-prompt/readme-images");
     expect(check.ok).toBe(false);
-    expect(check.detail).toMatch(/references @0\.0\.0 \(expected @0\.0\.1\)/);
+    expect(check.detail).toContain("references @0.0.0 (expected @" + PKG_VERSION + ")");
   });
 
   it("flags a dependency range instead of an exact version", async () => {
@@ -181,12 +182,12 @@ describe("doctor repository checks", () => {
     initFakeRepos(repos);
     const packagePath = join(repos.dir, "dsh-prompt", "package.json");
     const pkg = JSON.parse(readFileSync(packagePath, "utf8")) as { dependencies: Record<string, string> };
-    pkg.dependencies["dsh-featherhunter-plugin-base"] = "^0.0.1";
+    pkg.dependencies["dsh-featherhunter-plugin-base"] = "^" + PKG_VERSION;
     writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
     const result = await runDoctor({ repoRoots: [join(repos.dir, "dsh-prompt")], offline: true });
     const check = checkNamed(result, "dsh-prompt/dependency-version");
     expect(check.ok).toBe(false);
-    expect(check.detail).toMatch(/declares \^0\.0\.1/);
+    expect(check.detail).toContain("declares ^" + PKG_VERSION);
   });
 
   it("flags a stale inlined client bundle", async () => {
@@ -229,7 +230,7 @@ describe("doctor repository checks", () => {
     const workflowPath = join(repos.dir, "ilife", ".github", "workflows", "ci.yml");
     writeFileSync(
       workflowPath,
-      "name: ci\non:\n  push:\n    branches: [main]\njobs:\n  sync:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx dsh-featherhunter-plugin-base@0.0.1 readme:sync --all\n",
+      "name: ci\non:\n  push:\n    branches: [main]\njobs:\n  sync:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx dsh-featherhunter-plugin-base@" + PKG_VERSION + " readme:sync --all\n",
     );
     const unscheduled = await runDoctor({ repoRoots: [join(repos.dir, "ilife")], offline: true });
     const unscheduledCheck = checkNamed(unscheduled, "ilife/cron-mounts");
