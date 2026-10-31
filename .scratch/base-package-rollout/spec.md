@@ -25,10 +25,9 @@
 - HUMAN-GATE：真机扫飞书/QQ/微信各一次、真实浏览器 dialog 顶层与焦点回归、GitHub 上四块观感、至少一仓真实构建链吃下产物（palette 最高风险）、中国大陆网络三通道全失败降级，由仓主确认。
 
 ## 当前状态
-- 票 08 进行中：prompt 源码/README/门禁已改，base 0.0.2 本地 tarball 已重装并重建 lib/client.js；typecheck、readme:check、check:star-history、check:thanks、check:marketplace-readme 已过，全量 npm run check 正在跑。base 0.0.2 发布受 npm registry 网络阻断。
-- 票 09–12 等票 08 全绿后开始；票 13、14 等 09–12 关闭后开始。
+- 票 08 本机全绿（prompt 仓 commit 944905c，未推送）：typecheck、npm run check、readme:sync --check --repo . 全部通过；lib/client.js 已用 base 0.0.2 tarball 重建。
+- 唯一阻塞：base 0.0.2 未发布（npm registry 网络阻断，npm ping ECONNRESET），prompt 的 lock integrity 与 push 要等发布后核验；发布用同一 tarball 则 lock 直接生效。
+- 票 09–12 按依赖边等票 08 关闭后开始；票 13、14 等 09–12 关闭后开始。
 
 ## 票号说明
 最早建的 01–07 是在本规格容器存在之前以普通 issue 建的，挂不到规格下；已按规格体系重建为 08–14（kind=spec-ticket、父票 00、依赖边齐全），01–07 已作为重复票关闭。
-
-## 进度
