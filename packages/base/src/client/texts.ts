@@ -20,7 +20,8 @@ export type TextKey =
   | "issueTip"
   | "starLabel"
   | "issueLabel"
-  | "actionsLabel";
+  | "actionsLabel"
+  | "moreActions";
 
 export type TextOverrides = Partial<Record<string, string>>;
 
@@ -50,6 +51,7 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     starLabel: "Star 这个项目",
     issueLabel: "提交 Issue",
     actionsLabel: "快捷操作",
+    moreActions: "更多操作",
   },
   en: {
     contact: "Contact us",
@@ -72,6 +74,7 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     starLabel: "Star this project",
     issueLabel: "Open an issue",
     actionsLabel: "Quick actions",
+    moreActions: "More actions",
   },
 };
 

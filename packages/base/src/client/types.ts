@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, ReactElement, ReactNode } from "react";
 import type { Group, Lang, PluginEntry } from "../core/types";
 import type { ContentLoader, FetchLike } from "./content";
 import type { TextOverrides } from "./texts";
@@ -82,8 +82,65 @@ export interface ActionButtonsProps {
   issuesUrl?: string;
 }
 
-/** The three header actions packed into one bordered capsule. */
+/** The three header actions packed into one bordered capsule (legacy). */
 export type ActionGroupProps = ActionButtonsProps;
+
+/** One entry of the header action cluster. */
+export interface ActionClusterItem {
+  /** Stable id; also drives the per-action glow colour (contact / star / issue). */
+  id: string;
+  /** The icon element; the built-in coloured icons come from `clusterIcons`. */
+  icon: ReactNode;
+  /** Accessible name (the icon carries no visible text). */
+  label: string;
+  /** Hover copy shown by the shared tooltip; omitted means no tooltip. */
+  tip?: string;
+  /** Anchor target; the entry renders a <button> when absent. */
+  href?: string;
+  /** Click handler for in-page actions (the contact dialog, for example). */
+  onClick?: (trigger: HTMLElement) => void;
+  /** Renders a disabled control that never reacts to pointer or keyboard. */
+  disabled?: boolean;
+  /** Extra class on the button (demo / screenshot state hooks such as `is-hover`). */
+  className?: string;
+}
+
+/** `quiet`: no frame (default). `tray`: the legacy 1px tray frame. */
+export type ActionClusterVariant = "quiet" | "tray";
+
+/**
+ * One header action cluster: one container, N independent buttons.
+ *
+ * The container only groups the buttons. It never answers hover itself, never
+ * shows a selected state and never splits the buttons into segments.
+ */
+export interface ActionClusterProps {
+  /** Entries in render order; defaults to contact / star / issue. */
+  items?: ActionClusterItem[];
+  /** Icon size in px (14 / 16 / 18, default 16). */
+  size?: ActionIconSize;
+  /** Distance between buttons in px (default 4). */
+  gap?: number;
+  /** Container variant (default `quiet`). */
+  variant?: ActionClusterVariant;
+  /**
+   * How many action buttons render before the "more" trigger appears. Omitted
+   * means render everything; entries beyond the cap move into the menu.
+   */
+  maxVisible?: number;
+  /** Accessible name of the overflow trigger (default localised 更多操作). */
+  overflowLabel?: string;
+  /** Accessible name of the group (default localised 快捷操作). */
+  ariaLabel?: string;
+  className?: string;
+}
+
+/** Built-in coloured icons, bound to the injected React runtime. */
+export interface ClusterIconSet {
+  contact: (size?: number) => ReactElement;
+  star: (size?: number) => ReactElement;
+  issue: (size?: number) => ReactElement;
+}
 
 /**
  * One-line hover copy anchored to a trigger. The tooltip renders in
@@ -149,8 +206,12 @@ export interface BaseUI {
   IssueButton: ComponentType<IssueButtonProps>;
   /** Contact + Star + Issue as separate icon buttons. */
   ActionButtons: ComponentType<ActionButtonsProps>;
-  /** Contact + Star + Issue inside one 1px capsule (tight page headers). */
+  /** Contact + Star + Issue inside one 1px capsule (legacy compat). */
   ActionGroup: ComponentType<ActionGroupProps>;
+  /** One container, N independent coloured action buttons (v2 default). */
+  ActionCluster: ComponentType<ActionClusterProps>;
+  /** Coloured 16px-class icons for custom cluster entries. */
+  clusterIcons: ClusterIconSet;
   /** Public hover-copy control (deck-style tooltip) for host use. */
   HoverTip: ComponentType<HoverTipProps>;
   ContactRow: ComponentType<ContactRowProps>;

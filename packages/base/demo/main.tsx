@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createBaseUI, resolveText } from "../src/client/index";
+import type { ActionClusterItem } from "../src/client/types";
 
 /**
  * Demo-only QR placeholder: the real baseline images land with ticket 03 and
@@ -24,10 +25,13 @@ const demoOptions = { lang: "zh" as const, selfId: "deck", resolveQr: () => DEMO
 const base = createBaseUI(React, demoOptions);
 const baseEn = createBaseUI(React, { ...demoOptions, lang: "en" as const });
 
+type Ui = typeof base;
+type Lang = "zh" | "en";
+
 const pageStyle: React.CSSProperties = {
   fontFamily: "system-ui, sans-serif",
   padding: 32,
-  maxWidth: 760,
+  maxWidth: 900,
   margin: "0 auto",
   color: "#1f2329",
 };
@@ -39,7 +43,7 @@ const captionStyle: React.CSSProperties = {
 };
 
 /** A settings-panel header mock: title on the left, actions on the right. */
-function HeaderMock({ ui, dark }: { ui: typeof base; dark?: boolean }) {
+function HeaderMock({ ui, dark }: { ui: Ui; dark?: boolean }) {
   return (
     <div
       style={{
@@ -56,9 +60,82 @@ function HeaderMock({ ui, dark }: { ui: typeof base; dark?: boolean }) {
     >
       <div>
         <div style={{ fontSize: 15, fontWeight: 600 }}>插件设置</div>
-        <div style={{ fontSize: 12, opacity: 0.6 }}>页头右组 · ActionGroup</div>
+        <div style={{ fontSize: 12, opacity: 0.6 }}>页头右组 · ActionCluster（B 静默簇）</div>
       </div>
-      <ui.ActionGroup size={18} />
+      <ui.ActionCluster />
+    </div>
+  );
+}
+
+/** Default cluster entries, optionally forced into one visual state for the demo. */
+function clusterItems(ui: Ui, lang: Lang, state?: string, disabled = false): ActionClusterItem[] {
+  return [
+    {
+      id: "contact",
+      icon: ui.clusterIcons.contact(16),
+      label: resolveText("contact", lang),
+      tip: resolveText("contactTip", lang),
+      onClick: () => ui.openContactModal(),
+      disabled,
+      className: state,
+    },
+    {
+      id: "star",
+      icon: ui.clusterIcons.star(16),
+      label: resolveText("starLabel", lang),
+      tip: resolveText("starTip", lang),
+      href: REPO,
+      disabled,
+      className: state,
+    },
+    {
+      id: "issue",
+      icon: ui.clusterIcons.issue(16),
+      label: resolveText("issueLabel", lang),
+      tip: resolveText("issueTip", lang),
+      href: REPO + "/issues",
+      disabled,
+      className: state,
+    },
+  ];
+}
+
+const STATES: Array<{ label: string; state?: string; disabled?: boolean }> = [
+  { label: "默认" },
+  { label: "悬浮：动效 + 柔光", state: "is-hover" },
+  { label: "按下：收紧", state: "is-active" },
+  { label: "focus：键盘环", state: "is-focus" },
+  { label: "disabled：去饱和", disabled: true },
+];
+
+/** Five visual states, forced through the documented is-* hooks, light + dark. */
+function StateShowcase({ ui, lang }: { ui: Ui; lang: Lang }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {[false, true].map((dark) => (
+        <div
+          key={dark ? "dark" : "light"}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+            gap: 10,
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid " + (dark ? "#3a3f4b" : "#e5e8ee"),
+            background: dark ? "#17181c" : "#fff",
+            color: dark ? "#e8eaed" : "#1f2329",
+          }}
+        >
+          {STATES.map((entry) => (
+            <div key={entry.label} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, opacity: 0.62, marginBottom: 10 }}>{entry.label}</div>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <ui.ActionCluster items={clusterItems(ui, lang, entry.state, entry.disabled)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -67,7 +144,7 @@ function HeaderMock({ ui, dark }: { ui: typeof base; dark?: boolean }) {
  * Static proof of the three hover copies: HoverTip pinned open with
  * visible, so a screenshot can review the wording and the pill styling.
  */
-function TipShowcase({ ui, lang }: { ui: typeof base; lang: "zh" | "en" }) {
+function TipShowcase({ ui, lang }: { ui: Ui; lang: Lang }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 56, paddingTop: 56 }}>
       <div>
@@ -95,18 +172,28 @@ function App() {
     () => new URLSearchParams(window.location.search).get("lang") === "en",
   );
   const ui = english ? baseEn : base;
-  const lang = english ? ("en" as const) : ("zh" as const);
+  const lang: Lang = english ? "en" : "zh";
+  const overflowItems: ActionClusterItem[] = [
+    ...clusterItems(ui, lang),
+    {
+      id: "docs",
+      icon: ui.clusterIcons.issue(16),
+      label: english ? "Feedback survey" : "反馈问卷",
+      tip: english ? "30-second survey" : "30 秒问卷，帮我们改进",
+      href: "https://github.com/FeatherHunter/featherhunter-plugin-manage",
+    },
+  ];
   return (
     <main style={pageStyle}>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>dsh-featherhunter-plugin-base</h1>
       <p style={{ fontSize: 14, opacity: 0.7, marginTop: 0 }}>
-        演示：联系弹窗（票 04）、作者插件卡（票 06），以及新增的页头三件套——联系 / Star / Issue
-        三枚线稿图标按钮、三项合一的胶囊控件、公共 HoverTip 悬浮文案。弹窗支持零参打开、4
-        列上限、窄屏降列、Esc / 遮罩 / 关闭按钮关闭、焦点回归、群号点击复制、过期降级链接。
+        演示：ActionCluster（票 03）——一个容器、N 枚独立彩色按钮；联系弹窗（票 04）、作者插件卡（票
+        06）。页头右组默认 16px 图标、按钮间距 4、无外框无分隔线，容器本身不响应 hover；悬浮出共用
+        HoverTip 文案并带同色柔光与动效，按下收紧，Tab 出 focus 环，disabled 去饱和。
       </p>
 
       <section style={{ marginTop: 24 }}>
-        <p style={captionStyle}>页头右组：三项合一（浅色 / 深色跟随 currentColor）</p>
+        <p style={captionStyle}>页头右组：B 静默簇（浅色 / 深色跟随 currentColor）</p>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <HeaderMock ui={ui} />
           <HeaderMock ui={ui} dark />
@@ -114,11 +201,29 @@ function App() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <p style={captionStyle}>三个独立按钮（ActionButtons，14 / 16 / 18 三档）</p>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <ui.ActionButtons size={14} />
-          <ui.ActionButtons />
-          <ui.ActionButtons size={18} />
+        <p style={captionStyle}>五种状态（浅色 / 深色；用 is-* 钩子定格，真机由 hover / 按下 / Tab / disabled 触发）</p>
+        <StateShowcase ui={ui} lang={lang} />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <p style={captionStyle}>尺寸三档（14 / 16 / 18，默认 16；按钮 = 图标 + 12）</p>
+        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+          <ui.ActionCluster size={14} />
+          <ui.ActionCluster size={16} />
+          <ui.ActionCluster size={18} />
+        </div>
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <p style={captionStyle}>第 4 项溢出：maxVisible=3 时收进「更多操作 ⋯」菜单</p>
+        <ui.ActionCluster items={overflowItems} maxVisible={3} />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <p style={captionStyle}>旧控件兼容一版：ActionGroup（1px 托盘）与 ActionButtons（线稿图标）</p>
+        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <ui.ActionGroup size={16} />
+          <ui.ActionButtons size={16} />
         </div>
       </section>
 

@@ -2,6 +2,8 @@ import type * as ReactNamespace from "react";
 import { BASELINE, resolveLang } from "../core/index";
 import type { Group, Lang, PluginEntry } from "../core/types";
 import { createActions } from "./actions";
+import { createActionCluster } from "./cluster";
+import { contactClusterIcon, issueClusterIcon, starClusterIcon } from "./cluster-icons";
 import {
   createContentLoader,
   type ContentLoader,
@@ -15,6 +17,7 @@ import type {
   AuthorPluginsProps,
   BaseUI,
   BaseUIOptions,
+  ClusterIconSet,
   ContactRowProps,
   OpenContactModalOptions,
   QrResolver,
@@ -240,6 +243,30 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
   });
 
   /**
+   * v2 header actions: one container, N independent coloured buttons. The
+   * issue target falls back to the repository issue list (never /issues/new).
+   */
+  const cluster = createActionCluster(React, {
+    text: widgetText,
+    openContact: (trigger) => {
+      openContactModal({ trigger });
+    },
+    repoUrl: options.repoUrl,
+    issuesUrl: options.issuesUrl,
+  });
+
+  /**
+   * Coloured icons for host-supplied cluster entries; every call gets its own
+   * gradient ids so two panels in one document never share a <defs>.
+   */
+  let hostIconSerial = 0;
+  const clusterIcons: ClusterIconSet = {
+    contact: (size = 16) => contactClusterIcon(React.createElement, size, "host" + (hostIconSerial += 1)),
+    star: (size = 16) => starClusterIcon(React.createElement, size, "host" + (hostIconSerial += 1)),
+    issue: (size = 16) => issueClusterIcon(React.createElement, size, "host" + (hostIconSerial += 1)),
+  };
+
+  /**
    * Whole-row variant: one button (icon + label + external-link arrow) using
    * the same row skin as the author plugin rows, for panels that can only
    * place a full row. Keyboard reachable for free because it is a button.
@@ -338,6 +365,8 @@ export function createBaseUI(React: typeof ReactNamespace, options: BaseUIOption
     IssueButton: actions.IssueButton,
     ActionButtons: actions.ActionButtons,
     ActionGroup: actions.ActionGroup,
+    ActionCluster: cluster,
+    clusterIcons,
     HoverTip: actions.HoverTip,
     ContactRow,
     AuthorPlugins,
