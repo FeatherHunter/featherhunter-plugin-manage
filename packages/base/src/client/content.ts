@@ -1,4 +1,4 @@
-import { parseManifest } from "../core/index";
+import { isRecord, parseManifest } from "../core/index";
 import type { Group, Manifest } from "../core/types";
 
 /**
@@ -31,21 +31,10 @@ export const MAX_IMAGE_BYTES = 512 * 1024;
 export const MAX_MANIFEST_BYTES = 512 * 1024;
 
 /** UTF-8 byte length; TextEncoder is present in every browser and jsdom. */
+const UTF8_ENCODER = new TextEncoder();
+
 function utf8ByteLength(value: string): number {
-  if (typeof TextEncoder === "function") {
-    return new TextEncoder().encode(value).byteLength;
-  }
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code < 0x80) bytes += 1;
-    else if (code < 0x800) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff) {
-      bytes += 4;
-      index += 1;
-    } else bytes += 3;
-  }
-  return bytes;
+  return UTF8_ENCODER.encode(value).byteLength;
 }
 
 /** The only hosts the client is allowed to talk to (images and manifest). */
@@ -116,10 +105,6 @@ export interface ContentLoaderOptions {
 
 function fail(message: string): never {
   throw new Error("manifest: " + message);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireString(value: unknown, field: string, maxLength: number): string {

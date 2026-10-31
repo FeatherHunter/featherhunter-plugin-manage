@@ -51,6 +51,15 @@ export function sortByOrder<T extends { order: number }>(items: readonly T[]): T
   return [...items].sort((a, b) => a.order - b.order);
 }
 
+/**
+ * Link target of one plugin row: the explicit url when the data provides a
+ * non-empty one, otherwise the canonical GitHub repository page.
+ */
+export function pluginHref(plugin: PluginEntry): string {
+  const url = plugin.url;
+  return url !== undefined && url.length > 0 ? url : "https://github.com/" + plugin.repo;
+}
+
 /** Strict `YYYY-MM-DD` parser (UTC midnight). Invalid dates return null. */
 export function parseDateOnly(value: string): Date | null {
   const match = DATE_ONLY_RE.exec(value);

@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 import { parseManifest, pickText } from "../core";
 import type { I18nText, Lang, Manifest } from "../core/types";
 import type { ReadmeTargetOptions } from "./readme-sync";
+import { STAR_CHART_DEFAULT_DARK, STAR_CHART_DEFAULT_LIGHT } from "./star-assets";
 import type { StarHistoryData, ThanksAuthor, ThanksData } from "./types";
+
+export { STAR_CHART_DEFAULT_DARK, STAR_CHART_DEFAULT_LIGHT } from "./star-assets";
 
 /**
  * Static description of one README managed by `readme:init` / `readme:sync --all`.
@@ -288,12 +291,6 @@ export function detectStarVersion(markdown: string): string | undefined {
   const day = matches.find((value) => value.length === 8);
   return day === undefined ? undefined : day + "0000";
 }
-
-/** Default dark-mode chart asset of a managed repository. */
-export const STAR_CHART_DEFAULT_DARK = "docs/star-history-dark.svg";
-
-/** Default light-mode chart asset of a managed repository. */
-export const STAR_CHART_DEFAULT_LIGHT = "docs/star-history-light.svg";
 
 /** Resolve the dark / light chart asset paths declared by one target. */
 export function starChartPaths(target: { star: ReadmeTarget["star"] }): { dark: string; light: string } {

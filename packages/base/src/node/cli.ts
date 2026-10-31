@@ -88,9 +88,6 @@ function parseReadmeArgs(
   let readme: string | undefined;
   let selfId: string | undefined;
 
-  const takeValue = (name: string, argument: string, position: number) =>
-    takeFlagValue(args, "readme:" + command, name, argument, position);
-
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
     if (arg === "--check") {
@@ -98,22 +95,22 @@ function parseReadmeArgs(
     } else if (arg === "--all") {
       all = true;
     } else if (arg === "--root" || arg.startsWith("--root=")) {
-      const parsed = takeValue("--root", arg, index);
+      const parsed = takeFlagValue(args, "readme:" + command, "--root", arg, index);
       if ("error" in parsed) return { error: parsed.error };
       roots.push(parsed.value);
       if (arg === "--root") index += 1;
     } else if (arg === "--repos" || arg.startsWith("--repos=")) {
-      const parsed = takeValue("--repos", arg, index);
+      const parsed = takeFlagValue(args, "readme:" + command, "--repos", arg, index);
       if ("error" in parsed) return { error: parsed.error };
       repos.push(parsed.value);
       if (arg === "--repos") index += 1;
     } else if (arg === "--readme" || arg.startsWith("--readme=")) {
-      const parsed = takeValue("--readme", arg, index);
+      const parsed = takeFlagValue(args, "readme:" + command, "--readme", arg, index);
       if ("error" in parsed) return { error: parsed.error };
       readme = parsed.value;
       if (arg === "--readme") index += 1;
     } else if (arg === "--self" || arg.startsWith("--self=")) {
-      const parsed = takeValue("--self", arg, index);
+      const parsed = takeFlagValue(args, "readme:" + command, "--self", arg, index);
       if ("error" in parsed) return { error: parsed.error };
       selfId = parsed.value;
       if (arg === "--self") index += 1;
@@ -180,9 +177,6 @@ function parseDoctorArgs(args: string[]): { options: DoctorCliOptions } | { erro
   let offline = false;
   let json = false;
 
-  const takeValue = (name: string, argument: string, position: number) =>
-    takeFlagValue(args, "doctor", name, argument, position);
-
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
     if (arg === "--offline") {
@@ -190,12 +184,12 @@ function parseDoctorArgs(args: string[]): { options: DoctorCliOptions } | { erro
     } else if (arg === "--json") {
       json = true;
     } else if (arg === "--repos" || arg.startsWith("--repos=")) {
-      const parsed = takeValue("--repos", arg, index);
+      const parsed = takeFlagValue(args, "doctor", "--repos", arg, index);
       if ("error" in parsed) return { error: parsed.error };
       reposDirs.push(resolve(parsed.value));
       if (arg === "--repos") index += 1;
     } else if (arg === "--repo" || arg.startsWith("--repo=")) {
-      const parsed = takeValue("--repo", arg, index);
+      const parsed = takeFlagValue(args, "doctor", "--repo", arg, index);
       if ("error" in parsed) return { error: parsed.error };
       repoRoots.push(resolve(parsed.value));
       if (arg === "--repo") index += 1;

@@ -6,8 +6,9 @@
  * marker handling — the marker registry and the sync engine own that
  * (see ./readme-sync.ts). The returned string is the block *content*.
  */
-import { BASELINE, pickText, sortByOrder } from "../core/index";
+import { BASELINE, pickText, pluginHref, sortByOrder } from "../core/index";
 import type { Group, Lang, Manifest, PluginEntry } from "../core/types";
+import { STAR_CHART_DEFAULT_DARK, STAR_CHART_DEFAULT_LIGHT } from "./star-assets";
 import type {
   BlockRenderOptions,
   StarHistoryData,
@@ -168,14 +169,10 @@ export function renderContactBlock(options: BlockRenderOptions = {}): string {
 }
 
 /**
- * Link target of one plugin row.
- *
- * The manifest URL wins; the GitHub repository is the fallback so a row never
- * renders as a linkless plugin name.
+ * Link target of one plugin row (kept for the node entry API; the shared
+ * implementation lives in ./core so the client rows resolve links identically).
  */
-export function pluginLink(plugin: PluginEntry): string {
-  return plugin.url ?? "https://github.com/" + plugin.repo;
-}
+export const pluginLink = pluginHref;
 
 /**
  * Render the author-plugins (MORE) block content (no markers).
@@ -294,8 +291,8 @@ export function renderStarHistoryBlock(options: BlockRenderOptions = {}): string
     throw new Error('star-history width must be a positive integer (got "' + String(data.width) + '")');
   }
   const branch = data.branch ?? "main";
-  const dark = rawImageUrl(repo, branch, data.darkPath ?? "docs/star-history-dark.svg", data.version);
-  const light = rawImageUrl(repo, branch, data.lightPath ?? "docs/star-history-light.svg", data.version);
+  const dark = rawImageUrl(repo, branch, data.darkPath ?? STAR_CHART_DEFAULT_DARK, data.version);
+  const light = rawImageUrl(repo, branch, data.lightPath ?? STAR_CHART_DEFAULT_LIGHT, data.version);
   const alt = escapeAttribute(data.alt ?? STAR_HISTORY_DEFAULT_ALT);
   const img = "  <img alt=\"" + alt + "\"" + (data.width === undefined ? "" : ' width="' + data.width + '"') + ' src="' + light + '" />';
   const lines: string[] = ['<div align="center">', ""];

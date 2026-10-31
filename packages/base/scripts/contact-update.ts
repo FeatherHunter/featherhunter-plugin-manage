@@ -20,7 +20,7 @@ import {
   validateCropsSource,
   validateGroupsSource,
 } from "./build-data";
-import { cropImage, extractQrCode, luminanceStdDev, normalizeCard } from "./image";
+import { QR_MIN_SIZE, cropImage, extractQrCode, luminanceStdDev, normalizeCard } from "./image";
 import { findRepoRoot, readJsonFile, relativePosix } from "./io";
 import { decodeImage, encodeTruecolorPng, isJpeg, isPng } from "./png";
 
@@ -28,8 +28,8 @@ import { decodeImage, encodeTruecolorPng, isJpeg, isPng } from "./png";
 export const VALID_DAYS = 7;
 /** Dated source images older than this are removed on update. */
 export const STALE_DAYS = 56;
-/** Minimum decoded screenshot edge length (the published code must be >= 320px). */
-export const MIN_IMAGE_SIZE = 320;
+/** Minimum decoded screenshot edge length; the QR gate publishes at QR_MIN_SIZE. */
+export const MIN_IMAGE_SIZE = QR_MIN_SIZE;
 /** Below this luminance standard deviation the crop box is probably blank. */
 export const MIN_CROP_CONTRAST = 6;
 

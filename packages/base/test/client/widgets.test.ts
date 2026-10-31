@@ -241,6 +241,7 @@ describe("stylesheet contract", () => {
 
     expect(document.getElementById(BASE_STYLE_ID)).not.toBeNull();
     expect(document.querySelectorAll("#" + BASE_STYLE_ID)).toHaveLength(1);
+    // The pre-spec id must never come back: hosts key their CSP on the new one.
     expect(document.getElementById("dsh-base-style")).toBeNull();
   });
 
@@ -259,5 +260,28 @@ describe("stylesheet contract", () => {
     expect(BASE_CSS).toContain("--dsw-alias-label-tertiary");
     expect(BASE_CSS).toContain("var(--dsw-alias-border-l1,");
     expect(BASE_CSS).toContain("var(--dsw-alias-border-l2,");
+  });
+
+  it("themes expired cards, copied numbers and links through host tokens", () => {
+    // Warning intent: the expired card and its caption follow the host warning palette.
+    expect(BASE_CSS).toContain(
+      ".dsh-base-modal__card--expired{background:var(--dsw-alias-state-warn-tertiary,",
+    );
+    expect(BASE_CSS).toContain("border-color:var(--dsw-alias-state-warn-secondary,");
+    expect(BASE_CSS).toContain(
+      ".dsh-base-modal__card-expired{margin-top:2px;font-size:10.5px;line-height:1.5;color:var(--dsw-alias-state-warn-label,",
+    );
+    // Accent intent: copied confirmation, fallback links and focus rings use the brand colour.
+    expect(BASE_CSS).toContain(
+      ".dsh-base-modal__card-subtitle[data-copied='true']{color:var(--dsw-alias-link,",
+    );
+    expect(BASE_CSS).toContain("border-radius:8px;color:var(--dsw-alias-link,");
+    expect(BASE_CSS).toContain("outline:2px solid var(--dsw-alias-link,");
+    // No rule may paint these theme surfaces with a bare literal any more.
+    expect(BASE_CSS).not.toContain("background:#fffaf3");
+    expect(BASE_CSS).not.toContain("color:#b45309");
+    expect(BASE_CSS).not.toContain("color:#4d6bfe}");
+    expect(BASE_CSS).not.toContain("background:rgba(0,0,0,.06)");
+    expect(BASE_CSS).not.toContain("background:rgba(77,107,254,.08)");
   });
 });

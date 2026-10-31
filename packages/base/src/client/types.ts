@@ -50,7 +50,7 @@ export interface ContactButtonProps {
 export interface ContactRowProps {
   className?: string;
   label?: string;
-  /** Small hint next to the button. */
+  /** Small hint rendered after the row label. */
   hint?: string;
 }
 

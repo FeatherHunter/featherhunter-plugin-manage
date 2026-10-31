@@ -1,5 +1,5 @@
 import type * as ReactNamespace from "react";
-import { pickText, sortByOrder } from "../core/index";
+import { pickText, pluginHref, sortByOrder } from "../core/index";
 import type { Lang, PluginEntry } from "../core/types";
 import { externalLinkIcon, gridIcon } from "./icons";
 import { ensureBaseStyles } from "./styles";
@@ -40,15 +40,7 @@ export function selectAuthorPlugins(options: AuthorPluginRowsOptions): PluginEnt
   return visible.slice(0, cap);
 }
 
-/**
- * Link target of one row: the explicit url when the data provides one,
- * otherwise the canonical GitHub repository page.
- */
-export function pluginHref(plugin: PluginEntry): string {
-  return plugin.url && plugin.url.length > 0
-    ? plugin.url
-    : "https://github.com/" + plugin.repo;
-}
+export { pluginHref } from "../core/index";
 
 /** Everything the pure renderer needs; built by createBaseUI's wire-up. */
 export interface RenderAuthorPluginsOptions extends AuthorPluginRowsOptions {
