@@ -154,6 +154,7 @@ export function starDataOf(fixtureId: string, version = "202610310130"): {
   alt?: string;
   darkPath?: string;
   lightPath?: string;
+  markdownImage?: boolean;
 } {
   const single = { darkPath: "docs/star-history.svg", lightPath: "docs/star-history.svg" };
   switch (fixtureId) {
@@ -190,6 +191,7 @@ export function starDataOf(fixtureId: string, version = "202610310130"): {
         version,
         alt: "星标增长曲线：左轴累计星标、右轴每日新增",
         ...single,
+        markdownImage: true,
       };
     case "palette-pkg":
     case "palette-en":
@@ -198,6 +200,7 @@ export function starDataOf(fixtureId: string, version = "202610310130"): {
         version,
         alt: "Star history chart: total stars on the left axis, daily new stars on the right axis",
         ...single,
+        markdownImage: true,
       };
     case "prompt":
       return {
@@ -205,6 +208,7 @@ export function starDataOf(fixtureId: string, version = "202610310130"): {
         version,
         alt: "星标增长曲线（双轴）：左轴累计星标，右轴每日新增",
         ...single,
+        markdownImage: true,
       };
     case "prompt-en":
       return {
@@ -212,6 +216,7 @@ export function starDataOf(fixtureId: string, version = "202610310130"): {
         version,
         alt: "Star history chart (dual axis): total stars on the left, daily new stars on the right",
         ...single,
+        markdownImage: true,
       };
     case "ilife":
       return { repo: "FeatherHunter/ilife", version, alt: "Star History Chart" };

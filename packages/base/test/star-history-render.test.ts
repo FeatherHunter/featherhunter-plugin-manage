@@ -81,6 +81,46 @@ describe("star-history renderer", () => {
     ).toThrow(/owner\/repo/);
   });
 
+  it("renders one plain image when both themes point at the same file", () => {
+    const rendered = renderStarHistoryBlock({
+      starHistory: {
+        repo: "FeatherHunter/dsh-opencode-palette",
+        version: "202610310130",
+        alt: "Chart",
+        darkPath: "docs/star-history.svg",
+        lightPath: "docs/star-history.svg",
+      },
+    });
+    expect(rendered).not.toContain("<picture>");
+    expect(rendered).not.toContain("<source ");
+    expect(rendered.match(/<img /g)).toHaveLength(1);
+  });
+
+  it("keeps the Markdown image form of a repository that publishes one", () => {
+    const rendered = renderStarHistoryBlock({
+      starHistory: {
+        repo: "FeatherHunter/dsh-prompt",
+        version: "202610310130",
+        alt: "星标增长曲线（双轴）：左轴累计星标，右轴每日新增",
+        darkPath: "docs/star-history.svg",
+        lightPath: "docs/star-history.svg",
+        markdownImage: true,
+      },
+    });
+    expect(rendered).toBe(
+      [
+        '<div align="center">',
+        "",
+        "![星标增长曲线（双轴）：左轴累计星标，右轴每日新增](https://raw.githubusercontent.com/FeatherHunter/dsh-prompt/main/docs/star-history.svg?v=202610310130)",
+        "",
+        "</div>",
+      ].join("\n"),
+    );
+    expect(rendered).not.toContain("<img");
+    expect(rendered).not.toContain("<picture>");
+    expect(parseStarHistoryBlock(rendered).variant).toBe("markdown-image");
+  });
+
   it("accepts a custom branch, chart paths, alt text and width", () => {
     const rendered = renderStarHistoryBlock({
       starHistory: {

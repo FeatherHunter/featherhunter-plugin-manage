@@ -8,6 +8,7 @@ import {
   readPackagedManifest,
   readPackageVersion,
   readmeTargetRepos,
+  resolveRepoReadmeTargets,
 } from "./targets";
 
 const HELP = `dsh-base — FeatherHunter base package CLI
@@ -19,6 +20,8 @@ Usage:
                                   Refresh the text between the managed markers
   dsh-base readme:init|readme:sync --all --repos <dir>...
                                   Process the eleven managed READMEs of the five repositories
+  dsh-base readme:init|readme:sync --repo <dir>...
+                                  Process every managed README of one managed repository (CI)
   dsh-base contact:update          Source-repo only: refresh contact/ from a QR screenshot
                                   (run "npm run contact:update -- <image>" in the checkout)
   dsh-base doctor [<repo-dir>]... [--repos <dir>]... [--offline] [--json]
@@ -33,6 +36,8 @@ Options:
   --repos <dir>    Parent directory that contains the five plugin repositories; repeatable.
                    readme:init/sync: process the built-in table of eleven managed READMEs.
                    doctor: check every managed repository under that directory.
+  --repo <dir>     One managed repository root; repeatable. Processes all of its READMEs
+                   (README.md and docs/README.en.md); useful as a per-repository CI gate.
   --all            Process every target and keep going after per-file errors
   --check          Report drift without writing; nonzero exit when a README is out of date
   --offline        doctor: skip the remote manifest probe
@@ -50,6 +55,7 @@ interface ReadmeCliOptions {
   command: ReadmeCommand;
   roots: string[];
   repos: string[];
+  repoRoots: string[];
   check: boolean;
   all: boolean;
   readme?: string;
@@ -83,6 +89,7 @@ function parseReadmeArgs(
 ): { options: ReadmeCliOptions } | { error: string } {
   const roots: string[] = [];
   const repos: string[] = [];
+  const repoRoots: string[] = [];
   let check = false;
   let all = false;
   let readme: string | undefined;
@@ -104,6 +111,11 @@ function parseReadmeArgs(
       if ("error" in parsed) return { error: parsed.error };
       repos.push(parsed.value);
       if (arg === "--repos") index += 1;
+    } else if (arg === "--repo" || arg.startsWith("--repo=")) {
+      const parsed = takeFlagValue(args, "readme:" + command, "--repo", arg, index);
+      if ("error" in parsed) return { error: parsed.error };
+      repoRoots.push(parsed.value);
+      if (arg === "--repo") index += 1;
     } else if (arg === "--readme" || arg.startsWith("--readme=")) {
       const parsed = takeFlagValue(args, "readme:" + command, "--readme", arg, index);
       if ("error" in parsed) return { error: parsed.error };
@@ -123,9 +135,21 @@ function parseReadmeArgs(
     if (roots.length > 0) {
       return { error: 'readme:' + command + ': "--repos" cannot be combined with "--root"' };
     }
+    if (repoRoots.length > 0) {
+      return { error: 'readme:' + command + ': "--repos" cannot be combined with "--repo"' };
+    }
     if (readme !== undefined || selfId !== undefined) {
       return {
         error: 'readme:' + command + ': "--repos" uses the built-in per-repository paths; do not pass --readme/--self',
+      };
+    }
+  } else if (repoRoots.length > 0) {
+    if (roots.length > 0) {
+      return { error: 'readme:' + command + ': "--repo" cannot be combined with "--root"' };
+    }
+    if (readme !== undefined || selfId !== undefined) {
+      return {
+        error: 'readme:' + command + ': "--repo" uses the built-in per-repository paths; do not pass --readme/--self',
       };
     }
   } else if (roots.length === 0) {
@@ -137,6 +161,7 @@ function parseReadmeArgs(
       command,
       roots: roots.map((root) => resolve(root)),
       repos: repos.map((reposDir) => resolve(reposDir)),
+      repoRoots: repoRoots.map((repoRoot) => resolve(repoRoot)),
       check,
       all,
       readme,
@@ -238,10 +263,25 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         process.stderr.write(HELP);
         return 2;
       }
-      const { roots, repos, check, all, readme, selfId } = parsed.options;
+      const { roots, repos, repoRoots, check, all, readme, selfId } = parsed.options;
       if (repos.length > 0) {
         const manifest = readPackagedManifest();
         const targets = expandReadmeTargets(repos, { manifest });
+        return reportReadmeBatch(updateReadmeTargets(targets, { command: readmeCommand, check }));
+      }
+      if (repoRoots.length > 0) {
+        const manifest = readPackagedManifest();
+        let targets;
+        try {
+          targets = repoRoots.flatMap((repoRoot) =>
+            resolveRepoReadmeTargets(repoRoot, { manifest }),
+          );
+        } catch (error) {
+          process.stderr.write(
+            "dsh-base: " + (error instanceof Error ? error.message : String(error)) + "\n",
+          );
+          return 1;
+        }
         return reportReadmeBatch(updateReadmeTargets(targets, { command: readmeCommand, check }));
       }
       return reportReadmeBatch(

@@ -16,6 +16,7 @@ import {
   expectMigratedContactSources,
   fixtureContactRaw,
   fixtureMoreRaw,
+  fixtureStarRaw,
   makeTempDir,
 } from "./readme-helpers";
 
@@ -110,6 +111,72 @@ describe("readme:init", () => {
     }
   });
 
+  it("keeps the <sub> suffix of a Markdown contact heading (prompt)", () => {
+    // The prompt repository publishes "## 反馈与联系 <sub>CONNECT</sub>"; the
+    // pre-migration fixture snapshot still had the HTML <h2> form, so convert it.
+    const contactRaw = fixtureContactRaw("prompt");
+    const withSub = contactRaw.replace(
+      '<h2 align="center"><sub>CONNECT</sub><br>反馈与联系</h2>',
+      "## 反馈与联系 <sub>CONNECT</sub>",
+    );
+    expect(withSub).not.toBe(contactRaw);
+    const { dir, readmePath, cleanup } = setup(fakeReadme(withSub));
+    try {
+      const result = updateReadme({ root: dir, command: "init" });
+      expect(result.errors).toEqual([]);
+      const markdown = readFileSync(readmePath, "utf8");
+      const inner = markedInner(markdown);
+      expect(inner.startsWith("## 反馈与联系 <sub>CONNECT</sub>")).toBe(true);
+      expect(inner).not.toContain("<h2");
+      const comparison = compareBlocks("contact", expectMigratedContactSources(withSub), inner);
+      expect(comparison.contentDifferences).toEqual([]);
+
+      const again = updateReadme({ root: dir, command: "init" });
+      expect(again.errors).toEqual([]);
+      expect(again.changed).toBe(false);
+      expect(readFileSync(readmePath, "utf8")).toBe(markdown);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not swallow the centring wrapper of the next THANKS heading", () => {
+    const original = [
+      "# Demo plugin",
+      "",
+      fixtureContactRaw("prompt"),
+      "",
+      fixtureStarRaw("prompt"),
+      "",
+      "## 作者的其他作品 <sub>MORE</sub>",
+      "",
+      "- **[dsh-prompt](https://github.com/FeatherHunter/dsh-prompt)** —— demo row",
+      "",
+      '<div align="center">',
+      "",
+      "## 致谢 <sub>THANKS</sub>",
+      "",
+      "</div>",
+      "",
+      "Thanks text.",
+      "",
+    ].join("\n");
+    const { dir, readmePath, cleanup } = setup(original);
+    try {
+      const result = updateReadme({ root: dir, command: "init" });
+      expect(result.errors).toEqual([]);
+      const markdown = readFileSync(readmePath, "utf8");
+      // The wrapper that centres the THANKS heading must survive the MORE replacement.
+      expect(markdown).toContain('<div align="center">\n\n## 致谢 <sub>THANKS</sub>');
+      expect(markdown).toContain("Thanks text.");
+      const again = updateReadme({ root: dir, command: "init" });
+      expect(again.errors).toEqual([]);
+      expect(again.changed).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("keeps the English heading and titles of an en README", () => {
     const contactRaw = fixtureContactRaw("deck-en");
     const { dir, readmePath, cleanup } = setup(fakeReadme(contactRaw));
@@ -178,7 +245,9 @@ describe("MORE block migration", () => {
       expect(init.errors).toEqual([]);
       const markdown = readFileSync(readmePath, "utf8");
       const inner = moreInner(markdown);
-      expect(inner.startsWith("## 作者的其他作品 <sub>MORE</sub>")).toBe(true);
+      // The Markdown heading keeps the centring wrapper the prompt README had
+      // before the migration, so GitHub renders it exactly as before.
+      expect(inner.startsWith('<div align="center">\n\n## 作者的其他作品 <sub>MORE</sub>\n\n</div>')).toBe(true);
       expect(inner).not.toContain("<h2");
       expect(parseMoreBlock(inner).items.map((item) => item.name)).toEqual(manifestRowNames("prompt"));
 

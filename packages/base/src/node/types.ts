@@ -58,6 +58,14 @@ export interface StarHistoryData {
   width?: number;
   /** Optional caption rendered as a `<sub>` note under the chart (im). */
   note?: string;
+  /**
+   * Render the chart as a Markdown image instead of raw HTML.
+   *
+   * Repositories whose README already embeds the chart with `![alt](url)`
+   * keep that form: raw HTML images are dropped by GitHub's topic page and by
+   * the marketplace renderer the prompt repository validates against.
+   */
+  markdownImage?: boolean;
 }
 
 /** Shared options for the README block renderers. */

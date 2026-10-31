@@ -121,12 +121,23 @@ export const BLOCK_MARKERS = {
  * "Feedback and Contact" while the zh ones read "反馈与联系", and only ilife
  * uses the Markdown `##` heading.
  */
-function detectContact(raw: string): { lang?: Lang; variant?: HeadingVariant } {
+function detectContact(raw: string): { lang?: Lang; variant?: HeadingVariant; headingText?: string } {
   const parsed = parseContactBlock(raw);
   const heading = parsed.heading?.text ?? "";
   const lang: Lang = /[A-Za-z]/.test(heading) ? "en" : "zh";
   const variant: HeadingVariant =
     parsed.variant === "markdown-heading" ? "markdown-heading" : "html-heading";
+  // A Markdown contact heading carries its own wording and may keep a sub-label
+  // (ilife: "## 反馈与联系", prompt: "## 反馈与联系 <sub>CONNECT</sub>"); keep
+  // both verbatim so the sync never rewrites the repository's heading style.
+  if (variant === "markdown-heading" && parsed.heading !== null) {
+    const sub = parsed.heading.sub;
+    return {
+      lang,
+      variant,
+      headingText: sub === null ? parsed.heading.text : parsed.heading.text + " <sub>" + sub + "</sub>",
+    };
+  }
   return { lang, variant };
 }
 
@@ -219,6 +230,14 @@ function nextManagedBlockLine(lines: readonly MarkdownLine[], from: number): num
     if (fence) continue;
     if (MANAGED_MARKER_LINE.test(text)) return index;
     if (MORE_HEADING_LINE.test(text) || THANKS_HEADING_LINE.test(text) || CONTACT_HEADING_LINE.test(text)) {
+      // The next block's heading may sit inside a centring <div> of its own
+      // (the prompt repositories wrap the THANKS heading). Start the boundary
+      // at that wrapper so the previous block never swallows it.
+      for (let back = index - 1; back >= 0; back -= 1) {
+        if (lines[back]!.text.trim() === "") continue;
+        if (WRAPPING_DIV_LINE.test(lines[back]!.text)) return back;
+        break;
+      }
       return index;
     }
     if (STAR_MARKER_LINE.test(text)) {

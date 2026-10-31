@@ -125,9 +125,11 @@ export function contactCardUrl(
 }
 
 function contactHeading(lang: Lang, options: BlockRenderOptions): string {
-  const text = CONTACT_TEXT.heading[lang];
-  if (options.variant === "markdown-heading") return "## " + text;
-  return '<h2 align="center"><sub>' + CONTACT_TEXT.sub + "</sub><br>" + text + "</h2>";
+  // The Markdown heading keeps the wording recovered from the README (ilife's
+  // plain "反馈与联系", prompt's "反馈与联系 <sub>CONNECT</sub>"); the HTML
+  // heading always carries the CONNECT sub-label in its own structure.
+  if (options.variant === "markdown-heading") return "## " + (options.headingText ?? CONTACT_TEXT.heading[lang]);
+  return '<h2 align="center"><sub>' + CONTACT_TEXT.sub + "</sub><br>" + CONTACT_TEXT.heading[lang] + "</h2>";
 }
 
 /**
@@ -197,9 +199,18 @@ export function renderMoreBlock(options: BlockRenderOptions = {}): string {
     throw new Error('more block needs at least one plugin besides "' + String(options.selfId) + '"');
   }
   const headingText = options.headingText ?? MORE_TEXT.heading[lang];
+  // Both heading forms are centred: the HTML form centres itself through the
+  // h2 attribute, the Markdown form (prompt) was wrapped in a centring div
+  // before the migration and keeps that wrapper so GitHub renders it the same.
   const heading =
     options.variant === "markdown-heading"
-      ? "## " + headingText + " <sub>" + MORE_TEXT.sub + "</sub>"
+      ? [
+          '<div align="center">',
+          "",
+          "## " + headingText + " <sub>" + MORE_TEXT.sub + "</sub>",
+          "",
+          "</div>",
+        ].join("\n")
       : '<h2 align="center"><sub>' + MORE_TEXT.sub + "</sub><br>" + headingText + "</h2>";
   const rows = plugins.map(
     (plugin) =>
@@ -293,8 +304,22 @@ export function renderStarHistoryBlock(options: BlockRenderOptions = {}): string
   const branch = data.branch ?? "main";
   const dark = rawImageUrl(repo, branch, data.darkPath ?? STAR_CHART_DEFAULT_DARK, data.version);
   const light = rawImageUrl(repo, branch, data.lightPath ?? STAR_CHART_DEFAULT_LIGHT, data.version);
-  const alt = escapeAttribute(data.alt ?? STAR_HISTORY_DEFAULT_ALT);
-  const img = "  <img alt=\"" + alt + "\"" + (data.width === undefined ? "" : ' width="' + data.width + '"') + ' src="' + light + '" />';
+  const alt = data.alt ?? STAR_HISTORY_DEFAULT_ALT;
+  if (data.markdownImage === true) {
+    // Some repositories publish the chart as a Markdown image (prompt,
+    // palette): raw HTML images are dropped by GitHub's topic page and by the
+    // marketplace renderer, so the Markdown form must survive the sync.
+    const image = "![" + alt + "](" + light + ")";
+    const linked = data.pageUrl === undefined ? image : "[" + image + "](" + escapeAttribute(data.pageUrl) + ")";
+    const markdownLines: string[] = ['<div align="center">', "", linked];
+    if (data.note !== undefined && data.note.trim() !== "") {
+      markdownLines.push("", "<sub>" + escapeAttribute(data.note) + "</sub>");
+    }
+    markdownLines.push("", "</div>");
+    return markdownLines.join("\n");
+  }
+  const attributeAlt = escapeAttribute(alt);
+  const img = "  <img alt=\"" + attributeAlt + "\"" + (data.width === undefined ? "" : ' width="' + data.width + '"') + ' src="' + light + '" />';
   const lines: string[] = ['<div align="center">', ""];
   if (data.pageUrl !== undefined) lines.push('<a href="' + escapeAttribute(data.pageUrl) + '">');
   if (dark === light) {

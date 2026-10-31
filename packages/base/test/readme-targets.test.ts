@@ -1,16 +1,20 @@
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/node/cli";
 import {
   README_TARGETS,
+  STAR_DATA_FILE,
   buildStarHistoryData,
+  detectStarMarkdownImage,
   detectStarVersion,
   expandReadmeTargets,
   readmeTargetRepos,
   resolveRepoReadmeTargets,
+  starVersionFromDataFile,
   starVersionFromTimestamp,
 } from "../src/node/targets";
+import { makeTempDir } from "./readme-helpers";
 import { buildFakeRepos, fakeReadmePath, initFakeRepos, type FakeRepos } from "./targets-helpers";
 
 const CONTACT_START = "<!-- CONTACT-START -->";
@@ -112,6 +116,39 @@ describe("README target table", () => {
     expect(detected.pageUrl).toBe("https://featherhunter.github.io/dsh-mattpocock-skills-deck/star-history.html");
     const fallback = buildStarHistoryData(deck, undefined, manifest);
     expect(fallback.version).toBe("202610230000");
+  });
+
+  it("derives the chart version from the repository star data file", () => {
+    const { dir, cleanup } = makeTempDir("dsh-base-star-");
+    try {
+      const manifest = { updatedAt: "2026-10-23T00:00:00+08:00" } as never;
+      const prompt = README_TARGETS.find((target) => target.repo === "dsh-prompt" && target.readme === "README.md")!;
+      expect(starVersionFromDataFile(dir)).toBeUndefined();
+      mkdirSync(join(dir, "docs"), { recursive: true });
+      writeFileSync(
+        join(dir, STAR_DATA_FILE),
+        JSON.stringify([
+          { date: "2026-10-29", total: 80, daily: 1 },
+          { date: "2026-10-30", total: 83, daily: 3 },
+        ]),
+        "utf8",
+      );
+      expect(starVersionFromDataFile(dir)).toBe("202610300000");
+      const markdown =
+        "![chart](https://raw.githubusercontent.com/FeatherHunter/dsh-prompt/main/docs/star-history.svg?v=20261029)";
+      const detected = buildStarHistoryData(prompt, markdown, manifest, dir);
+      // The data file wins over the version already present in the README.
+      expect(detected.version).toBe("202610300000");
+      expect(detected.markdownImage).toBe(true);
+      expect(detectStarMarkdownImage(markdown)).toBe(true);
+      expect(detectStarMarkdownImage('<img src="docs/star-history-dark.svg" />')).toBe(false);
+      writeFileSync(join(dir, STAR_DATA_FILE), "[]", "utf8");
+      expect(starVersionFromDataFile(dir)).toBeUndefined();
+      writeFileSync(join(dir, STAR_DATA_FILE), JSON.stringify([{ date: "yesterday" }]), "utf8");
+      expect(() => starVersionFromDataFile(dir)).toThrow(/YYYY-MM-DD/);
+    } finally {
+      cleanup();
+    }
   });
 
   it("resolves the parent directory and rejects unknown repository roots", () => {
@@ -276,6 +313,54 @@ describe("readme:init / readme:sync --all --repos", () => {
     const starAssets = parsed.checks.find((check) => check.name === "ilife/star-assets");
     expect(starAssets?.ok).toBe(false);
     expect(starAssets?.detail).toMatch(/docs\/handover\/02/);
+  });
+
+  it("processes every managed README of one repository with --repo", async () => {
+    current = buildFakeRepos();
+    const repos = current;
+    const promptRoot = join(repos.dir, "dsh-prompt");
+
+    const init = await run(["readme:init", "--repo", promptRoot]);
+    expect(init.code).toBe(0);
+    expect(init.stderr).toBe("");
+    expect(init.stdout.trim().split("\n")).toHaveLength(2);
+    expect(readFileSync(fakeReadmePath(repos, "dsh-prompt"), "utf8")).toContain(CONTACT_START);
+    expect(readFileSync(fakeReadmePath(repos, "dsh-prompt", "docs/README.en.md"), "utf8")).toContain(
+      CONTACT_START,
+    );
+
+    const check = await run(["readme:sync", "--check", "--repo", promptRoot]);
+    expect(check.code).toBe(0);
+    expect(check.stdout.match(/up to date/g)).toHaveLength(2);
+  });
+
+  it("rejects an unknown --repo directory and conflicting flags", async () => {
+    current = buildFakeRepos();
+    const repos = current;
+
+    const unknown = await run(["readme:sync", "--repo", join(repos.dir, "not-a-repo")]);
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toMatch(/is not a managed repository directory/);
+
+    const withRoot = await run([
+      "readme:sync",
+      "--repo",
+      join(repos.dir, "dsh-prompt"),
+      "--root",
+      repos.dir,
+    ]);
+    expect(withRoot.code).toBe(2);
+    expect(withRoot.stderr).toMatch(/cannot be combined with "--root"/);
+
+    const withRepos = await run([
+      "readme:sync",
+      "--repo",
+      join(repos.dir, "dsh-prompt"),
+      "--repos",
+      repos.dir,
+    ]);
+    expect(withRepos.code).toBe(2);
+    expect(withRepos.stderr).toMatch(/cannot be combined with "--repo"/);
   });
 
   it("rejects --repos combined with --root or --readme", async () => {

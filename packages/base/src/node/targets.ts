@@ -59,6 +59,9 @@ const OWNER = "FeatherHunter";
 /** Thanks table data file kept by every plugin repository. */
 const THANKS_DATA_FILE = "docs/thanks-data.json";
 
+/** Star-history data file kept by every repository that publishes a chart. */
+export const STAR_DATA_FILE = "docs/star-history.json";
+
 /**
  * The eleven READMEs of the five plugin repositories.
  *
@@ -292,6 +295,48 @@ export function detectStarVersion(markdown: string): string | undefined {
   return day === undefined ? undefined : day + "0000";
 }
 
+/**
+ * Derive the chart version from the repository's own star-history data file.
+ *
+ * The data file is rewritten by the repository's star workflow on every day a
+ * star arrives, so its last entry dates the chart the SVG currently shows.
+ * Deriving the cache buster from it keeps the README stamp in step with the
+ * data and removes the workflow's second README write path (the old
+ * `node -e` stamp rewrite). A repository without the file falls back to the
+ * version already present in its README, then to the manifest timestamp.
+ */
+export function starVersionFromDataFile(repoRoot: string): string | undefined {
+  const path = join(repoRoot, STAR_DATA_FILE);
+  if (!existsSync(path)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error("cannot parse " + path + ": " + (error as Error).message);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(path + ": star-history data must be a JSON array");
+  }
+  if (parsed.length === 0) return undefined;
+  const last: unknown = parsed[parsed.length - 1];
+  const date = typeof last === "object" && last !== null ? (last as { date?: unknown }).date : undefined;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(path + ': the last star-history entry needs a "date" (YYYY-MM-DD)');
+  }
+  return date.replace(/-/g, "") + "0000";
+}
+
+/**
+ * Whether a README embeds its star-history chart as a Markdown image.
+ *
+ * The form is detected from the README rather than declared per target, so a
+ * repository keeps the shape it already publishes: deck / im use raw HTML
+ * (`<picture>`), palette / prompt use `![alt](raw-url)`.
+ */
+export function detectStarMarkdownImage(markdown: string): boolean {
+  return /!\[[^\]]*\]\([^)\s]*star-history[-a-z]*\.svg[^)]*\)/i.test(markdown);
+}
+
 /** Resolve the dark / light chart asset paths declared by one target. */
 export function starChartPaths(target: { star: ReadmeTarget["star"] }): { dark: string; light: string } {
   return {
@@ -317,18 +362,30 @@ export function missingStarChartAssets(repoRoot: string, target: { star: ReadmeT
   return missing;
 }
 
-/** Build the star-history data of one target, falling back to the manifest timestamp. */
+/**
+ * Build the star-history data of one target.
+ *
+ * Version precedence: the repository's star data file (see
+ * {@link starVersionFromDataFile}), then the version already in the README,
+ * then the packaged manifest timestamp.
+ */
 export function buildStarHistoryData(
   target: ReadmeTarget,
   markdown: string | undefined,
   manifest: Manifest,
+  repoRoot?: string,
 ): StarHistoryData {
-  const version = (markdown === undefined ? undefined : detectStarVersion(markdown)) ?? starVersionFromTimestamp(manifest.updatedAt);
+  const fromData = repoRoot === undefined ? undefined : starVersionFromDataFile(repoRoot);
+  const version =
+    fromData ??
+    (markdown === undefined ? undefined : detectStarVersion(markdown)) ??
+    starVersionFromTimestamp(manifest.updatedAt);
   const data: StarHistoryData = {
     repo: target.star.repo,
     version,
     alt: pickText(target.star.alt, target.lang),
   };
+  if (markdown !== undefined && detectStarMarkdownImage(markdown)) data.markdownImage = true;
   if (target.star.branch !== undefined) data.branch = target.star.branch;
   if (target.star.darkPath !== undefined) data.darkPath = target.star.darkPath;
   if (target.star.lightPath !== undefined) data.lightPath = target.star.lightPath;
@@ -389,7 +446,7 @@ function resolveTarget(root: string, target: ReadmeTarget, manifest: Manifest): 
     manifest,
   };
   if (missingStarChartAssets(root, target).length === 0) {
-    resolved.starHistory = buildStarHistoryData(target, markdown, manifest);
+    resolved.starHistory = buildStarHistoryData(target, markdown, manifest, root);
   }
   const thanks = loadThanksData(root, target);
   if (thanks !== undefined) resolved.thanks = thanks;

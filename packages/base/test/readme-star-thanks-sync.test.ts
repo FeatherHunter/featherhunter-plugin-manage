@@ -75,20 +75,24 @@ describe("star-history block migration", () => {
     }
   });
 
-  it("renders one plain image when both themes share a single chart asset (palette)", () => {
+  it("keeps the Markdown image form when both themes share a single chart asset (palette)", () => {
     const original = "# Palette\n\n" + fixtureContactRaw("palette") + "\n\n" + fixtureStarRaw("palette") + "\n";
     const { dir, readmePath, cleanup } = setup(original);
     try {
       const result = updateReadme({ root: dir, command: "init", starHistory: starDataOf("palette"), selfId: "palette" });
       expect(result.errors).toEqual([]);
       const starInner = innerBetween(read(readmePath), STAR_START, STAR_END);
-      // Both <source> elements would point at the same file, so the renderer
-      // keeps the plain image the repository already published.
+      // The palette README publishes a Markdown image (raw HTML images are
+      // dropped by the topic page and the marketplace renderer), and both
+      // themes point at the same file, so the renderer keeps one Markdown image.
       expect(starInner).not.toContain("<picture>");
       expect(starInner).not.toContain("<source ");
-      expect(starInner.match(/<img /g)).toHaveLength(1);
+      expect(starInner).not.toContain("<img ");
+      expect(starInner.match(/!\[/g)).toHaveLength(1);
       expect(starInner).toContain("docs/star-history.svg?v=202610310130");
-      expect(starInner).toContain('alt="星标增长曲线：左轴累计星标、右轴每日新增"');
+      expect(starInner).toContain("[星标增长曲线：左轴累计星标、右轴每日新增](");
+      const comparison = compareBlocks("star-history", fixtureStarRaw("palette"), starInner);
+      expect(comparison.contentDifferences).toEqual([]);
     } finally {
       cleanup();
     }

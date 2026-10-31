@@ -80,7 +80,7 @@ describe("renderMoreBlock", () => {
 
   it("keeps the prompt Markdown heading variant and is content-equivalent to its fixture", () => {
     const rendered = renderMoreBlock({ selfId: "prompt", variant: "markdown-heading" });
-    expect(rendered.startsWith("## 作者的其他作品 <sub>MORE</sub>")).toBe(true);
+    expect(rendered.startsWith('<div align="center">\n\n## 作者的其他作品 <sub>MORE</sub>\n\n</div>')).toBe(true);
     expect(rendered).not.toContain("<h2");
     const comparison = compareBlocks("more", fixtureMoreRaw("prompt"), rendered);
     expect(comparison.contentDifferences).toEqual([]);
