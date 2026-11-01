@@ -48,7 +48,12 @@ describe("README: the four-step entry", () => {
     const selfCheck = describeCapability().commands.find((command) => command.name === "self-check");
     expect(selfCheck).toBeDefined();
     expect(README).toContain(selfCheck?.usage ?? "");
-    expect(README).toContain("npx dsh-verify self-check");
+    // Both accepted ways to run without PATH: the plugin-repository form is
+    // the one adopters use; the packages/base form is annotated as base-only.
+    expect(README).toContain("npx --no-install dsh-verify self-check");
+    expect(README).toContain(
+      "node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js self-check",
+    );
     expect(README).toContain("node dist/real-machine-verification/cli/main.js self-check");
   });
 

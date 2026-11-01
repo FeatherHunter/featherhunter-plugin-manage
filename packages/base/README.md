@@ -18,6 +18,34 @@ FeatherHunter DSH 插件共用的 base 包：设置面板里的**联系作者弹
 | `dsh-featherhunter-plugin-base/client` | `createBaseUI(React, options)`：`ActionCluster` / `clusterIcons` / `ContactButton` / `StarButton` / `IssueButton` / `ActionButtons` / `ActionGroup`（旧版托盘，兼容保留）/ `HoverTip` / `ContactRow` / `AuthorPlugins` / `openContactModal` / `closeContactModal` / `preloadContent` |
 | `dsh-featherhunter-plugin-base/node` | README 四块渲染器 + `verifyBlock` + CLI（`readme:init` / `readme:sync` / `doctor`；`contact:update` 只在源码仓用 `npm run` 跑，发布包不带图像工具） |
 
+## 真机验证（real-machine-verification）
+
+`./real-machine-verification` 是给**插件仓**用的真机验证能力：它不 mock 宿主，而是复制一份真实
+DSH profile、起隔离实例、用 HTTP 与页面判据验收，并把证据和身份链落盘，让结论可复核。装好 base 后
+插件仓只需要写一个 `verify/profile.ts` 声明：
+
+```ts
+import { defineVerificationProfile } from "dsh-featherhunter-plugin-base/real-machine-verification";
+
+export default defineVerificationProfile({
+  id: "my-plugin",
+  packageName: "my-plugin",
+  defaultProfile: "web",
+  clientEntry: "lib/client.js",
+});
+```
+
+```bash
+npx --no-install dsh-verify self-check        # 只读自检：8 项常驻 + 1 项 --screen 软检查
+npx --no-install dsh-verify describe --json   # 权威表面：15 条命令、检查 id、profile 字段、退出码
+npx --no-install dsh-verify single-instance   # 单实例验收闭环（起、页面、日志、停干净）
+```
+
+- 为什么用 `--no-install`、接入四步与报告读法见 [真机验证 README](src/real-machine-verification/README.md)；
+- agent 用的命令选择、错误码、证据/身份链与扩展边界见
+  [AGENTS-USAGE](src/real-machine-verification/AGENTS-USAGE.md)；
+- 设计取舍与算法见 [DESIGN](src/real-machine-verification/DESIGN.md)。
+
 ## 使用
 
 ```ts
@@ -61,6 +89,8 @@ npm run typecheck
 npm test
 npm run build
 npm run build:demo   # demo/index.html 可直接用浏览器打开
+npm run docs:sync    # 重新生成真机验证文档里的参考段（describe 的投影）
+npm run docs:check   # 检查 README / AGENTS-USAGE 是否与 describe 漂移（prepublishOnly 会跑）
 npm run contact:update -- <二维码截图> [--group wechat]   # 换码：刷新 contact/ 源数据
 ```
 

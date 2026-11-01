@@ -57,6 +57,8 @@
     "build:data": "node scripts/run-ts.mjs build-data",
     "data:check": "node scripts/run-ts.mjs build-data --check",
     "contact:update": "node scripts/run-ts.mjs contact-update",
+    "docs:sync": "node scripts/run-ts.mjs docs",
+    "docs:check": "node scripts/run-ts.mjs docs --check",
     "release": "node scripts/run-ts.mjs release",
     "readme:init": "node dist/node/cli.js readme:init",
     "readme:sync": "node dist/node/cli.js readme:sync",
@@ -65,7 +67,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:network": "node scripts/cdn-smoke.mjs",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run docs:check && npm run build"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

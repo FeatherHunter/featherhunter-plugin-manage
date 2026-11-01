@@ -179,7 +179,11 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   }
 
   if (parsed.version || parsed.command === "version") {
-    io.stdout(`${readPackageVersion()}\n`);
+    // The bare version is not enough to tell this CLI from the unrelated
+    // `dsh-verify` package on npm; the capability fingerprint is.
+    io.stdout(
+      `${readPackageVersion()}\ncapability ${description.capability} (schema ${description.schemaVersion})\n`,
+    );
     return EXIT_CODES.ok;
   }
 

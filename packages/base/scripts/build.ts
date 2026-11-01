@@ -13,7 +13,7 @@
  * the entry table below is the only place that knows how many bundles exist.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,6 +78,18 @@ const ENTRIES: readonly EntrySpec[] = [
     banner: "shebang",
   },
 ];
+
+/**
+ * Capability documents that ship next to the bundles.
+ *
+ * `package.json#files` only publishes `dist`, so the two markdown documents live
+ * in `src/real-machine-verification` for editing but are copied into
+ * `dist/real-machine-verification` at build time. Shipping them is part of the
+ * capability: the docs *are* the entry point for an adopting repository, and a
+ * package whose docs are only in git is a package nobody reads.
+ */
+const DOCUMENT_DIR = "real-machine-verification";
+const DOCUMENT_FILES: readonly string[] = ["README.md", "AGENTS-USAGE.md"];
 
 interface PackageManifest {
   readonly name?: string;
@@ -153,6 +165,17 @@ function assertEveryBundle(distRoot: string): void {
   }
 }
 
+/** Copy the capability documents next to the bundles (see DOCUMENT_FILES). */
+function copyDocuments(root: string, distRoot: string): void {
+  const target = resolve(distRoot, DOCUMENT_DIR);
+  mkdirSync(target, { recursive: true });
+  for (const name of DOCUMENT_FILES) {
+    const from = resolve(root, "src", DOCUMENT_DIR, name);
+    if (!existsSync(from)) throw new Error(`${from} not found; the capability docs must ship with the package`);
+    copyFileSync(from, resolve(target, name));
+  }
+}
+
 /** Emit `.d.ts` next to every bundle (esbuild cannot do this; tsc can). */
 function emitDeclarations(root: string): void {
   const tsc = resolve(root, "node_modules/typescript/bin/tsc");
@@ -203,11 +226,14 @@ export async function run(argv: readonly string[]): Promise<void> {
 
   emitDeclarations(root);
   assertEveryBundle(distRoot);
+  copyDocuments(root, distRoot);
 
   if (withDemo) await buildDemo(root);
 
   const names = ENTRIES.map((spec) => spec.id);
-  console.log(`build ok: ${names.join(", ")}${withDemo ? ", demo" : ""}`);
+  console.log(
+    `build ok: ${names.join(", ")}; docs: ${DOCUMENT_FILES.join(", ")}${withDemo ? ", demo" : ""}`,
+  );
 }
 
 /** Entry point used by `node scripts/run-ts.mjs build`. */

@@ -19,10 +19,21 @@ import { checkId, failed, passed } from "../types";
 import { asRecord, readJsonRecord, recordEvidence, stringField } from "./shared";
 import { joinFsPath } from "../../runtime/paths";
 
-/** The command a reader can run to fix an install, without guessing the profile. */
+/**
+ * The command a reader can run to fix an install, without guessing the profile.
+ *
+ * The wording matters: a plain "run npm install inside <profileDir>" teaches
+ * people to write their real user-home profile, which is exactly what the
+ * isolation discipline forbids. The isolated copy is the default instruction;
+ * writing the profile in place is only offered for a profile that already is a
+ * copy.
+ */
 function installHint(packageName: string, profileDir: string, version?: string): string {
   const spec = version === undefined ? packageName : `${packageName}@${version}`;
-  return `run \`npm install ${spec}\` inside ${profileDir}, then rerun self-check`;
+  return (
+    `copy ${profileDir} into an isolated home, set DSH_HOME to it, run \`npm install ${spec}\` inside the copy, ` +
+    "then rerun self-check; writing the real user-home profile is not isolated evidence"
+  );
 }
 
 export function createPackageInstalledCheck(): CheckModule<SelfCheckContext> {

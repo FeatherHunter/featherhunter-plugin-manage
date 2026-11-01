@@ -25,7 +25,7 @@
 | 8 | matt 迁移：删除 >85% 通用代码，既有门禁保持绿，能力不减反增 | `git diff --stat` + 门禁全绿 |
 | 9 | 第二仓接入：palette ≤20 行 profile + 2 条 script 跑通 self-check | 实际提交 |
 | 10 | **AI 未预置场景**：不改 base 写出并跑通一个我们没预置的场景 | 见 §14 |
-| 11 | 反例矩阵：每条检查都有能把打红的夹具，且全部为红 | `--negative` 全量 |
+| 11 | 反例矩阵：每条检查都有能把打红的夹具，且全部为红 | 反例测试全量跑（每条检查专门的「必须红」测试） |
 | 12 | 架构门禁：依赖方向 / 无插件常量 / 零依赖 / describe 与文档一致 | 4 条扫描脚本 |
 | 13 | **文档即入口**：一个只读 README 的新插件仓能自己完成接入并跑通 `self-check`，全程不问人 | 独立子代理只拿 README 在陌生仓执行；凡需要提问/猜测处一律记为文档缺陷（用户 2026-11-01 追加的硬要求） |
 
@@ -102,7 +102,7 @@ packages/base/src/real-machine-verification/
 │   └── sandbox/gitlab-project.ts     GitLab 沙箱项目（可选）
 │
 ├── cli/
-│   ├── main.ts                   分发 + 全局参数（--json/--dry-run/--negative/--verbose）
+│   ├── main.ts                   分发 + 全局参数（--json/--dry-run/--declaration/--work-root/--help/--version）
 │   ├── render.ts                 JSON/人类双输出、退出码映射
 │   └── commands/
 │       ├── describe.ts · self-check.ts · launch.ts · stop.ts · isolation.ts
@@ -130,7 +130,7 @@ packages/base/src/real-machine-verification/
 | `real-machine-verification/index` | node | 只许 `node:` 内建 |
 | `real-machine-verification/cli/main` | node | 只许 `node:` 内建（shebang） |
 
-`files` 只含 `dist`，src 里的 md 不发布——README/AGENTS-USAGE 由 `describe()` 生成段落，避免文档漂移。契约检查是构建期的：新增入口忘了声明契约，构建就会红。
+`files` 只含 `dist`，src 里的 md 由构建复制进 `dist/real-machine-verification/` 后再发布——README/AGENTS-USAGE 里的参考段由 `describe()` 生成（`npm run docs:sync` / `docs:check`），避免文档漂移；测试与 prepublishOnly 都会拦漂移。契约检查是构建期的：新增入口忘了声明契约，构建就会红。
 
 ## 4. 依赖方向与架构门禁
 
@@ -331,7 +331,7 @@ dsh-verify run <scenario.ts> [--concurrency <n>] [--json]
 dsh-verify cleanup [--yes] [--keep-batches 2]
 ```
 
-全局：`--json`（stdout 只一段 JSON）、`--dry-run`（只出计划）、`--negative <case>`（只跑反例）、`--verbose`（stderr 追加）。
+全局：`--json`（stdout 只一段 JSON）、`--dry-run`（只出计划）、`--declaration <file>`、`--work-root <dir>`、`--help`、`--version`。反例矩阵不设 CLI 开关：它由各检查的专用「必须红」测试交付，`describe` 不承诺不存在的参数。
 **退出码**：`0` 全过；`1` 有硬检查 fail；`2` blocked/前置缺失（DSH 未安装、适配器缺失、无权限）。stdout 与退出码永远一致；stderr 只放人类可读诊断。
 
 ## 11. 证据与身份链

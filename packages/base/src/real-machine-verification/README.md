@@ -1,26 +1,59 @@
 # 真机验证（real-machine-verification）
 
-把 `dsh-featherhunter-plugin-base` 加进插件仓依赖 → 写 `verify/profile.ts` → 跑 `npx dsh-verify self-check` → 读报告（人话行 / `--json` / 退出码 / 证据目录）。这四步加上 `dsh-verify launch` / `dsh-verify stop`（起、停隔离实例）就是今天可用的全部入口；更远的 model / isolation 等命令已在 `describe` 契约里，但尚未实现。
+把插件装进一个**真实的 DSH 实例**，看它是不是真的活着：不是 mock、不是单测，而是复制一份 profile 起实例、走 HTTP 判据、把证据和身份链落盘，让下一个人能在自己机器上复核同一份结论。
+
+给插件仓接入只需要四步——装依赖、写声明、跑 `npx --no-install dsh-verify self-check`、读报告。四步只需要一个插件仓和一台装了 DSH 的机器；再往后的冻结/批次身份还要求插件仓是 git 工作树（有提交、`HEAD` 可解析）。跑通之后，同一套声明还能驱动起停实例、并发隔离、打包冻结、批次身份、证据归档、场景执行与清理。
+
+- 文档分工：本文件是**人**的入口（怎么接入、怎么读结果）；[AGENTS-USAGE.md](AGENTS-USAGE.md) 是 **agent** 的入口（命令选择、错误码、证据与身份链、扩展边界）。
+- 唯一权威表面是 `dsh-verify describe --json`：命令、profile 字段、内建检查 id、退出码都从那里生成；本文件末尾的参考段也是生成的，不要手改。
 
 ## 第一步：安装
 
+在插件仓里把 base 装成 devDependency。**先看版本现实**：npm registry 上当前发布的 base（`0.1.5`）**还没有**本能力——`./real-machine-verification` 导出与 `dsh-verify` bin 是这一版才加的。它随下一版 base 发布之前，必须先把本仓的 `packages/base` 链接进插件仓：
+
 ```bash
-npm install --save-dev dsh-featherhunter-plugin-base@^0.1.5
+# 现在（能力还没发上 npm）：链接本仓库的 packages/base
+npm install --save-dev file:D:/dsh-plugin/featherhunter-plugin-manage/packages/base
 ```
 
-base 的核心零运行时依赖（只用 Node 内建模块，副作用全走可注入端口），装进任何插件仓都不会改变它的依赖树。也可以直接在插件仓的 `package.json` 里写：
+base 的核心零运行时依赖（只用 Node 内建模块，副作用全走可注入端口），装进任何插件仓都不会改变它的依赖树。
+
+npm 会把绝对路径归一化成相对路径写进 `package.json`（例如 `file:../../dsh-plugin/featherhunter-plugin-manage/packages/base`），这是正常的：它相对插件仓解析，仓不挪就仍指向同一份；挪仓/换机器后重跑一次上面的命令。也可以手写进插件仓的 `package.json`：
 
 ```json
 {
   "devDependencies": {
-    "dsh-featherhunter-plugin-base": "^0.1.5"
+    "dsh-featherhunter-plugin-base": "file:D:/dsh-plugin/featherhunter-plugin-manage/packages/base"
   }
 }
 ```
 
+**发布之后**（npm 上已有本能力时）换成常规装法即可，其余步骤不变：
+
+```bash
+npm install --save-dev dsh-featherhunter-plugin-base@^<版本>
+```
+
+### 装对了吗：先核对 bin，再信 `npx`
+
+装好后会有两个 bin：`dsh-verify`（真机验证 CLI）与 `dsh-base`（base 自己的工具）。核对它们真的来自 base：
+
+```bash
+node_modules/.bin/dsh-verify describe --json   # 应列出 15 条命令、schemaVersion 1
+node_modules/.bin/dsh-verify --version         # 版本行 + capability real-machine-verification
+```
+
+> ⚠️ **不要直接 `npx dsh-verify`**：npm registry 上有一个**同名无关包** `dsh-verify@0.9.6`。bin 没装好时，`npx` 会静默从 npm 下载它、打印另一个工具的 usage 并 exit 0——看着成功，其实跑的是别的工具。本文所有命令都写成 `npx --no-install dsh-verify ...`（bin 缺失时直接失败），或直接用 `node_modules/.bin/` 下的路径。
+
+不想依赖 PATH 时直接跑装好的产物（**在插件仓根目录**）：
+
+```bash
+node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js <命令>
+```
+
 ## 第二步：写 `verify/profile.ts`
 
-在插件仓根目录创建 `verify/profile.ts`（Node 22.6+ 原生支持 TypeScript；更低的 Node 见下文的 `--declaration`）：
+在插件仓根目录创建 `verify/profile.ts`（Node 22.6+ 原生支持 TypeScript；更低的 Node 见下文的 `--declaration` 与预编译做法）：
 
 ```ts
 import { defineVerificationProfile } from "dsh-featherhunter-plugin-base/real-machine-verification";
@@ -33,36 +66,56 @@ export default defineVerificationProfile({
 });
 ```
 
+四个必填字段：
+
 - `id`：检查报告里的能力 id，小写 kebab-case；
 - `packageName`：要验证的 npm 包名（会拿它去对应 profile 的 `node_modules` 里找）；
-- `defaultProfile`：用哪个 DSH profile（`--profile <name>` 可覆盖）；
+- `defaultProfile`：用哪个 DSH profile（`--profile <name>` 可覆盖）。名字就是 `<DSH_HOME>/profiles/` 下的目录名：`ls ~/.dsh/profiles`（Windows：`Get-ChildItem $env:USERPROFILE\.dsh\profiles`）；写错会在 `profile-present` 报 blocked，不会静默换一个；
 - `clientEntry`：包内客户端入口的相对路径，self-check 会算它的 sha256。
+
+其余字段全部可选，声明的是**事实**而不是命令：`pluginCacheDir` / `pluginSettingsDir`（插件自己的状态目录，隔离探针用）、`bundledSkills`（随包发布的技能目录与数量）、`model`（插件要求的模型选择，或 `false` 表示不装模型）、`browser`（浏览器适配器模块）、`workspaceBackends`、`build`（候选冻结前要先跑的构建命令）、`instanceEnvAllowlist`（起实例时允许透传的环境变量）、`hooks`（起停前后钩子）、`checks`（插件特有的自定义检查）。字段清单与含义以 `describe --json` 为准。
 
 工具会按 `verify/profile.ts` → `verify/profile.js` → `verify/profile.mjs` 的顺序自动发现，也可以用 `--declaration <file>` 显式指定（相对路径按当前目录解析）。声明只描述事实，不要在里面做副作用。
 
 ## 第三步：运行
 
 ```bash
-# 作为依赖装好之后
-npx dsh-verify self-check
+# 作为依赖装好之后（--no-install：bin 缺失时直接失败，不会去 npm 装同名无关包）
+npx --no-install dsh-verify self-check
 
-# 或者直接跑构建产物（不依赖 PATH）
+# 或者直接跑装好的构建产物（不依赖 PATH；在插件仓根目录）
+node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js self-check
+
+# 在 base 仓自己的 packages/base 目录里，路径相对当前包（仅限 base 仓）
 node dist/real-machine-verification/cli/main.js self-check
 ```
 
-`dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json]`
+`self-check` 是最小闭环：它只读不写（除了报告与证据），**8 项常驻检查 + 1 项 `--screen` 软检查**回答「这台机器、这个仓、这个 profile 能不能证明这个插件是活的」。完整用法（与 `describe` 的输出一致）：
 
-| 选项 | 作用 |
+```text
+dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json] [--dry-run]
+```
+
+常用旗标：`--profile`、`--declaration`、`--work-root`、`--screen`、`--json`；写操作先 `--dry-run` 看计划（完整表在下面的参考段与 `dsh-verify describe`）。
+
+跑通之后按需要往上一层：
+
+| 想回答的问题 | 命令 |
 | --- | --- |
-| `--profile <p>` | 覆盖声明里的 `defaultProfile` |
-| `--declaration <file>` | 显式指定声明文件（相对路径按 cwd 解析） |
-| `--work-root <dir>` | 报告与证据写到哪；默认 `<cwd>/.scratch/verify` |
-| `--screen` | 额外做一次显示器探测（best-effort，失败是 blocked 不是 fail） |
-| `--json` | stdout 只输出一段 JSON 报告，进度与人话行改走 stderr |
+| 一个实例真的能起来、页面在、能停干净？ | `single-instance` |
+| 两个实例同时起会不会互相踩（端口/home/缓存）？ | `concurrent` |
+| 这个提交的产物能不能当候选包（版本、文件摘要、可安装）？ | `freeze` |
+| 这一轮验证绑定的是哪个候选、基线有没有漂？ | `batch open` / `batch status` |
+| 证据怎么归档、怎么复核？ | `evidence add` / `archive` / `verify` |
+| 插件特有的端到端场景怎么跑？ | `run` |
+| 起实例的细粒度控制（起/停/隔离/模型/安装/技能）？ | `launch` / `stop` / `isolation` / `model` / `install` / `skills` |
+| 跑完怎么收尾？ | `cleanup` |
+
+全部命令都支持 `--json`；写操作类命令都支持 `--dry-run`，且 dry-run 打印的计划与真实执行是同一份结论。冻结与批次身份还要求插件仓是 git 工作树：`freeze` 用 `HEAD`、工作区状态与文件摘要定位候选。命令的完整 usage、写入物与退出码见文末参考段。
 
 ## 第四步：读报告
 
-人话模式每个检查一行，`ok|fail|skip|blocked <检查id> <说明>`；fail 的行后面带缩进的 expected / actual / hint：
+人话模式每个检查一行，`ok|fail|skip|blocked <检查id> <说明>`；fail 行带缩进的 expected / actual / hint，blocked 至少带 hint：
 
 ```text
 ok profile-declaration loaded ts declaration C:\repo\verify\profile.ts (export default)
@@ -78,7 +131,28 @@ evidence: <work-root>/runs/<runId>/evidence (<n> item(s))
 - 退出码：`0` 全过（允许 skip）/ `1` 有硬失败 / `2` 有 blocked（前置缺失，本次运行对插件什么也没证明）；
 - `blocked` 不是 `fail`：没装 DSH、没有 profile、没注入可选适配器都属于 blocked，不会把一个环境缺失记成插件缺陷；
 - `--json` 时 stdout 是**一段** JSON，包含 checks、步骤、退出码与 `artifacts.reportSha256`；人话渲染与逐项进度在 stderr；
-- 报告落在 `<work-root>/runs/<runId>/run.json`，旁边有 `run.json.sha256`（`sha256sum -c` 可直接校验）；`evidence/` 下是命令输出、环境快照、客户端入口哈希等证据文件，同名证据加 `-2`/`-3` 序号、绝不覆盖。默认工作根在仓库内 `<cwd>/.scratch/verify`（仓库 `.gitignore` 已忽略），真机冒烟可指向系统临时目录。
+- 报告落在 `<work-root>/runs/<runId>/run.json`，旁边有 `run.json.sha256`：POSIX 可 `sha256sum -c run.json.sha256`；Windows 没有 `sha256sum`，用 `Get-FileHash run.json -Algorithm SHA256`（或 `certutil -hashfile run.json SHA256`）与文件里的那行比对；`evidence/` 下是命令输出、环境快照、客户端入口哈希等证据文件，同名证据加 `-2`/`-3` 序号、绝不覆盖。默认工作根在仓库内 `<cwd>/.scratch/verify`（仓库 `.gitignore` 应忽略），真机冒烟可指向系统临时目录。
+
+### 别拿真实 home 做实验
+
+所有跑实例的命令都支持 `DSH_HOME` 覆盖：把它指向一份**复制出来的 profile**（例如 `<work-root>/home`），命令就只动副本，真实 `~/.dsh` 一个字节都不写。批次（batch）把这件事做成语义：批次 home 就是本轮验证的隔离环境，报告里的 `dshHome` 指向批次 home 是正确结论而不是缺陷。第一次接入建议先复制一份真实 profile 再跑 `single-instance`，确认「真实 home 前后 sha256 不变」这条证据。
+
+这条证据要按**固定文件清单**取，不要对整目录做哈希：DSH 宿主常驻时 `~/.dsh/storages` 这类目录空闲 20 秒也会自己变，整目录哈希必然假阳性。跑命令前后只对比这几类文件：
+
+- `<DSH_HOME>/.credentials.yaml`
+- `<DSH_HOME>/profiles/<profile>/package.json`
+- `<DSH_HOME>/profiles/<profile>/cordis.patch.yml`
+- `<DSH_HOME>/profiles/<profile>/node_modules/<packageName>/package.json`
+
+```powershell
+$files = @("$env:USERPROFILE\.dsh\.credentials.yaml", "$env:USERPROFILE\.dsh\profiles\web\package.json")
+$before = $files | ForEach-Object { (Get-FileHash $_ -Algorithm SHA256).Hash }
+# …跑命令…
+$after = $files | ForEach-Object { (Get-FileHash $_ -Algorithm SHA256).Hash }
+Compare-Object $before $after   # 无输出 = 未变
+```
+
+`install` 的默认目标是 `DSH_HOME` 指向的 profile；`DSH_HOME` 未设置时命令会在 stderr 打印警告（说明写的是真实 home，先把 profile 复制成批次 home 再装）。
 
 ## self-check 检查了什么
 
@@ -98,9 +172,122 @@ evidence: <work-root>/runs/<runId>/evidence (<n> item(s))
 
 技能检查只读文件树与 frontmatter，不数「模型可见技能数」，也不调用 `skills/list`：带 `disable-model-invocation: true` 的技能仍然会被宿主注册，从模型侧计数会得出错误的缺口。技能目录旁的 `README.md` 这类没有 frontmatter `name` 的平铺 markdown 是说明文档（宿主也不会注册），证据里记为 ignored；真正的技能目录掉一个仍会被声明数量与集合比对抓住。模型与凭据检查只消费引用名（provider / model id / apiKeyEnv / 凭据 ref 名），任何检查都不会读取、记录或打印密钥值。
 
-## 当前实现边界
+## 常见卡点
 
-- 已实现命令：`describe`、`self-check`、`launch`、`stop`。`describe` 列出的其余命令是后续票的契约，运行时会明确提示「described but not implemented」并以 `2` 退出，不会假装成功。
-- `launch`：把源 profile 复制进 `<workRoot>/instances/<id>/home`，用白名单 env 起一个 detached 实例；等 stdout 打印 token URL 后再用 HTTP 双判据验收（`/connect` 拿到 cookie，`pluginInventory/list` 里所有 `enabled: true` 条目 `fiberPhase` 都是 `active`），最后写 `plan.json` 与 `instance.json`。`--dry-run` 与真实启动共用同一个计划函数，只打印不落盘；`--json` 输出单段 JSON；退出码 `0` 就绪 / `1` 没起来 / `2` 前置缺失。
-- `stop`：按 `instance.json` 停实例（`--id` / `--dir` / `--all`）；pid 已经不在也写 `stopped.json` 并算成功；`--all` 遇到顽固 pid 仍继续处理其余实例，最终以 `1` 点名该 pid。
-- 证据归档/校验（`evidence add` 等）、model、isolation、batch、freeze、run、cleanup 尚未实现，本文件只描述已经可跑的行为。
+| 现象 | 说明与修法 |
+| --- | --- |
+| `blocked profile-declaration` | 仓根没有 `verify/profile.ts`；hint 里有十行模板，复制后把四个字段改成自己包的 |
+| `fail package-installed`，actual 版本与仓内版本不同 | 先把**当前代码**装进 profile：`npx dsh-verify install` 或 `npm install`；profile 里装的是旧版本时 self-check 会拒绝证明新代码 |
+| `fail node-version` | 用 Node 22.6+ 跑，或者把声明预编译成 `.js`（`--declaration verify/profile.js`） |
+| `blocked model-configured` | profile 的 `cordis.patch.yml` 里没有对应 provider/model 条目——`model --fix` 只改已有条目不新建；插件不装模型时在声明里写 `model: false` |
+| `blocked instance-pages` / 页面检查 | 没注入浏览器适配器；声明 `browser: { module: "verify/browser.mjs" }`，模块默认导出 `{ launch({ headless }) }` 工厂 |
+| 退出码 2 但检查全绿感 | 2 是 blocked：本次运行有前置缺失，什么都没证明；修前置再跑，不要把它当成插件的失败 |
+
+更细的失败分型、错误码词表、证据与身份链、以及「哪些场景不用改核心就能表达」见 [AGENTS-USAGE.md](AGENTS-USAGE.md)。
+
+## 参考（自动生成，勿手改）
+
+本段由 `dsh-verify describe` 生成：命令、内建检查 id、profile 字段、退出码与全局选项都以那段为准。改完能力描述后运行 `npm run docs:sync`，`docs:check` 与测试会拦住漂移。
+
+<!-- dsh-verify:reference:begin -->
+<!-- 本段由 `dsh-verify describe` 生成：不要手改；改完能力描述后运行 `npm run docs:sync`。 -->
+
+## real-machine-verification
+
+Run a plugin build inside a provably isolated DSH instance, check falsifiable claims, and keep evidence that another machine can re-verify.
+
+### Layers
+
+| Layer | Audience | Use |
+| --- | --- | --- |
+| L1 | people and CI | fixed-shape orchestration: one command per intent |
+| L2 | agents and scripts | composable primitives in any order |
+| L3 | agents facing an unforeseen case | break-glass: pages, raw handles, custom steps |
+
+### Commands (15)
+
+| Layer | Usage | Writes |
+| --- | --- | --- |
+| L1 | dsh-verify describe [--json] | nothing |
+| L1 | dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json] [--dry-run] | run.json and evidence files under the work root (nothing with --dry-run) |
+| L2 | dsh-verify launch [--profile <p>] [--keep] [--port <n>] [--dry-run] [--json] | an isolated home, a working directory, instance.json (nothing with --dry-run) |
+| L2 | dsh-verify stop [--id <id>] [--dir <d>] [--all] [--json] [--dry-run] | stopped.json in the instance directory (nothing with --dry-run) |
+| L2 | dsh-verify isolation [--profile <p>] [--work-root <dir>] [--json] [--dry-run] | probe artifacts under the work root (nothing with --dry-run) |
+| L2 | dsh-verify model [--profile <p>] [--provider <p>] [--model <m>] [--api-key-env <ENV>] [--fix] [--json] [--dry-run] | nothing unless --fix is given |
+| L2 | dsh-verify install --tgz <file> [--method extract\|cli] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json] [--dry-run] | the isolated profile's node_modules (nothing with --dry-run) |
+| L2 | dsh-verify skills [--profile <p>] [--declaration <file>] [--json] | nothing |
+| L1 | dsh-verify single-instance [--profile <p>] [--declaration <file>] [--work-root <dir>] [--keep] [--dry-run] [--json] | a run directory under the work root: report, evidence, logs |
+| L1 | dsh-verify concurrent --count <N> [--profiles a,b,c] [--dry-run] [--json] | the batch directory: evidence, summary, logs (nothing with --dry-run) |
+| L1 | dsh-verify freeze [--out <dir>] [--allow-dirty] [--json] [--dry-run] | candidate.json and the tgz under the given output directory (nothing with --dry-run) |
+| L1 | dsh-verify batch open\|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run] | batch.json under the work root, plus the identity and baseline lines |
+| L1 | dsh-verify evidence add\|archive\|verify [--file <p>]... [--check <id>=pass\|fail] [--archive-root <dir>] [--dir <batch-or-archive-dir>] [--name <batch-name>] [--work-root <dir>] [--json] [--dry-run] | evidence/files, evidence.json, the archive directory (nothing with --dry-run) |
+| L1 | dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast\|--collect-all] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json] [--dry-run] | a run directory under the work root: report, evidence, logs (nothing with --dry-run) |
+| L1 | dsh-verify cleanup [--yes] [--keep-batches <n>] [--keep-homes <n>] [--include-pkg] [--json] [--dry-run] | the work root, only with --yes (nothing with --dry-run) |
+
+### Built-in check ids (20)
+
+These ids are a stable contract: reports, comments and gates cite them.
+
+- `dsh-runtime`
+- `node-version`
+- `profile-declaration`
+- `profile-present`
+- `isolation-home`
+- `settings-isolated`
+- `package-installed`
+- `package-files`
+- `skills-set`
+- `model-configured`
+- `model-credential`
+- `instance-reachable`
+- `instances-distinct`
+- `instance-pages`
+- `logs-readable`
+- `teardown-clean`
+- `candidate-identity`
+- `batch-freshness`
+- `evidence-bound`
+- `screen-present`
+
+### Profile fields (15)
+
+- `id`
+- `packageName`
+- `defaultProfile`
+- `clientEntry`
+- `pluginCacheDir`
+- `pluginSettingsDir`
+- `bundledSkills`
+- `model`
+- `browser`
+- `ticketFace`
+- `workspaceBackends`
+- `build`
+- `instanceEnvAllowlist`
+- `hooks`
+- `checks`
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | all checks passed; a skipped check is allowed and is reported as skipped |
+| 1 | a hard check failed; the report says which claim was falsified |
+| 2 | blocked: a prerequisite or adapter is missing, so the run proved nothing about the product |
+
+### Global options
+
+| Option | Meaning |
+| --- | --- |
+| --json | Print exactly one JSON document on stdout and nothing else. |
+| --declaration <file> | Load the verification declaration from this file instead of discovering verify/profile.ts. |
+| --work-root <dir> | Write run reports and evidence under this directory (default: <cwd>/.scratch/verify). |
+| --dry-run | Print the plan that would run; touch nothing. |
+| --help | Print usage. |
+| --version | Print the base package version and the capability fingerprint. |
+
+### Documents
+
+- `README.md` — how to install and run this capability.
+- `AGENTS-USAGE.md` — the agent-facing capability table and error codes.
+<!-- dsh-verify:reference:end -->
