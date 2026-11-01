@@ -25,9 +25,9 @@
 - HUMAN-GATE：真机扫飞书/QQ/微信各一次、真实浏览器 dialog 顶层与焦点回归、GitHub 上四块观感、至少一仓真实构建链吃下产物（palette 最高风险）、中国大陆网络三通道全失败降级，由仓主确认。
 
 ## 当前状态
-- 票 08 本机全绿（prompt 仓 commit 944905c，未推送）：typecheck、npm run check、readme:sync --check --repo . 全部通过；lib/client.js 已用 base 0.0.2 tarball 重建。
-- 唯一阻塞：base 0.0.2 未发布（npm registry 网络阻断，npm ping ECONNRESET），prompt 的 lock integrity 与 push 要等发布后核验；发布用同一 tarball 则 lock 直接生效。
-- 票 09–12 按依赖边等票 08 关闭后开始；票 13、14 等 09–12 关闭后开始。
+- 票 08–13 已全部关闭；base 已从 0.0.2 一路发到 **0.1.5**（0.0.2 时期「未发布」阻塞已解除）；五仓均已发 npm 正式版并钉 `dsh-featherhunter-plugin-base: "0.1.5"`：prompt `0.4.40`、deck `1.9.0-beta.33`、palette `2.1.11`、im-companion `0.2.26`、ilife `0.3.86`。web profile 已从 file: tarball 切到 npm 精确版本并真机复验通过（见票 09 与 `docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md` §7.5）。
+- 票 14 HUMAN-GATE 仍 open（进度 92%）：B 组 owner 2026-11-01 已确认通过；C4/C6/E1/E2/E3 已由代理自动化实测 PASS（证据见核对清单 §7.6）；剩 owner 对 C4/C6 的主观观感一眼、D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）。
+- 票 14 关闭后，由用户在规格详情页点「完成」按钮做收口核对（不是自动关闭）。
 
 ## 票号说明
 最早建的 01–07 是在本规格容器存在之前以普通 issue 建的，挂不到规格下；已按规格体系重建为 08–14（kind=spec-ticket、父票 00、依赖边齐全），01–07 已作为重复票关闭。
@@ -52,3 +52,13 @@
 - 聚合校验：`readme:sync --check --all --repos D:\dsh-plugin` exit 0；`doctor --repos D:\dsh-plugin` exit 0（依赖钉 0.1.1、内联 bundle 版本 0.1.1、README 图片 @0.1.1）。
 - README 与页面：11 份 README 联系区全部指向 2026-10-31 新微信群码；deck GitHub README headless 截图核对：三列联系区正常、微信群卡深色卡面二维码可扫、图内文字“该二维码7天内（11月7日前）有效”。
 - 剩余：票 14 HUMAN-GATE 仍需仓主真机证据（B1/B2 扫码进群、B3 弹窗过期降级、C 组 dialog 行为、D 组装产物后入口、E 组断网降级）；票 14 关闭后由用户在规格详情页点“完成”收口。
+
+## 验收记录（票 14 自动化取证回填，2026-11-01 14:12 +08:00）
+- 依据 owner 2026-11-01 指示「你能自动化测试的 可以直接测试」，代理用无头 Chrome（CDP 9333）在真实页面补齐 C4/C6/E 组：
+  - C4 窄档列数 PASS：demo 与 web profile 两处 1200/600/420 → 3/2/1 列，420px 档无横向溢出、无越界元素、二维码 320×320 未破图。
+  - C6 中英切换 PASS（demo）：按钮/aria/插件卡标题/弹窗全量文案切换并可复原（含 wechat「Valid for 6 days (until 11/7)…」）。
+  - E1 断 CDN PASS：阻断 unpkg/jsdelivr/npmmirror/github 后三通道 fetch 全失败 → 内置基线 3 卡真码正常渲染，无白屏/错误框。
+  - E2 合成降级清单 PASS：远程图失败回退内置码、过期卡降级 fallbackUrl link、无内置码降级 link，三链路均不弹错不白屏。
+  - E3 恢复回源 PASS：unpkg 清单 200（992ms）+ jsdelivr 远程图 3 张全 200（1575–1657ms），弹窗 img 320×320/true。
+- 证据（结论、截图、plan/日志路径、复跑命令）写入 `docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md` §7.6，§7.2 中 C4/C6/E 已标为代理自动化覆盖；票 14 回填评论 + 进度 92%。
+- 仍待 owner：C4/C6 主观观感、D 组 desktop profile 安装形态（授权 + 重启桌面应用）；票 14 保持 open。

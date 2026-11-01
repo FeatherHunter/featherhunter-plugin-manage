@@ -54,6 +54,7 @@
 
 - 待仓主填写：通过项 / 未通过项 / 待确认项（明确标注「待确认」而不是默认通过）
 - 全部项确认后：把本文件结论更新，关闭票 14；规格收口由仓主在规格详情页点「完成」按钮做核对。
+- **2026-11-01 14:12 状态**：代理自动化侧已补齐 C4/C6/E1/E2/E3（全部 PASS，见 §7.6），B 组 owner 已确认；仅剩 owner 的 C4/C6 主观观感一眼 + D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）。这两项确认后即可关票。
 
 ## 6. 场景化走查（照着做；做完把结果填回 §1–§4）
 
@@ -125,10 +126,10 @@
 ### 7.2 待仓主亲验（代理不可代劳）
 
 - ~~**B 组**~~：2026-11-01 owner 确认「B 组没问题」→ 已通过（见 §1 与票 14 记录）。
-- **C4 更窄档**：420px 左右单元格换行表现（代理只验到 900/1000 无溢出）。
-- **C6 语言切换**：中英切换在真实浏览器（demo 与插件面板内）的观感。
+- **C4 更窄档**：~~420px 左右单元格换行表现（代理只验到 900/1000 无溢出）~~ → **代理已自动化实测 PASS**（1200/600/420 三档列数 3/2/1、无横向溢出、无越界元素，见 §7.6）；仅剩主观观感待 owner 一眼。
+- **C6 语言切换**：~~中英切换在真实浏览器（demo 与插件面板内）的观感~~ → **demo 页中英切换已自动化实测 PASS**（文案/aria/弹窗全量切换并可复原，见 §7.6）；插件面板内英文需切 DSH UI 语言，组件双语已覆盖；观感待 owner 一眼。
 - **D 组（已按新形态改写）**：五仓插件要装进 **desktop profile** 才有「插件详情面板 / 总管页」真机入口；当前只验了 web profile 设置分区。**已可改用 npm 正式版**（2026-11-01：五仓全部发版，web profile 已是 npm 依赖；desktop profile 目前还是 registry 旧版 0.4.39 / 2.1.10 / 0.3.85 / beta.32 / 0.2.25）。desktop profile 正是当前 DSH Desktop 会话所在 profile，安装后需重启桌面应用，须 owner 授权/操作；本机 npmjs TLS 受限，需先给 desktop profile 加 `.npmrc`（registry=npmmirror）再用 `--save-exact` 列出五个版本。
-- **E 组**：断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）。
+- **E 组**：~~断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）~~ → **代理已自动化实测 PASS**：E1 三通道全失败仍显示 3 个内置真码、无白屏/错误框；E2 合成清单验证「远程图失败回退内置码 / 过期卡降级 link / 无内置码降级 link」三链路且不弹错；E3 恢复后 unpkg 清单 200 + 3 张远程图 200（回源成立），见 §7.6。
 
 ### 7.3 旧条目过期说明
 
@@ -148,3 +149,59 @@
 - **web profile 现状态**：`~/.dsh/profiles/web/package.json` dependencies 全是版本号，**无任何 `file:` 依赖**（pnpm-lock 同）；bundles 8 个。安装方式 `dsh plugin --profile web add --save-exact <五个版本> --registry=https://registry.npmmirror.com/`；装前备份 `D:/temp/hac2-pack/web-profile-backup-20261101-1215`。
 - **复验（重启 127.0.0.1:3080 后 CDP）**：五插件设置页版本文案 = npm 版本；每页 1 个 `.dsh-base-cluster` + 3 钮；作者插件卡 tooltip 正常；联系弹窗三卡二维码 natural 320×320、box-sizing=border-box。截图 `.tmp/web5-*.png`。
 - **对 D 组的影响**：web profile 不再是 file: tarball 形态；desktop profile 仍是 registry 旧版，若 owner 要做 D 组真机目验，把五个版本装进 desktop profile 并重启桌面应用即可（同样是 npm 包，可回滚）。
+
+### 7.6 代理自动化实测补齐 C4/C6/E（2026-11-01 14:0x，CDP 网络级模拟）
+
+> 依据 owner 2026-11-01 指示「你能自动化测试的 可以直接测试」。以下由代理用无头 Chrome（CDP）在真实页面执行，属**自动化实测证据**，不能替代 owner 对观感的主观确认；D 组安装形态仍需 owner 授权。
+
+**环境**
+- Chrome 156 headless，CDP 9333；web profile 页面 http://127.0.0.1:3080/（五仓 npm 正式版：prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / ilife 0.3.86，内联 base 0.1.5）；base demo 0.1.5 由静态服务器 http://127.0.0.1:8899/demo/index.html 提供（`packages/base/demo/` + `dist/demo.js`）。
+- 驱动脚本 `.tmp/hg-cdp.mjs`（CDP WebSocket 直连；plan 支持 viewport/navigate/reload/offline/block/unblock/preload/intercept/eval/shot/key；输出 NETREQ/NETFAIL/LOGS）；plan 与日志在 `.tmp/hg-plan-*.json`、`.tmp/hg-*.log`。
+- 降级用 CDP `Network.setBlockedURLs`（按 URL 全阻断）与 `Network.emulateNetworkConditions offline` 实现，等价于「大陆网络三通道全失败」；弹窗路径固定为：账号菜单 → 设置 → MattSkills → 联系我们。
+
+**C4 窄档列数（PASS，demo + web 两处）**
+
+| 视口 | 列数 | 布局 | 横向溢出 |
+| --- | --- | --- | --- |
+| 1200×900 | 3 | 1 行（卡宽 241px，弹窗 800×505 / 800×438） | `docScrollWidth==viewportWidth`，grid/dialog `scrollWidth-clientWidth=0` |
+| 600×900 | 2 | 2 行（弹窗 552×869 / 552×792） | 同上 0 |
+| 420×900 | 1 | 3 行（卡宽 338px，弹窗 386×880 / 386×792，body 内部滚动 clientH 620 / scrollH 1296） | 同上 0 |
+
+- 420px 档无横向溢出、无越界元素（逐元素 `getBoundingClientRect` 检查）；二维码 `data:image/png` natural 320×320，显示 215/219/312px 未破图。
+- 截图：`.tmp/hg-c4-1200.png`、`hg-c4-600.png`、`hg-c4-420.png`（demo）；`.tmp/hg-web-1200.png`、`hg-web-600.png`、`hg-web-420.png`（web profile）。
+- 覆盖 §7.2「C4 更窄档」与旧 §6 C4 列数项；**卡片间距/留白是否舒服这类观感仍建议 owner 一眼**。
+
+**C6 中英切换（PASS，demo 页；面板内英文依赖宿主语言设置）**
+- demo 点「切换语言」→ 按钮文案「切换语言：English」，cluster aria-label 变 Contact us / Star this project / Open an issue / More actions，插件卡标题 More plugins by the author，弹窗标题 Feedback and Contact、scanHint「Scan the QR code to join us」、close aria「Close」、卡片标题/副标题/note 全英文（含 wechat「Valid for 6 days (until 11/7)…」）；再点回中文全部复原（反馈与联系 / 扫描二维码加入我们 / 关闭 / 群号：1020866453 / 作者的其他插件）。
+- 截图：`.tmp/hg-c6-en-modal.png`、`hg-c6-zh-modal.png`。
+- 插件面板内语言由宿主 `lang` 传入（五仓 createBaseUI 显式传 lang），验面板英文需切 DSH UI 语言；组件侧双语渲染已由 demo 覆盖。
+
+**C7 附加：demo 离线（PASS，仅作辅助）**
+- `Network.emulateNetworkConditions offline` 后 reload，demo 页面正常渲染（16 个 cluster、弹窗可开、3 卡 img complete、note 正常、无异常）；在线/离线截图 `.tmp/hg-c7-online.png`、`hg-c7-offline.png`。
+- 注意 demo 传了 `resolveQr:()=>DEMO_QR` 占位码，**不能作为「内置真码」证据**；真码证据见 E1。
+
+**E1 断 CDN（PASS，web profile 真实页面）**
+- `Network.setBlockedURLs` 阻断 `*unpkg.com*`/`*cdn.jsdelivr.net*`/`*registry.npmmirror.com*`/`*github.com*` 后 reload：页面正常（title=DeepSeek Harness、账号菜单在、body 正常渲染），设置→MattSkills→联系我们弹窗可开。
+- 页内 fetch 记录：三个清单通道全部 `TypeError: Failed to fetch`（6/1/2ms）→ loader 返回 null → 采用内置基线；弹窗 3 卡 feishu/qq/wechat、标题「DSH 插件交流群」、note 分别为「该二维码永久有效」「扫一扫二维码，加入群聊」「该二维码 6 天内（11 月 7 日前）有效，重新进入将更新」，无 fallback link，`errText=[]`、`window.__errs=[]`、gridOverflow=0；截图中 3 个内置二维码正常渲染，无白屏、无错误框。
+- 截图：`.tmp/hg-e1-blocked2.png`（1200×900，151516B）；日志 `.tmp/hg-e1.log`。
+- 测量瑕疵说明：弹窗打开 2.5s 时读 `img.naturalWidth` 仍为 0×0（同一代码在 E3 3s 后读到 320×320），属测量时机，截图已证渲染。
+
+**E3 恢复回源（PASS，web profile 真实页面）**
+- 解除阻断 + reload + 重开弹窗：页内 fetch 记录 `unpkg .../data/manifest.json` **200（992ms）**；随后远程图 `cdn.jsdelivr.net/.../data/img/qr-feishu.png`、`qr-wechat-2026-10-31.png`、`qr-qq.png` 全部 **200（1575–1657ms）**——基线走 bundled 不会请求这三张图，故证明远程清单被采用并预取了远程图；弹窗 3 卡 img 均 `320x320/true`（src=data:image/png）、note 文案同基线、`errs=[]`、gridOverflow=0；CDP NETREQ 记录到同样 4 条 200。
+- 截图：`.tmp/hg-e3-restored2.png`；日志 `.tmp/hg-e3.log`。
+
+**E2 合成降级清单（PASS，web profile 真实页面）**
+- 做法：CDP Fetch 拦截 `*unpkg.com*` 返回自造 manifest（schema 1 / version 0.1.5 / revision 99 / fallbackUrl=GitHub issues；groups= feishu remote 图、wechat remote 图 + `validUntil=2026-10-30`（已过期）、telegram remote 图（无内置码）），同时阻断 jsdelivr+npmmirror 让远程图必失败。
+- 结果：拦截 200（6ms）后清单被采用（卡片标题变为自造「【远程清单】…」），三卡降级链全部符合预期：
+  - feishu：远程图失败 → 回退内置 `qr-feishu`，img 320×320/true；
+  - wechat：`validUntil` 过期 → `card--expired`、无 QR、note「该二维码已过期，请点击下方链接获取最新群码」、link=fallbackUrl；
+  - telegram：远程图失败且无内置码 → 无 QR、link 卡片；
+  - 全程 `errText=[]`、`window.__errs=[]`、gridOverflow=0、cols=3、页面 bodyLen 正常——**不弹错误框、不白屏**。
+- 截图：`.tmp/hg-e2-degraded2.png`（105888B）；日志 `.tmp/hg-e2b.log`；plan `.tmp/hg-plan-e2b.json`。
+- 附注：首轮自造 manifest 把 `card` 写成 `"feishu"`（校验要求 png/jpg 文件名，见 `dsh-prompt/lib/client.js:7947`），被拒后 loader 继续走 npmmirror/jsdelivr 通道并最终回落基线——这本身验证了「非法清单不会弄坏页面」；改 `card:"card-feishu.png"` 后即通过。
+
+**结论**
+- 代理自动化侧：C4、C6、C7（辅助）、E1、E2、E3 全部 PASS，证据如上；§7.2 中 C4/C6/E 的「代理不可代劳」部分已由自动化实测覆盖。
+- 仍待 owner：C4/C6 的**主观观感**（一眼舒服即可）、D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）；B 组 owner 已确认。
+- 复跑命令：`node .tmp/hg-cdp.mjs .tmp/hg-plan-e2b.json`（其余 plan 同名规律：`hg-plan-demo-c4.json` / `hg-plan-demo-c6.json` / `hg-plan-demo-c7.json` / `hg-plan-web-c4.json` / `hg-plan-e1.json` / `hg-plan-e3.json`）。
+

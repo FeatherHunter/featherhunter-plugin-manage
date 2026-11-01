@@ -55,6 +55,16 @@ D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」
 
 ### local — 2026-11-01T04:35:40.966Z
 2026-11-01 12:40 更新：五仓已全部发 npm 正式版（prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / ilife 0.3.86），web profile 已从本地 tarball 切到 npm 精确版本并在真机复验通过（五设置页版本与 UI、作者插件卡 tooltip、联系弹窗三卡二维码居中；见规格 .scratch/header-action-cluster-v2/spec.md「收口记录：web profile 依赖切到 npm 正式版」与票 09）。B 组 owner 已确认通过；剩余 C4 更窄档、C6 中英切换，以及 D 组 desktop profile 安装形态（现可直接用 npm 正式版安装，需重启桌面应用）与 E 组断网降级。
+
+### local — 2026-11-01T06:12:01.118Z
+2026-11-01 14:0x 自动化取证回填（依据 owner「你能自动化测试的 可以直接测试」）：
+1) C4 窄档列数 PASS：demo 与 web profile 两处 1200/600/420 三档列数 3/2/1，420px 档卡宽 338、弹窗 386×880/792，docScrollWidth==viewportWidth，grid/dialog 横向溢出 0，无越界元素；二维码 natural 320×320 未破图。截图 .tmp/hg-c4-*.png、hg-web-*.png。
+2) C6 中英切换 PASS（demo）：按钮/aria/插件卡标题/弹窗标题与欢迎语/scanHint/close/卡片标题副标题 note 全量切换，含 wechat「Valid for 6 days (until 11/7)…」，切回中文全部复原。截图 .tmp/hg-c6-en-modal.png / hg-c6-zh-modal.png。
+3) E1 断 CDN PASS：Network.setBlockedURLs 阻断 unpkg/jsdelivr/npmmirror/github 后 reload，页面正常、弹窗可开，三通道清单 fetch 全 TypeError→内置基线，3 卡内置真码正常渲染，errText=[]、errs=[]、无白屏无错误框。截图 .tmp/hg-e1-blocked2.png。
+4) E2 合成降级清单 PASS：拦截 unpkg 返回自造 manifest（feishu 远程图/wechat 远程图+validUntil 2026-10-30/telegram 远程图无内置码）+ 阻断 jsdelivr+npmmirror，结果 feishu 回退内置 qr-feishu 320×320、wechat card--expired+expired 文案+fallbackUrl link、telegram 无码降级 link，全程 errs=[]、gridOverflow=0、不弹错不白屏。截图 .tmp/hg-e2-degraded2.png。
+5) E3 恢复回源 PASS：unblock+reload 后 unpkg manifest 200（992ms），随后 jsdelivr 远程图 qr-feishu/qr-wechat-2026-10-31/qr-qq 全 200（1575–1657ms），弹窗 img 320×320/true——证明远程清单被采用并预取远程图。截图 .tmp/hg-e3-restored2.png。
+证据已写入 docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md §7.6，并把 §7.2 的 C4/C6/E 标为代理已自动化覆盖。
+剩余待 owner：C4/C6 主观观感一眼、D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）；B 组 owner 已确认。票保持 open。
 ## 2026-11-01 00:55 0.1.5 轮：A/C 组代理实测补齐，B/D/E 仍待仓主
 
 - 规格 `.scratch/header-action-cluster-v2` 的票 01–08 已全部关闭；base 已发到 0.1.5，五仓换代（HEAD==origin，依赖精确 0.1.5）并装入 web profile，owner 2026-11-01 00:44 人眼验收通过。
@@ -75,6 +85,7 @@ D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」
 
 ## 进度
 
+- 进度：92%（2026-11-01T14:12:00+08:00）：C4/C6/E 自动化实测全部 PASS 并回填 HUMAN-GATE §7.6；剩 owner 观感与 D 组 desktop 安装授权
 - 进度：85%（2026-11-01T12:35:40+08:00）：五仓 npm 正式版齐发，web profile 已切 npm 并真机复验；剩 C4/C6/D/E 待 owner
 - 进度：80%（2026-11-01T00:58:29+08:00）：B 组 owner 确认通过；D 组定性为临时验证（不发版），待 owner 授权在 desktop profile 安装验形态；剩 D/E
 - 进度：75%（2026-11-01T00:51:36+08:00）：A/C 组代理实测补齐并写入 HUMAN-GATE §7；B/D/E 待仓主真机，票保持 open
