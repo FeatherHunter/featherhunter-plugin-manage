@@ -127,7 +127,7 @@
 - ~~**B 组**~~：2026-11-01 owner 确认「B 组没问题」→ 已通过（见 §1 与票 14 记录）。
 - **C4 更窄档**：420px 左右单元格换行表现（代理只验到 900/1000 无溢出）。
 - **C6 语言切换**：中英切换在真实浏览器（demo 与插件面板内）的观感。
-- **D 组（已按新形态改写）**：五仓插件要装进 **desktop profile** 才有「插件详情面板 / 总管页」真机入口；当前只验了 web profile 设置分区。**性质为临时验证**：装的是本地 tarball（file: 依赖），不改包版本、不需要发版；验完可按备份回滚。desktop profile 正是当前 DSH Desktop 会话所在 profile，安装后需重启桌面应用，须 owner 授权/操作。
+- **D 组（已按新形态改写）**：五仓插件要装进 **desktop profile** 才有「插件详情面板 / 总管页」真机入口；当前只验了 web profile 设置分区。**已可改用 npm 正式版**（2026-11-01：五仓全部发版，web profile 已是 npm 依赖；desktop profile 目前还是 registry 旧版 0.4.39 / 2.1.10 / 0.3.85 / beta.32 / 0.2.25）。desktop profile 正是当前 DSH Desktop 会话所在 profile，安装后需重启桌面应用，须 owner 授权/操作；本机 npmjs TLS 受限，需先给 desktop profile 加 `.npmrc`（registry=npmmirror）再用 `--save-exact` 列出五个版本。
 - **E 组**：断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）。
 
 ### 7.3 旧条目过期说明
@@ -139,5 +139,12 @@
 ### 7.4 发版链路（2026-11-01 01:2x）
 
 - **dsh-prompt 0.4.40 已正式发布到 npm**（GitHub Actions run [41223953408](https://github.com/FeatherHunter/dsh-prompt/actions/runs/41223953408) success；commit `ae7c6b5`）：npmmirror `latest=0.4.40`、jsDelivr `@0.4.40` 200、`npm install dsh-prompt@0.4.40` 实测可装，包内内联 base v0.1.5（彩色快捷操作簇 + 作者插件卡 tooltip + 二维码居中）。
-- 用途：若要做 **D 组正式版安装形态**（而非 file: tarball 临时验证），可用带版本号的正式包：`dsh plugin --profile <profile> add dsh-prompt@0.4.40`；本机 npmjs TLS 受限时需该 profile 的 `.npmrc` 指向 `https://registry.npmmirror.com/`（web profile 已如此配置）。其余四仓尚未发版。
+- 用途：若要做 **D 组正式版安装形态**（而非 file: tarball 临时验证），可用带版本号的正式包：`dsh plugin --profile <profile> add dsh-prompt@0.4.40`；本机 npmjs TLS 受限时需该 profile 的 `.npmrc` 指向 `https://registry.npmmirror.com/`（web profile 已如此配置）。**2026-11-01 12:16 起五仓均已发版**：dsh-prompt 0.4.40、dsh-mattpocock-skills-deck 1.9.0-beta.33、dsh-opencode-palette 2.1.11、dsh-im-companion 0.2.26、ilife 0.3.86（七包），详见 §7.5。
 - **发版口径**：dsh-prompt 的「发版」现在是 **npm publish + GitHub Release 一步完成**（`publish.yml` 的 `Create GitHub release` 步骤，按 CHANGELOG 版本段写 notes、附两个 tarball 资产、设为 Latest；publish 步骤幂等）。v0.4.40 release 已补齐并设为 Latest：https://github.com/FeatherHunter/dsh-prompt/releases/tag/v0.4.40 。
+
+### 7.5 web profile 已切 npm 正式版（2026-11-01 12:40，票 09）
+
+- **五仓 npm 最新版**：dsh-prompt `0.4.40`、dsh-mattpocock-skills-deck `1.9.0-beta.33`（dist-tags beta+latest）、dsh-opencode-palette `2.1.11`、dsh-im-companion `0.2.26`、ilife `0.3.86`（dsh-life-pack + 六单品）。deck 与 im 是本次补发（此前 npm 停在 beta.32 / 0.2.25，不含 base 0.1.5 UI）。
+- **web profile 现状态**：`~/.dsh/profiles/web/package.json` dependencies 全是版本号，**无任何 `file:` 依赖**（pnpm-lock 同）；bundles 8 个。安装方式 `dsh plugin --profile web add --save-exact <五个版本> --registry=https://registry.npmmirror.com/`；装前备份 `D:/temp/hac2-pack/web-profile-backup-20261101-1215`。
+- **复验（重启 127.0.0.1:3080 后 CDP）**：五插件设置页版本文案 = npm 版本；每页 1 个 `.dsh-base-cluster` + 3 钮；作者插件卡 tooltip 正常；联系弹窗三卡二维码 natural 320×320、box-sizing=border-box。截图 `.tmp/web5-*.png`。
+- **对 D 组的影响**：web profile 不再是 file: tarball 形态；desktop profile 仍是 registry 旧版，若 owner 要做 D 组真机目验，把五个版本装进 desktop profile 并重启桌面应用即可（同样是 npm 包，可回滚）。

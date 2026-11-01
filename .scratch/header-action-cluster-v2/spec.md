@@ -101,4 +101,30 @@
 - 镜像：jsDelivr/unpkg 七包 0.3.86 均 200；npmmirror 起初六个已同步、dsh-calorie 滞后（latest 仍 0.3.85），已用 `PUT https://registry.npmmirror.com/dsh-calorie/sync` 触发补同步（201 ok:true），随后复查。
 - 环境限制：本机 registry.npmjs.org TLS 被拦（curl exit 35），两仓发布均走 GitHub Actions；GitHub Actions 队列近期拥堵（排队 10–17 分钟），重跑需耐心等待。
 
+## 发版记录：dsh-mattpocock-skills-deck 1.9.0-beta.33（2026-11-01 12:2x +08:00）
+
+- 版本此前只在本机 tarball 里存在（npm 最新停在 1.9.0-beta.32），owner 要求「不要挂本地形式的」，因此补发。版本号、README 三处锁版、CHANGELOG 的 beta.33 节此前已就绪；本次补：`.github/workflows/publish.yml`（workflow_dispatch：pnpm install --frozen-lockfile → node scripts/build.mts → typecheck → 五条冒烟 → 发布契约校验 → 幂等 publish → `package/` 内 pack → annotated tag + Release 附版本化与固定名两资产）、GitHub About 描述 v1.3.1→v1.3.2（与 package description 同句）。
+- 发布管道经 4 次 run 收敛：41272392945 红在 pnpm/action-setup 版本冲突（`version: 11.22.0` 与 packageManager 带 sha512 同时给）→ commit 34d26637 只从 packageManager 读；41272591987 npm 发布步已成功（`+ dsh-mattpocock-skills-deck@1.9.0-beta.33`、`+latest:` 同步指向）但打 annotated tag 报 Committer identity unknown → commit 0e957cf4 打 tag 前配 git 身份；41272783224 Release 已建、固定名资产上传步在 mktemp 目录解析不到仓库 → commit 80788911 回工作区并 `-R` 上传；41272933352 success（走后一次幂等路径：publish SKIP、tag/Release 已存在跳过）。
+- commit：cf9abe5e（发版管道 + CHANGELOG 补 base 0.1.5 界面说明）→ 34d26637 → 0e957cf4 → 80788911，全部 push main，HEAD==origin。
+- npm：`dsh-mattpocock-skills-deck@1.9.0-beta.33`，dist-tags beta 与 latest 均指向该版本，shasum `9c42bbff4f329be7806afa35eee25776beeb643e`、size 2,028,781 B / unpacked 7,774,822 B / 672 files。GitHub Release [v1.9.0-beta.33](https://github.com/FeatherHunter/dsh-mattpocock-skills-deck/releases/tag/v1.9.0-beta.33) 为 Latest，notes 与 CHANGELOG 对应节逐字一致（5327 chars，脚本比对 true），两资产：版本化 `dsh-mattpocock-skills-deck-1.9.0-beta.33.tgz`（2,028,778 B）与固定名 `dsh-mattpocock-skills-deck.tgz`（2,028,781 B，sha1 与 npm shasum 一致 = npm 原包）。
+- 产物抽检（Release 固定名资产）：`package/lib/client.js` banner `dsh-featherhunter-plugin-base v0.1.5` ×1、v0.1.4 ×0、`dsh-base-cluster__btn` ×49、`createTipController` ×3；package.json version 1.9.0-beta.33。
+- 本地门禁：build / typecheck / test:smoke / verify-release-contract（58 通过 0 失败）/ readme:check 全 EXIT=0。
+- 注意：GITHUB_TOKEN 创建的 Release 不会触发仓内 `release-tarball.yml`，故固定名资产由 publish.yml 自己从 npm 拉原包附上；tag 打在 0e957cf4（发布内容提交），之后 80788911 只改 workflow，不影响包内容。
+
+## 发版记录：dsh-im-companion 0.2.26（2026-11-01 12:16 +08:00）
+
+- 版本 0.2.25→0.2.26（package.json + package-lock 两处），README 中英版本行与 CHANGELOG（[Unreleased] 落成 `[0.2.26] - 2026-11-01`）同步；新增 `.github/workflows/publish.yml`（npm ci → build → check → readme:check → 幂等 publish → pack → tag + Release）。commit `e947af7`（6 files +128/−11，push master，HEAD==origin）。
+- run [41272354524](https://github.com/FeatherHunter/dsh-im-companion/actions/runs/41272354524) success；npm shasum `f31248ba35fac71b770ec284c0e8958a78bce79c`（100 files / 1,174,140 B）；GitHub Release [v0.2.26](https://github.com/FeatherHunter/dsh-im-companion/releases/tag/v0.2.26) 资产 sha1 与 npm shasum 一致。
+- 产物抽检：`lib/client.js` 1,309,641B、banner v0.1.5 @ line 28163、v0.1.4 ×0、`dsh-base-cluster__btn` ×49、`createTipController` ×3。
+- 本地门禁：build / check（SOME_FAIL=0、ALL PASS=17、React Warning=0、guard 191 files PASS）/ readme:check 全 EXIT=0。
+
+## 收口记录：web profile 依赖切到 npm 正式版（票 09，2026-11-01 12:40 +08:00）
+
+- 背景：0.1.5 验收阶段 web profile 里挂的是本机 `file:D:/temp/hac2-pack/b015x/*.tgz`；owner 明确要求「不要挂本地形式的」，且 deck/im 的 npm 版还是旧 UI（deck beta.32、im 0.2.25 不含 base），故先补发两仓（上两节），再整体切 npm。
+- 前置：`~/.dsh/profiles/web/pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 逐行补 5 条（dsh-prompt@0.4.40、dsh-opencode-palette@2.1.11、dsh-life-pack@0.3.86、dsh-mattpocock-skills-deck@1.9.0-beta.33、dsh-im-companion@0.2.26），绕开 pnpm 24h 新版等待期；安装前备份 `D:/temp/hac2-pack/web-profile-backup-20261101-1215`（package.json / pnpm-lock.yaml / pnpm-workspace.yaml）。
+- 安装命令：`dsh plugin --profile web add --save-exact dsh-prompt@0.4.40 dsh-opencode-palette@2.1.11 dsh-life-pack@0.3.86 dsh-mattpocock-skills-deck@1.9.0-beta.33 dsh-im-companion@0.2.26 --registry=https://registry.npmmirror.com/ --reporter=append-only` → EXIT 0，pnpm 日志逐条 `Replaced "<pkg>" ("file:...tgz") with "<version>" from a different source`、`Packages: +6`、10.9s。
+- profile 现状：dependencies = dsh-im-companion 0.2.26 / dsh-life-pack 0.3.86 / dsh-mattpocock-skills-deck 1.9.0-beta.33 / dsh-opencode-palette 2.1.11 / dsh-prompt 0.4.40 / dsh-plugin-update 0.18.38 / dshmarket ^1.66.44；bundles 8 个；`package.json` 与 `pnpm-lock.yaml` 均无 file: 依赖（lock 里唯二 `file:` 子串来自 `lockfileVersion:` 与 `excludeLinksFromLockfile:`）。
+- 重启 web 实例（127.0.0.1:3080）后 CDP 复验：五插件设置页版本文案分别为 0.4.40 / 1.9.0-beta.33 / v2.1.11 / dsh-life-pack 0.3.86 / v0.2.26；每页仍恰 1 个 `.dsh-base-cluster` + 3 枚 `__btn`；MattSkills 作者插件卡 4 行、hover 首行 `.dsh-base-tip` 恰 1 枚 role=tooltip、opacity 1、文案为完整介绍词；联系弹窗 3 卡（feishu/qq/wechat）三张 `.dsh-base-modal__qr` 均 data:image/png、natural 320×320、computed box-sizing=border-box。截图：`.tmp/web5-settings.png`、`.tmp/web5-five-pages.png`、`.tmp/web5-mattskills.png`、`.tmp/web5-contact-npm.png`。
+- 结论：本地 tarball 仅保留在 `D:/temp/hac2-pack/` 作历史备份，profile 不再引用；票 09 已关闭（规格下实施票 09/09 全部 resolved）。
+
 ## 进度

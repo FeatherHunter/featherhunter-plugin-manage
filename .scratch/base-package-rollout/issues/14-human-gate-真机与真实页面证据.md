@@ -52,6 +52,9 @@
 2026-11-01 00:58 B 组复验结论：owner 口头确认「B 组没问题」→ 手机扫码三码（飞书/QQ/微信）真机可通过；微信码 2026-10-31 换新（validUntil=2026-11-07），过期表现一行改判为「已不适用」（0.1.3 起微信内置基线码，0.1.5 弹窗三卡均为 data:image/png 内联码）。证据落在 docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md §1 表与 §7.2。
 
 D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」）：D 组是**临时验证，不需要发版本**。装进 desktop profile 的是本次本地构建的 tarball（file: 依赖），五个包的版本号不变（prompt 0.4.39 / deck 1.9.0-beta.33 / palette 2.1.10 / im 0.2.25 / life-pack 0.3.85），验证完可按备份回滚；正式发版（npm publish 各仓新版）是独立的一件事，等 owner 决定再做。注意 desktop profile 正是当前 DSH Desktop 会话所在 profile，安装后需重启桌面应用，须 owner 授权/操作。剩余：D（desktop 安装形态，待授权）、E（断网降级）。
+
+### local — 2026-11-01T04:35:40.966Z
+2026-11-01 12:40 更新：五仓已全部发 npm 正式版（prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / ilife 0.3.86），web profile 已从本地 tarball 切到 npm 精确版本并在真机复验通过（五设置页版本与 UI、作者插件卡 tooltip、联系弹窗三卡二维码居中；见规格 .scratch/header-action-cluster-v2/spec.md「收口记录：web profile 依赖切到 npm 正式版」与票 09）。B 组 owner 已确认通过；剩余 C4 更窄档、C6 中英切换，以及 D 组 desktop profile 安装形态（现可直接用 npm 正式版安装，需重启桌面应用）与 E 组断网降级。
 ## 2026-11-01 00:55 0.1.5 轮：A/C 组代理实测补齐，B/D/E 仍待仓主
 
 - 规格 `.scratch/header-action-cluster-v2` 的票 01–08 已全部关闭；base 已发到 0.1.5，五仓换代（HEAD==origin，依赖精确 0.1.5）并装入 web profile，owner 2026-11-01 00:44 人眼验收通过。
@@ -72,6 +75,7 @@ D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」
 
 ## 进度
 
+- 进度：85%（2026-11-01T12:35:40+08:00）：五仓 npm 正式版齐发，web profile 已切 npm 并真机复验；剩 C4/C6/D/E 待 owner
 - 进度：80%（2026-11-01T00:58:29+08:00）：B 组 owner 确认通过；D 组定性为临时验证（不发版），待 owner 授权在 desktop profile 安装验形态；剩 D/E
 - 进度：75%（2026-11-01T00:51:36+08:00）：A/C 组代理实测补齐并写入 HUMAN-GATE §7；B/D/E 待仓主真机，票保持 open
 - 进度：60%（2026-10-31T17:35:34+08:00）：新微信群码（validUntil 2026-11-07）已发布到 base 0.1.1 与五仓 README，deck GitHub 页面实测新卡渲染正常；B3 过期降级场景需仓主等 11-07 后再验
