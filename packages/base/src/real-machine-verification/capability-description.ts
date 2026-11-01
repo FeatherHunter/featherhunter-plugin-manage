@@ -85,6 +85,7 @@ export const PROFILE_FIELDS: readonly string[] = [
   "bundledSkills",
   "model",
   "browser",
+  "ticketFace",
   "workspaceBackends",
   "build",
   "instanceEnvAllowlist",
@@ -126,10 +127,8 @@ const GLOBAL_FLAGS: readonly GlobalFlagDescription[] = [
     summary: "Write run reports and evidence under this directory (default: <cwd>/.scratch/verify).",
   },
   { name: "--dry-run", summary: "Print the plan that would run; touch nothing." },
-  { name: "--negative", value: "<case>", summary: "Run only the named negative fixture." },
-  { name: "--verbose", summary: "Append diagnostics to stderr (never to stdout)." },
   { name: "--help", summary: "Print usage." },
-  { name: "--version", summary: "Print the base package version." },
+  { name: "--version", summary: "Print the base package version and the capability fingerprint." },
 ];
 
 const COMMANDS: readonly CommandDescription[] = [
@@ -147,49 +146,50 @@ const COMMANDS: readonly CommandDescription[] = [
     summary:
       "Read-only checks: declaration, DSH runtime, Node floor, profile, installed package, display (with --screen).",
     usage:
-      "dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json]",
-    writes: "run.json and evidence files under the work root",
-    flags: ["--profile <p>", "--declaration <file>", "--work-root <dir>", "--screen", "--json"],
+      "dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json] [--dry-run]",
+    writes: "run.json and evidence files under the work root (nothing with --dry-run)",
+    flags: ["--profile <p>", "--declaration <file>", "--work-root <dir>", "--screen", "--json", "--dry-run"],
   },
   {
     name: "launch",
     layer: 2,
     summary: "Launch one isolated instance and print its handle.",
-    usage: "dsh-verify launch [--profile <p>] [--port <n>] [--keep] [--json]",
-    writes: "an isolated home, a working directory, instance.json",
-    flags: ["--profile <p>", "--keep", "--port <n>", "--json"],
+    usage: "dsh-verify launch [--profile <p>] [--keep] [--port <n>] [--dry-run] [--json]",
+    writes: "an isolated home, a working directory, instance.json (nothing with --dry-run)",
+    flags: ["--profile <p>", "--keep", "--port <n>", "--dry-run", "--json"],
   },
   {
     name: "stop",
     layer: 2,
     summary: "Stop one instance by id or directory; --all reaps every instance in the work root.",
-    usage: "dsh-verify stop [--id <id>] [--dir <d>] [--all] [--json]",
-    writes: "stopped.json in the instance directory",
-    flags: ["--id <id>", "--dir <d>", "--all", "--json"],
+    usage: "dsh-verify stop [--id <id>] [--dir <d>] [--all] [--json] [--dry-run]",
+    writes: "stopped.json in the instance directory (nothing with --dry-run)",
+    flags: ["--id <id>", "--dir <d>", "--all", "--json", "--dry-run"],
   },
   {
     name: "isolation",
     layer: 2,
     summary: "Prove plugin settings are redirected: child-process probe plus real-file hash before/after.",
-    usage: "dsh-verify isolation [--json]",
-    writes: "probe artifacts under the work root",
-    flags: ["--json"],
+    usage: "dsh-verify isolation [--profile <p>] [--work-root <dir>] [--json] [--dry-run]",
+    writes: "probe artifacts under the work root (nothing with --dry-run)",
+    flags: ["--profile <p>", "--work-root <dir>", "--json", "--dry-run"],
   },
   {
     name: "model",
     layer: 2,
     summary: "Inspect or configure the model triple; verify cross-entry references agree.",
-    usage: "dsh-verify model [--profile <p>] [--provider <p>] [--model <m>] [--api-key-env <ENV>] [--fix] [--json]",
+    usage:
+      "dsh-verify model [--profile <p>] [--provider <p>] [--model <m>] [--api-key-env <ENV>] [--fix] [--json] [--dry-run]",
     writes: "nothing unless --fix is given",
-    flags: ["--profile <p>", "--provider <p>", "--model <m>", "--api-key-env <ENV>", "--fix", "--json"],
+    flags: ["--profile <p>", "--provider <p>", "--model <m>", "--api-key-env <ENV>", "--fix", "--json", "--dry-run"],
   },
   {
     name: "install",
     layer: 2,
     summary: "Install a candidate tgz into a profile and verify every file against the manifest.",
     usage:
-      "dsh-verify install --tgz <file> [--method extract|cli] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json]",
-    writes: "the isolated profile's node_modules",
+      "dsh-verify install --tgz <file> [--method extract|cli] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json] [--dry-run]",
+    writes: "the isolated profile's node_modules (nothing with --dry-run)",
     flags: [
       "--tgz <file>",
       "--method extract|cli",
@@ -198,6 +198,7 @@ const COMMANDS: readonly CommandDescription[] = [
       "--work-root <dir>",
       "--candidate <dir>",
       "--json",
+      "--dry-run",
     ],
   },
   {
@@ -228,24 +229,24 @@ const COMMANDS: readonly CommandDescription[] = [
     name: "concurrent",
     layer: 1,
     summary: "Launch N instances across profiles and assert pairwise isolation of home, port, cwd and logs.",
-    usage: "dsh-verify concurrent --count <N> [--profiles a,b,c] [--json]",
-    writes: "the batch directory: evidence, summary, logs",
-    flags: ["--count <N>", "--profiles a,b,c", "--json"],
+    usage: "dsh-verify concurrent --count <N> [--profiles a,b,c] [--dry-run] [--json]",
+    writes: "the batch directory: evidence, summary, logs (nothing with --dry-run)",
+    flags: ["--count <N>", "--profiles a,b,c", "--dry-run", "--json"],
   },
   {
     name: "freeze",
     layer: 1,
     summary: "Build, pack and record the candidate identity (commit, file digest, tgz digest).",
-    usage: "dsh-verify freeze [--out <dir>] [--allow-dirty] [--json]",
-    writes: "candidate.json and the tgz under the given output directory",
-    flags: ["--out <dir>", "--allow-dirty", "--json"],
+    usage: "dsh-verify freeze [--out <dir>] [--allow-dirty] [--json] [--dry-run]",
+    writes: "candidate.json and the tgz under the given output directory (nothing with --dry-run)",
+    flags: ["--out <dir>", "--allow-dirty", "--json", "--dry-run"],
   },
   {
     name: "batch",
     layer: 1,
     summary: "Open, inspect or finish a verification batch; writes the identity line and checks freshness.",
     usage:
-      "dsh-verify batch open|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json]",
+      "dsh-verify batch open|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run]",
     writes: "batch.json under the work root, plus the identity and baseline lines",
     flags: [
       "--name <n>",
@@ -264,8 +265,8 @@ const COMMANDS: readonly CommandDescription[] = [
     layer: 1,
     summary: "Add bound evidence, archive a batch with a sorted SHA256SUMS.txt, or verify an archive by recomputing it.",
     usage:
-      "dsh-verify evidence add|archive|verify [--file <p>]... [--check <id>=pass|fail] [--archive-root <dir>] [--dir <dir>] [--name <n>] [--work-root <dir>] [--json]",
-    writes: "evidence/files, evidence.json, the archive directory",
+      "dsh-verify evidence add|archive|verify [--file <p>]... [--check <id>=pass|fail] [--archive-root <dir>] [--dir <batch-or-archive-dir>] [--name <batch-name>] [--work-root <dir>] [--json] [--dry-run]",
+    writes: "evidence/files, evidence.json, the archive directory (nothing with --dry-run)",
     flags: [
       "--file <p>",
       "--check <id>=pass|fail",
@@ -274,6 +275,7 @@ const COMMANDS: readonly CommandDescription[] = [
       "--name <n>",
       "--work-root <dir>",
       "--json",
+      "--dry-run",
     ],
   },
   {
@@ -281,8 +283,8 @@ const COMMANDS: readonly CommandDescription[] = [
     layer: 1,
     summary: "Run a scenario file: steps in file order, bounded concurrency, fail-fast or collect-all.",
     usage:
-      "dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast|--collect-all] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json]",
-    writes: "a run directory under the work root: report, evidence, logs",
+      "dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast|--collect-all] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json] [--dry-run]",
+    writes: "a run directory under the work root: report, evidence, logs (nothing with --dry-run)",
     flags: [
       "--concurrency <n>",
       "--fail-fast",
@@ -291,15 +293,17 @@ const COMMANDS: readonly CommandDescription[] = [
       "--declaration <file>",
       "--work-root <dir>",
       "--json",
+      "--dry-run",
     ],
   },
   {
     name: "cleanup",
     layer: 1,
     summary: "Report or delete work-root artifacts by ownership and age; unknown entries are only reported.",
-    usage: "dsh-verify cleanup [--yes] [--keep-batches 2] [--keep-homes <n>] [--include-pkg] [--json]",
-    writes: "the work root, only with --yes",
-    flags: ["--yes", "--keep-batches <n>", "--keep-homes <n>", "--include-pkg", "--json"],
+    usage:
+      "dsh-verify cleanup [--yes] [--keep-batches <n>] [--keep-homes <n>] [--include-pkg] [--json] [--dry-run]",
+    writes: "the work root, only with --yes (nothing with --dry-run)",
+    flags: ["--yes", "--keep-batches <n>", "--keep-homes <n>", "--include-pkg", "--json", "--dry-run"],
   },
 ];
 

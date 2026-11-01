@@ -14,6 +14,7 @@
 import type { CheckId, ProfileName } from "./branding";
 import { parseCheckId, parseProfileName } from "./branding";
 import { err, ok, type Failure, type Result } from "./result";
+import type { TicketFaceDeclaration } from "./ticket-face";
 
 /** One model the run should use. `apiKeyEnv` names a credential, never holds one. */
 export interface ModelSelection {
@@ -103,6 +104,11 @@ export interface VerificationProfileInput {
    * adapter", and page checks report `blocked` rather than `fail`.
    */
   readonly browser?: BrowserAdapterDeclaration | false;
+  /**
+   * Ticket-face adapter used by release checks; `false` (or omitted) means "no
+   * adapter", and release checks report `blocked` rather than `fail`.
+   */
+  readonly ticketFace?: TicketFaceDeclaration | false;
   /** Workspace backends the plugin understands, in preference order. */
   readonly workspaceBackends?: readonly string[];
   /** How to build the package under verification. */
@@ -124,6 +130,7 @@ export interface VerificationProfile {
   readonly bundledSkills: BundledSkillsDeclaration | false;
   readonly model: ModelSelection | false;
   readonly browser: BrowserAdapterDeclaration | false;
+  readonly ticketFace: TicketFaceDeclaration | false;
   readonly workspaceBackends: readonly string[];
   readonly build?: { readonly command: string; readonly timeoutMs: number };
   readonly instanceEnvAllowlist: readonly string[];
@@ -247,6 +254,30 @@ export function parseVerificationProfile(input: VerificationProfileInput): Resul
     }
   }
 
+  if (input.ticketFace !== undefined && input.ticketFace !== false) {
+    if (typeof input.ticketFace !== "object" || input.ticketFace === null) {
+      return invalid(
+        "ticketFace must be an object { module, exportName? } or false",
+        "omit it, set false, or declare ticketFace: { module: \"verify/ticket-face.mjs\" }",
+      );
+    }
+    if (typeof input.ticketFace.module !== "string" || !BROWSER_MODULE_RE.test(input.ticketFace.module)) {
+      return invalid(
+        `ticketFace.module ${JSON.stringify(input.ticketFace.module)} must be a relative /-separated path or a package name`,
+        "for example verify/ticket-face.mjs or @scope/ticket-face; absolute paths and .. are rejected",
+      );
+    }
+    if (
+      input.ticketFace.exportName !== undefined &&
+      (typeof input.ticketFace.exportName !== "string" || !JAVASCRIPT_IDENTIFIER_RE.test(input.ticketFace.exportName))
+    ) {
+      return invalid(
+        `ticketFace.exportName ${JSON.stringify(input.ticketFace.exportName)} must be a JavaScript identifier`,
+        "omit it to use the module's default export",
+      );
+    }
+  }
+
   if (input.build !== undefined) {
     if (typeof input.build.command !== "string" || input.build.command.trim().length === 0) {
       return invalid("build.command must be a non-empty shell command");
@@ -300,6 +331,12 @@ export function parseVerificationProfile(input: VerificationProfileInput): Resul
           module: input.browser.module,
           ...(input.browser.exportName === undefined ? {} : { exportName: input.browser.exportName }),
         },
+    ticketFace: input.ticketFace === false || input.ticketFace === undefined
+      ? false
+      : {
+          module: input.ticketFace.module,
+          ...(input.ticketFace.exportName === undefined ? {} : { exportName: input.ticketFace.exportName }),
+        },
     workspaceBackends: [...workspaceBackends],
     ...(input.build === undefined
       ? {}
@@ -329,6 +366,11 @@ export function hasModel(profile: VerificationProfile): boolean {
 /** True when the repository declares a browser adapter for page-level checks. */
 export function hasBrowserAdapter(profile: VerificationProfile): boolean {
   return profile.browser !== false;
+}
+
+/** True when the repository declares a ticket-face adapter for release checks. */
+export function hasTicketFaceAdapter(profile: VerificationProfile): boolean {
+  return profile.ticketFace !== false;
 }
 
 /** True when the plugin ships bundled skills the run must find registered. */
