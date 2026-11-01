@@ -10,7 +10,7 @@
  * content — only existence and hashes cross that boundary.
  */
 import { BASE_ENV_ALLOWLIST } from "../../contracts/launch-plan";
-import type { FsPort, Ports } from "../../contracts/ports";
+import type { EnvPort, FsPort, Ports } from "../../contracts/ports";
 import { ok, type Result } from "../../contracts/result";
 import { joinFsPath, samePath } from "../paths";
 
@@ -224,6 +224,46 @@ function parseProbeStdout(stdout: string): ChildProbeReport | null {
 function tail(text: string, limit = 2_000): string {
   const trimmed = text.trim();
   return trimmed.length <= limit ? trimmed : trimmed.slice(trimmed.length - limit);
+}
+
+
+/** Everything a probe would run, described without creating a directory or spawning. */
+export interface SettingsIsolationPlan {
+  readonly argv: readonly string[];
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string>>;
+  readonly envNames: readonly string[];
+  readonly timeoutMs: number;
+  readonly markerPath: string;
+  readonly realSettingsPath: string;
+}
+
+/**
+ * Describe the probe command a real run would execute.
+ *
+ * Read-only: the script body stays in `argv` (the same value a report records),
+ * and the environment is computed from the parent snapshot exactly as
+ * `probeSettingsIsolation` does, so `--dry-run` prints what the child gets.
+ */
+export function planSettingsIsolation(options: {
+  readonly env: EnvPort;
+  readonly pluginSettingsDir: string;
+  readonly realHome: string;
+  readonly redirectedHome: string;
+  readonly workdir: string;
+  readonly timeoutMs?: number;
+}): SettingsIsolationPlan {
+  const { env, pluginSettingsDir, realHome, redirectedHome, workdir } = options;
+  const probeEnv = buildProbeEnv(env.snapshot(), redirectedHome);
+  return {
+    argv: [env.execPath(), "-e", "<probe script>"],
+    cwd: workdir,
+    env: probeEnv,
+    envNames: Object.keys(probeEnv).sort(),
+    timeoutMs: options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
+    markerPath: joinFsPath(redirectedHome, ".dsh", pluginSettingsDir, "settings.yaml"),
+    realSettingsPath: realSettingsFilePath(realHome, pluginSettingsDir),
+  };
 }
 
 /**

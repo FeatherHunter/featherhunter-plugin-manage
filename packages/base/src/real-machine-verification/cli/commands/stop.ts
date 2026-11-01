@@ -33,10 +33,10 @@ export interface StopCommandDeps {
 }
 
 /** The usage line, repeated in every no-target error. */
-export const STOP_USAGE = "dsh-verify stop [--id <id>] [--dir <d>] [--all] [--json]";
+export const STOP_USAGE = "dsh-verify stop [--id <id>] [--dir <d>] [--all] [--json] [--dry-run]";
 
 /** Flags this command implements; anything else recognized is a usage error. */
-const STOP_FLAGS: ReadonlySet<string> = new Set(["--json", "--work-root", "--id", "--dir", "--all"]);
+const STOP_FLAGS: ReadonlySet<string> = new Set(["--json", "--dry-run", "--work-root", "--id", "--dir", "--all"]);
 
 /** One target handed to `stopRecord`, with the id the caller used (if any). */
 interface StopTarget {
@@ -135,6 +135,96 @@ function renderResult(result: StopResult): string {
   return `stopped ${label} (pid ${result.pid ?? "?"})`;
 }
 
+
+interface StopPlanTarget {
+  readonly id: string | null;
+  readonly dir: string;
+  readonly recordPath: string;
+  readonly pid: number | null;
+  readonly instanceId: string | null;
+  readonly alive: boolean;
+}
+
+interface StopPlan {
+  readonly workRoot: string;
+  readonly instancesRoot: string;
+  readonly enumerateEmpty: boolean;
+  readonly targets: readonly StopPlanTarget[];
+}
+
+/** Read the records the real stop would act on; never signals and never writes. */
+async function inspectTargets(
+  ports: Ports,
+  workRoot: string,
+  targets: readonly StopTarget[],
+  enumerateEmpty: boolean,
+): Promise<{ readonly plan: StopPlan } | { readonly failed: readonly StopResult[] }> {
+  const inspected: StopPlanTarget[] = [];
+  const failed: StopResult[] = [];
+  for (const target of targets) {
+    const loaded = await loadInstance(ports.fs, target.dir);
+    if (!loaded.ok) {
+      failed.push({
+        ...(target.id === undefined ? {} : { id: target.id }),
+        dir: target.dir,
+        error: formatFailure(loaded.error),
+      });
+      continue;
+    }
+    const record = loaded.value;
+    inspected.push({
+      id: record.instanceId ?? target.id ?? null,
+      dir: instanceDirectory(record),
+      recordPath: joinFsPath(target.dir, "instance.json"),
+      pid: record.pid,
+      instanceId: record.instanceId ?? null,
+      alive: ports.process.isAlive(record.pid),
+    });
+  }
+  if (failed.length > 0) return { failed };
+  return {
+    plan: {
+      workRoot,
+      instancesRoot: joinFsPath(workRoot, "instances"),
+      enumerateEmpty,
+      targets: inspected,
+    },
+  };
+}
+
+function stopPlanJson(plan: StopPlan): string {
+  return `${JSON.stringify({
+    schemaVersion: 1,
+    command: "stop",
+    ok: true,
+    dryRun: true,
+    plan: {
+      workRoot: plan.workRoot,
+      instancesRoot: plan.instancesRoot,
+      enumerateEmpty: plan.enumerateEmpty,
+      targets: plan.targets,
+      wouldSignal: plan.targets.filter((target) => target.alive).length,
+    },
+  })}\n`;
+}
+
+function renderStopPlan(plan: StopPlan): string {
+  const lines: string[] = [];
+  lines.push("stop plan (dry run) — no process was signalled");
+  lines.push(`work root: ${plan.workRoot}`);
+  if (plan.targets.length === 0) {
+    lines.push(`no instances found under ${plan.instancesRoot}`);
+  }
+  for (const target of plan.targets) {
+    const label = target.id ?? target.dir;
+    lines.push(`target: ${label} (pid ${target.pid ?? "?"}, ${target.alive ? "alive" : "already gone"}) at ${target.dir}`);
+    lines.push(`  record: ${target.recordPath}`);
+  }
+  lines.push(`would signal: ${plan.targets.filter((target) => target.alive).length} process(es)`);
+  lines.push("dry run: nothing was written");
+  return `${lines.join("\n")}\n`;
+}
+
 /** Run one `stop` invocation and return its exit code. */
 export async function runStopCommand(args: ParsedArgs, deps: StopCommandDeps): Promise<number> {
   const { ports, io } = deps;
@@ -152,6 +242,22 @@ export async function runStopCommand(args: ParsedArgs, deps: StopCommandDeps): P
     io.stderr(`dsh-verify stop: ${resolved.problem}\n`);
     if (args.json) io.stdout(failureJson([], false));
     return EXIT_CODES.blocked;
+  }
+
+  if (args.dryRun) {
+    const inspection = await inspectTargets(ports, workRoot, resolved.targets, resolved.enumerateEmpty);
+    if ("failed" in inspection) {
+      for (const result of inspection.failed) {
+        io.stderr(`dsh-verify stop: ${renderResult(result)}\n`);
+      }
+      io.stderr("dsh-verify stop: cannot plan a stop for a target without a readable instance.json\n");
+      if (args.json) io.stdout(failureJson(inspection.failed, false));
+      return EXIT_CODES.hardFailure;
+    }
+    const plan = inspection.plan;
+    if (args.json) io.stdout(stopPlanJson(plan));
+    else io.stdout(renderStopPlan(plan));
+    return EXIT_CODES.ok;
   }
 
   const results: StopResult[] = [];

@@ -27,7 +27,7 @@ import { buildEvidenceManifest, writeEvidenceManifest } from "../../evidence/man
 import { createEvidenceStore } from "../../evidence/store";
 import { loadDeclarationContext } from "../../orchestration/context";
 import { findProjectRoot } from "../../orchestration/checks/skills-observation";
-import { prepareRunDirectory } from "../../orchestration/run-directory";
+import { planRunDirectory, prepareRunDirectory } from "../../orchestration/run-directory";
 import {
   renderSelfCheckHuman,
   withReportDigest,
@@ -63,10 +63,11 @@ export interface RunCommandDeps {
   readonly headless?: boolean;
 }
 
-export const RUN_USAGE = "dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast|--collect-all] [--json]";
+export const RUN_USAGE = "dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast|--collect-all] [--json] [--dry-run]";
 
 const RUN_FLAGS: ReadonlySet<string> = new Set([
   "--json",
+  "--dry-run",
   "--profile",
   "--declaration",
   "--work-root",
@@ -89,6 +90,83 @@ function parseConcurrency(raw: string | undefined): ParsedConcurrency | { readon
     return { problem: `--concurrency needs an integer between 1 and ${MAX_SCENARIO_CONCURRENCY}, got "${raw}"` };
   }
   return { value };
+}
+
+
+function runPlanJson(
+  plan: {
+    readonly runId: string;
+    readonly runDir: string;
+    readonly evidenceDir: string;
+  },
+  context: {
+    readonly workRoot: string;
+    readonly profileName: string;
+    readonly dshHome: string;
+    readonly profileDir: string;
+  },
+  scenarioFile: string,
+  scenarios: readonly { readonly id: string; readonly title: string; readonly steps: readonly unknown[] }[],
+  options: {
+    readonly concurrency: number;
+    readonly failFast: boolean;
+    readonly collectAll: boolean;
+    readonly repoRoot: string;
+    readonly runtime: { readonly exe: string; readonly cliJs: string };
+  },
+): string {
+  return `${JSON.stringify({
+    schemaVersion: 1,
+    command: "run",
+    ok: true,
+    dryRun: true,
+    plan: {
+      workRoot: context.workRoot,
+      runId: plan.runId,
+      runDir: plan.runDir,
+      evidenceDir: plan.evidenceDir,
+      scenarioFile,
+      scenarios: scenarios.map((scenario) => ({
+        id: scenario.id,
+        title: scenario.title,
+        stepCount: scenario.steps.length,
+      })),
+      scenarioCount: scenarios.length,
+      stepCount: scenarios.reduce((total, scenario) => total + scenario.steps.length, 0),
+      concurrency: options.concurrency,
+      failFast: options.failFast,
+      collectAll: options.collectAll,
+      profile: context.profileName,
+      profileDir: context.profileDir,
+      dshHome: context.dshHome,
+      repoRoot: options.repoRoot,
+      runtime: options.runtime,
+    },
+  })}\n`;
+}
+
+function renderRunPlan(
+  plan: { readonly runId: string; readonly runDir: string; readonly evidenceDir: string },
+  scenarioFile: string,
+  scenarios: readonly { readonly id: string; readonly title: string; readonly steps: readonly unknown[] }[],
+  options: {
+    readonly concurrency: number;
+    readonly failFast: boolean;
+    readonly collectAll: boolean;
+    readonly workRoot: string;
+  },
+): string {
+  const lines: string[] = [];
+  lines.push("run plan (dry run) — nothing was written and no scenario was executed");
+  lines.push(`scenario file: ${scenarioFile}`);
+  lines.push(`scenarios: ${scenarios.length} (${scenarios.reduce((total, item) => total + item.steps.length, 0)} step(s))`);
+  for (const scenario of scenarios) lines.push(`  - ${scenario.id}: ${scenario.title} (${scenario.steps.length} step(s))`);
+  lines.push(`run dir: ${plan.runDir}`);
+  lines.push(`evidence dir: ${plan.evidenceDir}`);
+  lines.push(`work root: ${options.workRoot}`);
+  lines.push(`concurrency: ${options.concurrency} (mode: ${options.failFast ? "fail-fast" : "collect-all"})`);
+  lines.push("dry run: nothing was written");
+  return `${lines.join("\n")}\n`;
 }
 
 /** Run one `run` invocation and return its exit code. */
@@ -161,6 +239,46 @@ export async function runScenarioCommand(args: ParsedArgs, deps: RunCommandDeps)
 
   const startedMs = ports.clock.nowMs();
   const startedAt = ports.clock.iso(startedMs);
+
+  if (args.dryRun) {
+    const planned = await planRunDirectory({
+      fs: ports.fs,
+      workRoot: context.workRoot,
+      command: RUN_COMMAND,
+      startedAt,
+    });
+    if (!planned.ok) {
+      return emitFailure(io, args.json, RUN_COMMAND, "report", planned.error);
+    }
+    if (args.json) {
+      io.stdout(
+        runPlanJson(
+          planned.value,
+          context,
+          scenarioLoaded.value.path,
+          scenarioLoaded.value.scenarios,
+          {
+            concurrency: concurrency.value,
+            failFast: args.failFast,
+            collectAll: args.collectAll,
+            repoRoot,
+            runtime: runtimePaths,
+          },
+        ),
+      );
+    } else {
+      io.stdout(
+        renderRunPlan(planned.value, scenarioLoaded.value.path, scenarioLoaded.value.scenarios, {
+          concurrency: concurrency.value,
+          failFast: args.failFast,
+          collectAll: args.collectAll,
+          workRoot: context.workRoot,
+        }),
+      );
+    }
+    return 0;
+  }
+
   const prepared = await prepareRunDirectory({
     fs: ports.fs,
     workRoot: context.workRoot,

@@ -428,3 +428,45 @@ describe("model command, selection and usage", () => {
     expect(failure.error.stage).toBe("usage");
   });
 });
+
+describe("model --dry-run", () => {
+  it("plans the --fix edit without touching the patch file", async () => {
+    const fixture = createModelFixture({ patch: mismatchedPatch() });
+    const before = fixture.fs.readFileSync(MODEL_PATCH_PATH);
+
+    const result = await runModel(fixture, ["--dry-run", "--json", "--fix"]);
+
+    expect(result.code).toBe(0);
+    expect(result.err).toContain("dsh-verify model:");
+    const doc = JSON.parse(result.out) as {
+      readonly schemaVersion: number;
+      readonly command: string;
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly patchPath: string;
+        readonly fixRequested: boolean;
+        readonly wouldWrite: boolean;
+        readonly current: { readonly configured: boolean; readonly problems: readonly unknown[] };
+        readonly edit: { readonly changed: boolean; readonly notes: readonly string[]; readonly error: unknown };
+        readonly credential: { readonly ref: string; readonly available: boolean };
+        readonly checks: readonly { readonly id: string; readonly status: string }[];
+      };
+    };
+    expect(doc.schemaVersion).toBe(1);
+    expect(doc.command).toBe("model");
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan?.patchPath).toBe(MODEL_PATCH_PATH);
+    expect(doc.plan?.fixRequested).toBe(true);
+    expect(doc.plan?.current.configured).toBe(false);
+    expect(doc.plan?.edit.changed).toBe(true);
+    expect(doc.plan?.edit.error).toBeNull();
+    expect(doc.plan?.edit.notes.length).toBeGreaterThan(0);
+    expect(doc.plan?.wouldWrite).toBe(true);
+    expect(doc.plan?.credential.ref).toBe(MODEL_KEY_ENV);
+    expect(doc.plan?.credential.available).toBe(true);
+    expect(doc.plan?.checks.find((check) => check.id === "model-default-model")?.status).toBe("fail");
+
+    expect(fixture.fs.writes).toEqual([]);
+    expect(fixture.fs.readFileSync(MODEL_PATCH_PATH)).toBe(before);
+  });
+});

@@ -71,7 +71,7 @@ export interface InstallOutcome {
   readonly notes: readonly string[];
 }
 
-interface ExpectedFile {
+export interface ExpectedFile {
   readonly path: string;
   readonly bytes: number;
   readonly sha256: string;
@@ -297,12 +297,42 @@ async function writeProfileDependency(
   return ok({ created });
 }
 
-export async function installPackage(options: InstallPackageOptions): Promise<Result<InstallOutcome, InstallFailure>> {
-  const { ports, tgzPath, method, profileDir, profileName, packageName, clientEntry } = options;
-  const note = options.note ?? (() => undefined);
+/** Everything install decides before it writes: source bytes, target, expected files. */
+export interface InstallPlan {
+  readonly tgzPath: string;
+  readonly tgzSha256: string;
+  readonly method: InstallMethod;
+  readonly profileDir: string;
+  readonly targetDir: string;
+  readonly nodeModulesDir: string;
+  readonly packageName: string;
+  readonly packageVersion: string;
+  readonly clientEntry: string;
+  readonly expectedSource: "candidate" | "tgz";
+  readonly candidatePath: string | null;
+  readonly expectedFiles: readonly ExpectedFile[];
+  readonly expectedFileCount: number;
+  readonly willReplaceExisting: boolean;
+  readonly profileManifestPath: string;
+  readonly dependencySpec: string;
+  readonly npmArgv: readonly string[] | null;
+  readonly notes: readonly string[];
+  readonly candidate: CandidateManifest | null;
+  readonly unpacked: UnpackedTarball;
+}
+
+export type InstallPlanOptions = Omit<InstallPackageOptions, "binaryWriter" | "note">;
+
+/**
+ * Read the tarball (and candidate, when given) and decide where it would land.
+ *
+ * `--dry-run` prints this plan; `installPackage` starts from the same value, so
+ * the printed target directory and file list are the ones a real run uses.
+ */
+export async function planInstall(options: InstallPlanOptions): Promise<Result<InstallPlan, InstallFailure>> {
+  const { ports, tgzPath, method, profileDir, packageName, clientEntry } = options;
   const notes: string[] = [];
 
-  note(`reading ${tgzPath}`);
   const bytes = await ports.fs.readBytes(tgzPath);
   if (!bytes.ok) {
     return err(
@@ -364,20 +394,92 @@ export async function installPackage(options: InstallPackageOptions): Promise<Re
     candidate === null ? expectedFromTarball(unpacked.value) : expectedFromCandidate(candidate);
   const expectedSource: "candidate" | "tgz" = candidate === null ? "tgz" : "candidate";
   const targetDir = joinFsPath(profileDir, "node_modules", packageName);
+  const platform = ports.env.platform();
+  if (method === "cli") {
+    const sourceDrive = driveOf(tgzPath);
+    const targetDrive = driveOf(profileDir);
+    if (platform === "win32" && sourceDrive !== null && targetDrive !== null && sourceDrive !== targetDrive) {
+      return err(
+        installFailure(
+          "input",
+          failure(
+            "unsupported",
+            `npm cannot install across drives (${sourceDrive}: -> ${targetDrive}:) without hard links`,
+            "rerun with --method extract; it unpacks the same tarball and does not need a shared drive",
+          ),
+        ),
+      );
+    }
+  }
+  const npmArgv =
+    method === "cli"
+      ? [
+          options.npmCommand ?? (platform === "win32" ? "npm.cmd" : "npm"),
+          "install",
+          tgzPath,
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+        ]
+      : null;
 
-  note(`installing ${packedName}@${packageVersion} into ${targetDir} via ${method}`);
-  const nodeModulesDir = joinFsPath(profileDir, "node_modules");
-  const made = await ports.fs.makeDir(nodeModulesDir);
+  return ok({
+    tgzPath,
+    tgzSha256: sha256Bytes(bytes.value),
+    method,
+    profileDir,
+    targetDir,
+    nodeModulesDir: joinFsPath(profileDir, "node_modules"),
+    packageName,
+    packageVersion,
+    clientEntry,
+    expectedSource,
+    candidatePath: candidateFile,
+    expectedFiles,
+    expectedFileCount: expectedFiles.length,
+    willReplaceExisting: await ports.fs.exists(targetDir),
+    profileManifestPath: joinFsPath(profileDir, "package.json"),
+    dependencySpec: `file:${tgzPath.replace(/\\/g, "/")}`,
+    npmArgv,
+    notes,
+    candidate,
+    unpacked: unpacked.value,
+  });
+}
+
+export async function installPackage(options: InstallPackageOptions): Promise<Result<InstallOutcome, InstallFailure>> {
+  const { ports, method, profileDir, profileName, packageName, tgzPath } = options;
+  const note = options.note ?? (() => undefined);
+
+  note(`reading ${tgzPath}`);
+  const planned = await planInstall({
+    ports,
+    tgzPath,
+    method,
+    dshHome: options.dshHome,
+    profileName,
+    profileDir,
+    packageName,
+    clientEntry: options.clientEntry,
+    ...(options.candidatePath === undefined ? {} : { candidatePath: options.candidatePath }),
+    ...(options.npmCommand === undefined ? {} : { npmCommand: options.npmCommand }),
+  });
+  if (!planned.ok) return err(planned.error);
+  const plan = planned.value;
+  const notes = [...plan.notes];
+  const { packageVersion, targetDir, expectedFiles, expectedSource, clientEntry } = plan;
+
+  note(`installing ${plan.packageName}@${packageVersion} into ${targetDir} via ${method}`);
+  const made = await ports.fs.makeDir(plan.nodeModulesDir);
   if (!made.ok) {
     return err(
       installFailure(
         "install",
-        failure("io", `could not create ${nodeModulesDir}: ${made.error.message}`, "check the profile directory is writable"),
+        failure("io", `could not create ${plan.nodeModulesDir}: ${made.error.message}`, "check the profile directory is writable"),
       ),
     );
   }
-  const existing = await ports.fs.exists(targetDir);
-  if (existing) {
+  if (plan.willReplaceExisting) {
     const removed = await ports.fs.remove(targetDir, { recursive: true });
     if (!removed.ok) {
       return err(
@@ -399,7 +501,7 @@ export async function installPackage(options: InstallPackageOptions): Promise<Re
   }
 
   if (method === "extract") {
-    for (const file of unpacked.value.files) {
+    for (const file of plan.unpacked.files) {
       const target = joinFsPath(targetDir, ...file.path.split("/"));
       const parent = parentPath(target) ?? targetDir;
       const parentMade = await ports.fs.makeDir(parent);
@@ -414,24 +516,10 @@ export async function installPackage(options: InstallPackageOptions): Promise<Re
       }
     }
   } else {
-    const platform = ports.env.platform();
-    const sourceDrive = driveOf(tgzPath);
-    const targetDrive = driveOf(profileDir);
-    if (platform === "win32" && sourceDrive !== null && targetDrive !== null && sourceDrive !== targetDrive) {
-      return err(
-        installFailure(
-          "input",
-          failure(
-            "unsupported",
-            `npm cannot install across drives (${sourceDrive}: -> ${targetDrive}:) without hard links`,
-            "rerun with --method extract; it unpacks the same tarball and does not need a shared drive",
-          ),
-        ),
-      );
-    }
-    const npm = options.npmCommand ?? (platform === "win32" ? "npm.cmd" : "npm");
+    const npmArgv = plan.npmArgv ?? [];
+    const npm = npmArgv[0] ?? "npm";
     const run = await ports.command.run({
-      argv: [npm, "install", tgzPath, "--ignore-scripts", "--no-audit", "--no-fund"],
+      argv: npmArgv,
       cwd: profileDir,
       timeoutMs: 180_000,
     });
@@ -502,8 +590,8 @@ export async function installPackage(options: InstallPackageOptions): Promise<Re
   );
 
   const entryExpected =
-    candidate?.entry !== undefined && candidate.entry.clientEntry === clientEntry
-      ? candidate.entry.sha256
+    plan.candidate?.entry !== undefined && plan.candidate.entry.clientEntry === clientEntry
+      ? plan.candidate.entry.sha256
       : expectedFiles.find((file) => file.path === clientEntry)?.sha256 ?? null;
   const entryPath = joinFsPath(targetDir, ...clientEntry.split("/"));
   const entryHash = await ports.fs.hashFile(entryPath);
@@ -604,8 +692,8 @@ export async function installPackage(options: InstallPackageOptions): Promise<Re
     packageVersion,
     clientEntry,
     expectedSource,
-    candidatePath: candidateFile,
-    expectedFileCount: expectedFiles.length,
+    candidatePath: plan.candidatePath,
+    expectedFileCount: plan.expectedFileCount,
     installedFileCount,
     checks,
     notes,

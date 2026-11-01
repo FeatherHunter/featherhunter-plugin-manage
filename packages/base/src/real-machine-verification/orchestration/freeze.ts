@@ -139,23 +139,6 @@ function npmExecutable(ports: Ports): string {
   return ports.env.platform() === "win32" ? "npm.cmd" : "npm";
 }
 
-async function createCandidateDirectory(fs: Ports["fs"], outDir: string, name: string): Promise<Result<string, FreezeFailure>> {
-  const madeOut = await fs.makeDir(outDir);
-  if (!madeOut.ok) return wrapFailure(madeOut, "report", `could not create candidate root ${outDir}`);
-  for (let suffix = 1; suffix <= 100; suffix += 1) {
-    const dir = joinFsPath(outDir, suffix === 1 ? name : `${name}-${suffix}`);
-    if (await fs.exists(dir)) continue;
-    const made = await fs.makeDir(dir);
-    if (!made.ok) return wrapFailure(made, "report", `could not create candidate directory ${dir}`);
-    return ok(dir);
-  }
-  return err(
-    freezeFailure("report", "conflict", `could not find a free candidate directory name for ${name} under ${outDir}`, {
-      hint: "remove stale candidates or freeze in a different second",
-    }),
-  );
-}
-
 async function discard(fs: Ports["fs"], dir: string): Promise<void> {
   await fs.remove(dir, { recursive: true });
 }
@@ -264,8 +247,27 @@ async function readRootPackage(fs: Ports["fs"], cwd: string): Promise<Result<{ n
   return ok({ name: raw.value.name, version: raw.value.version });
 }
 
-/** Build, pack and record one candidate. */
-export async function freezeCandidate(options: FreezeOptions): Promise<Result<FreezeOutcome, FreezeFailure>> {
+/** Everything freeze decides before it runs a build or writes a byte. */
+export interface FreezePlan {
+  readonly outDir: string;
+  readonly rootPackage: { readonly name: string; readonly version: string };
+  readonly before: GitState;
+  readonly generatedAt: string;
+  readonly candidateName: string;
+  readonly candidateDir: string;
+  readonly previous: PreviousCandidate | null;
+  readonly build: { readonly argv: readonly string[]; readonly cwd: string; readonly timeoutMs: number } | null;
+  readonly pack: { readonly argv: readonly string[]; readonly cwd: string; readonly timeoutMs: number };
+  readonly notes: readonly string[];
+}
+
+/**
+ * Read the source facts and choose the output directory without writing.
+ *
+ * `--dry-run` prints this plan; a real freeze calls the same function and then
+ * claims `candidateDir`, so the printed plan is the one that would execute.
+ */
+export async function planFreeze(options: FreezeOptions): Promise<Result<FreezePlan, FreezeFailure>> {
   const { ports, context, outDir, allowDirty } = options;
   const fs = ports.fs;
 
@@ -301,10 +303,73 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
   }
 
   const generatedAt = ports.clock.iso();
-  const stamp = timestampForDirectory(generatedAt);
-  const created = await createCandidateDirectory(fs, outDir, `${before.commit.slice(0, 12)}-${stamp}`);
-  if (!created.ok) return created;
-  const candidateDir = created.value;
+  const candidateName = `${before.commit.slice(0, 12)}-${timestampForDirectory(generatedAt)}`;
+  let candidateDir = "";
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const dir = joinFsPath(outDir, suffix === 1 ? candidateName : `${candidateName}-${suffix}`);
+    if (await fs.exists(dir)) continue;
+    candidateDir = dir;
+    break;
+  }
+  if (candidateDir === "") {
+    return err(
+      freezeFailure("report", "conflict", `could not find a free candidate directory name for ${candidateName} under ${outDir}`, {
+        hint: "remove stale candidates or freeze in a different second",
+      }),
+    );
+  }
+
+  const previous = await findPreviousCandidate(fs, outDir, candidateDir, before.commit);
+  const notes: string[] = [];
+  const build = context.profile.build;
+  const buildPlan =
+    build === undefined
+      ? null
+      : { argv: shellArgv(ports, build.command), cwd: context.cwd, timeoutMs: build.timeoutMs };
+  if (buildPlan === null) {
+    notes.push("profile declares no build command; the existing tree was packed without rebuilding");
+  }
+  const packPlan = {
+    argv: [npmExecutable(ports), "pack", "--json", "--ignore-scripts", "--pack-destination", candidateDir] as readonly string[],
+    cwd: context.cwd,
+    timeoutMs: PACK_TIMEOUT_MS,
+  };
+
+  return ok({
+    outDir,
+    rootPackage: rootPackage.value,
+    before,
+    generatedAt,
+    candidateName,
+    candidateDir,
+    previous,
+    build: buildPlan,
+    pack: packPlan,
+    notes,
+  });
+}
+
+/** Claim the planned directory; the only write before a build starts. */
+async function claimCandidateDirectory(fs: Ports["fs"], plan: FreezePlan): Promise<Result<string, FreezeFailure>> {
+  const madeOut = await fs.makeDir(plan.outDir);
+  if (!madeOut.ok) return wrapFailure(madeOut, "report", `could not create candidate root ${plan.outDir}`);
+  const made = await fs.makeDir(plan.candidateDir);
+  if (!made.ok) return wrapFailure(made, "report", `could not create candidate directory ${plan.candidateDir}`);
+  return ok(plan.candidateDir);
+}
+
+/** Build, pack and record one candidate. */
+export async function freezeCandidate(options: FreezeOptions): Promise<Result<FreezeOutcome, FreezeFailure>> {
+  const { ports, context } = options;
+  const fs = ports.fs;
+
+  const planned = await planFreeze(options);
+  if (!planned.ok) return planned;
+  const plan = planned.value;
+  const { rootPackage, before, generatedAt } = plan;
+  const claimed = await claimCandidateDirectory(fs, plan);
+  if (!claimed.ok) return claimed;
+  const candidateDir = claimed.value;
 
   const fail = async (
     stage: FreezeStage,
@@ -316,16 +381,16 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
     return err(freezeFailure(stage, code, message, options));
   };
 
-  const previous = await findPreviousCandidate(fs, outDir, candidateDir, before.commit);
-  const notes: string[] = [];
+  const previous = plan.previous;
+  const notes = [...plan.notes];
 
   const build = context.profile.build;
   if (build === undefined) {
-    notes.push("profile declares no build command; the existing tree was packed without rebuilding");
+    // planFreeze already noted that the tree is packed without rebuilding.
   } else {
     const run = await ports.command.run({
-      argv: shellArgv(ports, build.command),
-      cwd: context.cwd,
+      argv: plan.build?.argv ?? [],
+      cwd: plan.build?.cwd ?? context.cwd,
       env: {
         ...ports.env.snapshot(),
         DSH_BUILD_COMMIT: before.commit,
@@ -347,9 +412,11 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
     }
   }
 
-  const npm = npmExecutable(ports);
-  const packArgv = [npm, "pack", "--json", "--ignore-scripts", "--pack-destination", candidateDir] as const;
-  const packed = await ports.command.run({ argv: packArgv, cwd: context.cwd, timeoutMs: PACK_TIMEOUT_MS });
+  const packed = await ports.command.run({
+    argv: plan.pack.argv,
+    cwd: plan.pack.cwd,
+    timeoutMs: plan.pack.timeoutMs,
+  });
   if (!packed.ok) return wrapFailure(packed, "pack", "could not start npm pack");
   if (packed.value.timedOut) {
     return fail("pack", "timeout", `npm pack timed out after ${PACK_TIMEOUT_MS}ms`, { hint: "check whether npm is waiting on a network prompt" });
@@ -409,18 +476,18 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
   const unpacked = unpackNpmTarball(tgzBytes);
   if (!unpacked.ok) return fail("pack", "invalid-input", unpacked.error.message, { hint: unpacked.error.hint });
   const packedPackage = unpacked.value.packageJson;
-  if (packedPackage.name !== rootPackage.value.name) {
+  if (packedPackage.name !== plan.rootPackage.name) {
     return fail(
       "manifest",
       "identity-mismatch",
-      `the packed package.json names ${JSON.stringify(packedPackage.name)}, but the source package is ${rootPackage.value.name}`,
+      `the packed package.json names ${JSON.stringify(packedPackage.name)}, but the source package is ${plan.rootPackage.name}`,
     );
   }
-  if (packedPackage.version !== rootPackage.value.version) {
+  if (packedPackage.version !== plan.rootPackage.version) {
     return fail(
       "manifest",
       "identity-mismatch",
-      `the build changed the package version from ${rootPackage.value.version} to ${JSON.stringify(packedPackage.version)}`,
+      `the build changed the package version from ${plan.rootPackage.version} to ${JSON.stringify(packedPackage.version)}`,
       { hint: "bump the version in source before freezing; a candidate must name one version" },
     );
   }
@@ -449,7 +516,7 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
   } else {
     const text = Buffer.from(entryFile.content).toString("utf8");
     const claims = readEntryClaims(text);
-    const status = entryStatus(claims.name, claims.version, context.profile.packageName, rootPackage.value.version);
+    const status = entryStatus(claims.name, claims.version, context.profile.packageName, plan.rootPackage.version);
     entry = {
       clientEntry,
       foundPackageName: claims.name,
@@ -462,12 +529,12 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
       return fail(
         "entry",
         "identity-mismatch",
-        `packaged client entry states ${JSON.stringify(claims.name)} v${JSON.stringify(claims.version)}, expected ${context.profile.packageName} v${rootPackage.value.version}`,
+        `packaged client entry states ${JSON.stringify(claims.name)} v${JSON.stringify(claims.version)}, expected ${context.profile.packageName} v${plan.rootPackage.version}`,
         {
           details: {
             clientEntry,
             expectedPackageName: context.profile.packageName,
-            expectedVersion: rootPackage.value.version,
+            expectedVersion: plan.rootPackage.version,
             foundPackageName: claims.name,
             foundVersion: claims.version,
           },
@@ -512,7 +579,7 @@ export async function freezeCandidate(options: FreezeOptions): Promise<Result<Fr
     schemaVersion: CANDIDATE_SCHEMA_VERSION,
     generatedAt,
     tool: TOOL_NAME,
-    version: rootPackage.value.version,
+    version: plan.rootPackage.version,
     validity: before.dirty ? "development" : "release",
     sourceStable,
     git: { commit: before.commit, branch: before.branch, dirty: before.dirty, dirtyFiles: before.dirtyFiles },

@@ -17,7 +17,7 @@
  */
 import { EXIT_CODES } from "../../capability-description";
 import type { Ports } from "../../contracts/ports";
-import type { ModelConfigProblem, ModelConfigState } from "../../contracts/profile-rules";
+import { planModelConfigEdit, type ModelConfigProblem, type ModelConfigState } from "../../contracts/profile-rules";
 import { formatFailure, type Failure } from "../../contracts/result";
 import type { ModelSelection, VerificationProfile } from "../../contracts/verification-profile";
 import type { DeclarationLoadResult, LoadDeclarationOptions } from "../../declaration/loader";
@@ -43,11 +43,12 @@ export interface ModelCommandDeps {
 
 /** The usage line, repeated in errors so a caller never has to read `describe`. */
 export const MODEL_USAGE =
-  "dsh-verify model [--profile <p>] [--provider <p>] [--model <m>] [--api-key-env <ENV>] [--fix] [--json]";
+  "dsh-verify model [--profile <p>] [--provider <p>] [--model <m>] [--api-key-env <ENV>] [--fix] [--json] [--dry-run]";
 
 /** Flags this command implements; anything else recognized is a usage error. */
 const MODEL_FLAGS: ReadonlySet<string> = new Set([
   "--json",
+  "--dry-run",
   "--profile",
   "--declaration",
   "--provider",
@@ -477,6 +478,78 @@ function resolveSelection(args: ParsedArgs, profile: VerificationProfile): Selec
   };
 }
 
+
+function modelPlanJson(
+  context: { readonly profileName: string; readonly profileDir: string },
+  patchPath: string,
+  selection: ModelSelection,
+  before: { readonly state: ModelConfigState; readonly text: string },
+  credential: CredentialPresence,
+  edit: { readonly changed: boolean; readonly notes: readonly string[] } | { readonly error: Failure },
+  checks: readonly ModelCheck[],
+  fixRequested: boolean,
+): string {
+  const editJson =
+    "error" in edit
+      ? { changed: false, notes: [], error: edit.error }
+      : { changed: edit.changed, notes: edit.notes, error: null };
+  return `${JSON.stringify({
+    schemaVersion: 1,
+    command: "model",
+    ok: true,
+    dryRun: true,
+    plan: {
+      profile: context.profileName,
+      profileDir: context.profileDir,
+      patchPath,
+      selection,
+      fixRequested,
+      current: {
+        configured: before.state.configured,
+        problems: before.state.problems,
+      },
+      edit: editJson,
+      wouldWrite: fixRequested && !before.state.configured && !("error" in edit) && edit.changed,
+      credential: {
+        ref: credential.ref,
+        available: credential.available,
+        source: credential.source,
+        storePath: credential.storePath,
+        storeRefPresent: credential.storeRefPresent,
+      },
+      checks,
+    },
+  })}\n`;
+}
+
+function renderModelPlan(
+  context: { readonly profileName: string; readonly profileDir: string },
+  patchPath: string,
+  selection: ModelSelection,
+  before: { readonly state: ModelConfigState; readonly text: string },
+  edit: { readonly changed: boolean; readonly notes: readonly string[] } | { readonly error: Failure },
+  checks: readonly ModelCheck[],
+  fixRequested: boolean,
+): string {
+  const lines: string[] = [];
+  lines.push("model plan (dry run) — nothing was written");
+  lines.push(`profile: ${context.profileName} (${context.profileDir})`);
+  lines.push(`patch: ${patchPath}`);
+  lines.push(`selection: ${selection.provider}/${selection.model} (credential ref ${selection.apiKeyEnv})`);
+  lines.push(`current: configured=${String(before.state.configured)}, problems=${before.state.problems.length}`);
+  lines.push(`fix requested: ${String(fixRequested)}`);
+  if ("error" in edit) {
+    lines.push(`edit: cannot be planned — ${formatFailure(edit.error)}`);
+  } else {
+    lines.push(`edit: ${edit.changed ? `${edit.notes.length} change(s)` : "no change"}`);
+    for (const note of edit.notes) lines.push(`  - ${note}`);
+  }
+  lines.push(`checks (current state): ${checks.length}`);
+  for (const check of checks) lines.push(`  - ${check.status} ${check.id} ${check.detail}`);
+  lines.push("dry run: nothing was written");
+  return `${lines.join("\n")}\n`;
+}
+
 /** Run one `model` invocation and return its exit code. */
 export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps): Promise<number> {
   const { ports, io } = deps;
@@ -547,6 +620,39 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
     context.value.dshHome,
     selection.apiKeyEnv,
   );
+
+  if (args.dryRun) {
+    const edit = planModelConfigEdit(before.text, selection);
+    const editPlan = edit.ok ? { changed: edit.value.changed, notes: edit.value.notes } : { error: edit.error };
+    const checks = buildChecks(before.state, selection, credential);
+    if (args.json) {
+      io.stdout(
+        modelPlanJson(
+          { profileName: context.value.profileName, profileDir: context.value.profileDir },
+          patchPath,
+          selection,
+          before,
+          credential,
+          editPlan,
+          checks,
+          args.fix,
+        ),
+      );
+    } else {
+      io.stdout(
+        renderModelPlan(
+          { profileName: context.value.profileName, profileDir: context.value.profileDir },
+          patchPath,
+          selection,
+          before,
+          editPlan,
+          checks,
+          args.fix,
+        ),
+      );
+    }
+    return EXIT_CODES.ok;
+  }
 
   let checks = buildChecks(before.state, selection, credential);
   let fix: ModelFixReport = {

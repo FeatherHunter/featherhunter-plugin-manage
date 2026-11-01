@@ -29,11 +29,12 @@ import type { DeclarationFailure, DeclarationLoadResult, LoadDeclarationOptions 
 import { createEvidenceStore } from "../../evidence/store";
 import { loadDeclarationContext, resolveWorkRoot } from "../../orchestration/context";
 import { renderSelfCheckHuman, withReportDigest, writeRunReport, type HumanReportTail } from "../../orchestration/report";
-import { prepareRunDirectory } from "../../orchestration/run-directory";
+import { planRunDirectory, prepareRunDirectory } from "../../orchestration/run-directory";
 import { executePlan } from "../../orchestration/runner";
 import { checkId, type CheckPlan } from "../../orchestration/types";
 import {
   isolationProbePaths,
+  planSettingsIsolation,
   probeSettingsIsolation,
   realSettingsFilePath,
   type SettingsIsolationResult,
@@ -48,10 +49,10 @@ import { createSettingsIsolatedCheck } from "../../orchestration/checks/settings
 export const ISOLATION_COMMAND = "isolation";
 
 /** The usage line, repeated in errors so a caller never has to read `describe`. */
-export const ISOLATION_USAGE = "dsh-verify isolation [--profile <p>] [--work-root <dir>] [--json]";
+export const ISOLATION_USAGE = "dsh-verify isolation [--profile <p>] [--work-root <dir>] [--json] [--dry-run]";
 
 /** Flags this command implements; anything else recognized is a usage error. */
-const ISOLATION_FLAGS: ReadonlySet<string> = new Set(["--json", "--profile", "--declaration", "--work-root"]);
+const ISOLATION_FLAGS: ReadonlySet<string> = new Set(["--json", "--dry-run", "--profile", "--declaration", "--work-root"]);
 
 /**
  * The recovery steps a human follows after the real settings file was damaged.
@@ -121,6 +122,131 @@ function declarationChecks(failure: DeclarationFailure, durationMs: number): rea
   ];
 }
 
+
+/** `--dry-run`: load the declaration, name the probe, and write nothing. */
+async function runIsolationDryRun(
+  args: ParsedArgs,
+  deps: IsolationCommandDeps,
+  cwd: string,
+  workRoot: string,
+  startedAt: string,
+): Promise<number> {
+  const { ports, io } = deps;
+  const { fs, env } = ports;
+  const loaded = await loadDeclarationContext({
+    ports,
+    cwd,
+    nodeVersion: deps.runtime.nodeVersion,
+    ...(args.workRoot === undefined ? {} : { workRoot: args.workRoot }),
+    ...(args.declaration === undefined ? {} : { declarationPath: args.declaration }),
+    ...(args.profile === undefined ? {} : { profileOverride: args.profile }),
+    ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+  });
+  if (!loaded.ok) {
+    io.stderr(`dsh-verify isolation: ${formatFailure(loaded.error.failure)}\n`);
+    if (args.json) io.stdout(failureJson(ISOLATION_COMMAND, loaded.error.stage, loaded.error.failure));
+    return EXIT_CODES.blocked;
+  }
+  const plannedRun = await planRunDirectory({ fs, workRoot, command: ISOLATION_COMMAND, startedAt });
+  if (!plannedRun.ok) {
+    io.stderr(`dsh-verify isolation: ${formatFailure(plannedRun.error)}\n`);
+    if (args.json) io.stdout(failureJson(ISOLATION_COMMAND, "run-directory", plannedRun.error));
+    return EXIT_CODES.blocked;
+  }
+  const { profile, profileName, profileDir, dshHome } = loaded.value;
+  const run = plannedRun.value;
+  const realHome = env.homeDir();
+  const pluginSettingsDir = profile.pluginSettingsDir ?? null;
+  const probePaths = isolationProbePaths(workRoot, run.runId);
+  const realSettingsPath = pluginSettingsDir === null ? null : realSettingsFilePath(realHome, pluginSettingsDir);
+  const probe =
+    pluginSettingsDir === null
+      ? null
+      : planSettingsIsolation({
+          env,
+          pluginSettingsDir,
+          realHome,
+          redirectedHome: probePaths.redirectedHome,
+          workdir: probePaths.workdir,
+        });
+  const checks = [createIsolationHomeCheck(), createSettingsIsolatedCheck()];
+  const checkJson = checks.map((check) => ({
+    id: check.id,
+    title: check.title,
+    hard: check.hard,
+    requires: check.requires,
+    onMissing: check.onMissing,
+  }));
+
+  if (args.json) {
+    io.stdout(
+      `${JSON.stringify({
+        schemaVersion: 1,
+        command: ISOLATION_COMMAND,
+        ok: true,
+        dryRun: true,
+        plan: {
+          workRoot,
+          runId: run.runId,
+          runDir: run.runDir,
+          evidenceDir: run.evidenceDir,
+          profile: profileName,
+          profileDir,
+          dshHome,
+          realHome,
+          pluginSettingsDir,
+          realSettingsPath,
+          probeRoot: probePaths.probeRoot,
+          redirectedHome: probePaths.redirectedHome,
+          workdir: probePaths.workdir,
+          probe:
+            probe === null
+              ? null
+              : {
+                  argv: probe.argv,
+                  cwd: probe.cwd,
+                  env: probe.env,
+                  envNames: probe.envNames,
+                  timeoutMs: probe.timeoutMs,
+                  markerPath: probe.markerPath,
+                },
+          checks: checkJson,
+          note:
+            probe === null
+              ? "the profile declares no pluginSettingsDir; both checks would be blocked before spawning"
+              : null,
+        },
+      })}\n`,
+    );
+  } else {
+    const lines: string[] = [];
+    lines.push("isolation plan (dry run) — nothing was written and no child was started");
+    lines.push(`profile: ${profileName} (${profileDir})`);
+    lines.push(`dsh home: ${dshHome}`);
+    lines.push(`real home: ${realHome}`);
+    lines.push(`plugin settings dir: ${pluginSettingsDir ?? "(not declared)"}`);
+    lines.push(`real settings: ${realSettingsPath ?? "(not declared)"}`);
+    lines.push(`run dir: ${run.runDir}`);
+    lines.push(`probe root: ${probePaths.probeRoot}`);
+    lines.push(`redirected home: ${probePaths.redirectedHome}`);
+    lines.push(`workdir: ${probePaths.workdir}`);
+    if (probe === null) {
+      lines.push("probe: none (both checks would be blocked before spawning)");
+    } else {
+      lines.push(`probe argv: ${probe.argv.join(" ")}`);
+      lines.push(`probe cwd: ${probe.cwd}`);
+      lines.push(`probe env: ${probe.envNames.join(", ")}`);
+      lines.push(`probe timeout: ${String(probe.timeoutMs)}ms`);
+      lines.push(`marker: ${probe.markerPath}`);
+    }
+    lines.push(`checks: ${checkJson.length}`);
+    for (const check of checkJson) lines.push(`  - ${check.id} (${check.hard ? "hard" : "soft"}): ${check.title}`);
+    lines.push("dry run: nothing was written");
+    io.stdout(`${lines.join("\n")}\n`);
+  }
+  return EXIT_CODES.ok;
+}
+
 /** Run one `isolation` invocation and return its exit code. */
 export async function runIsolationCommand(args: ParsedArgs, deps: IsolationCommandDeps): Promise<number> {
   const { ports, io } = deps;
@@ -135,6 +261,8 @@ export async function runIsolationCommand(args: ParsedArgs, deps: IsolationComma
   const startedMs = clock.nowMs();
   const startedAt = clock.iso(startedMs);
   const workRoot = resolveWorkRoot(cwd, args.workRoot);
+
+  if (args.dryRun) return runIsolationDryRun(args, deps, cwd, workRoot, startedAt);
 
   const prepared = await prepareRunDirectory({ fs, workRoot, command: ISOLATION_COMMAND, startedAt });
   if (!prepared.ok) {

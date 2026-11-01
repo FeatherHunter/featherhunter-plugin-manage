@@ -341,3 +341,52 @@ describe("dsh-verify freeze", () => {
     expect(json.error?.message).toContain("--keep");
   });
 });
+
+describe("freeze --dry-run", () => {
+  it("prints the same candidate plan without writing, building or packing", async () => {
+    const world = worldWith();
+    const result = await runFreeze(world, ["--dry-run", "--json"]);
+
+    expect(result.code).toBe(0);
+    const json = expectOneJson(result) as FreezeJson & {
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly outDir: string;
+        readonly candidateName: string;
+        readonly candidateDir: string;
+        readonly rootPackage: { readonly name: string; readonly version: string };
+        readonly git: { readonly commit: string; readonly branch: string; readonly dirty: boolean };
+        readonly build: { readonly argv: readonly string[] } | null;
+        readonly pack: { readonly argv: readonly string[] };
+        readonly previous: unknown;
+      };
+    };
+    expect(json.dryRun).toBe(true);
+    expect(json.plan?.rootPackage).toEqual({ name: world.packageName, version: world.version });
+    expect(json.plan?.git.commit).toBe(FIXTURE_HEAD);
+    expect(json.plan?.candidateName.startsWith(FIXTURE_HEAD.slice(0, 12))).toBe(true);
+    expect(json.plan?.candidateDir.startsWith(json.plan.outDir)).toBe(true);
+    expect(json.plan?.build?.argv.join(" ")).toContain("npm run build");
+    expect(json.plan?.pack.argv).toContain("pack");
+    expect(json.plan?.previous).toBeNull();
+
+    expect(world.fs.writes).toEqual([]);
+    expect(await world.fs.exists(json.plan?.outDir ?? "")).toBe(false);
+    const sideEffects = world.command.requests.filter((request) => {
+      const argv = request.argv.join(" ");
+      return argv.includes(" pack ") || argv.includes("npm run build");
+    });
+    expect(sideEffects).toEqual([]);
+  });
+
+  it("refuses a dirty tree before writing anything", async () => {
+    const world = worldWith({ dirtyFiles: ["src/changed.ts"] });
+    const result = await runFreeze(world, ["--dry-run", "--json"]);
+
+    expect(result.code).toBe(2);
+    const json = expectOneJson(result);
+    expect(json.ok).toBe(false);
+    expect(json.error?.stage).toBe("git");
+    expect(world.fs.writes).toEqual([]);
+  });
+});

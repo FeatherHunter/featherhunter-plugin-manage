@@ -229,3 +229,46 @@ describe("install command", () => {
     expect(payload.error?.message).toContain("--method");
   });
 });
+
+describe("install --dry-run", () => {
+  it("plans the extract without writing the profile or the package tree", async () => {
+    const fake = fixture();
+    const tgz = tgzFor();
+    fake.fs.seedFile(TGZ_PATH, tgz);
+
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--dry-run", "--json"]);
+
+    expect(result.code).toBe(0);
+    expect(result.err).toBe("");
+    expect(result.out.trim().split("\n")).toHaveLength(1);
+    const payload = JSON.parse(result.out) as InstallJson & {
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly tgzPath: string;
+        readonly tgzSha256: string;
+        readonly method: string;
+        readonly targetDir: string;
+        readonly expectedSource: string;
+        readonly expectedFileCount: number;
+        readonly expectedFiles: readonly { readonly path: string }[];
+        readonly willReplaceExisting: boolean;
+        readonly npmArgv: readonly string[] | null;
+        readonly dependencySpec: string;
+      };
+    };
+    expect(payload.dryRun).toBe(true);
+    expect(payload.plan?.tgzPath).toBe(TGZ_PATH);
+    expect(payload.plan?.tgzSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(payload.plan?.method).toBe("extract");
+    expect(payload.plan?.targetDir).toBe(joinFsPath(fake.paths.profileDir, "node_modules", "fixture-plugin"));
+    expect(payload.plan?.expectedSource).toBe("tgz");
+    expect(payload.plan?.expectedFileCount).toBe(2);
+    expect(payload.plan?.expectedFiles.map((file) => file.path)).toEqual(["lib/client.js", "package.json"]);
+    expect(payload.plan?.willReplaceExisting).toBe(false);
+    expect(payload.plan?.npmArgv).toBeNull();
+    expect(payload.plan?.dependencySpec.startsWith("file:")).toBe(true);
+
+    expect(fake.fs.writes).toEqual([]);
+    expect(await fake.fs.exists(joinFsPath(fake.paths.profileDir, "node_modules"))).toBe(false);
+  });
+});

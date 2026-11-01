@@ -397,3 +397,68 @@ describe("stop command", () => {
     expect(result.err).toBe("");
   });
 });
+
+describe("stop --dry-run", () => {
+  it("names the target and its pid without killing the process or writing a record", async () => {
+    const process = new ScriptedProcess({ pid: 4242, alive: () => true });
+    const fixture = createLaunchFixture({ process });
+    const dir = seedInstanceRecord(fixture, "inst-fixture", 4242);
+
+    const result = await runCli(fixture, [
+      "stop",
+      "--id",
+      "inst-fixture",
+      "--work-root",
+      fixture.paths.workRoot,
+      "--dry-run",
+      "--json",
+    ]);
+
+    expect(result.code).toBe(0);
+    expect(result.err).toBe("");
+    expect(result.out.trim().split("\n")).toHaveLength(1);
+    const doc = JSON.parse(result.out) as {
+      readonly schemaVersion: number;
+      readonly command: string;
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly workRoot: string;
+        readonly instancesRoot: string;
+        readonly targets: readonly { readonly id: string; readonly dir: string; readonly pid: number; readonly alive: boolean }[];
+        readonly wouldSignal: number;
+      };
+    };
+    expect(doc.schemaVersion).toBe(1);
+    expect(doc.command).toBe("stop");
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan?.workRoot).toBe(fixture.paths.workRoot);
+    expect(doc.plan?.targets).toHaveLength(1);
+    expect(doc.plan?.targets[0]?.id).toBe("inst-fixture");
+    expect(doc.plan?.targets[0]?.pid).toBe(4242);
+    expect(doc.plan?.targets[0]?.alive).toBe(true);
+    expect(doc.plan?.targets[0]?.dir).toBe(dir);
+    expect(doc.plan?.wouldSignal).toBe(1);
+
+    expect(fixture.fs.writes).toEqual([]);
+    expect(fixture.process.kills).toEqual([]);
+  });
+
+  it("fails before planning when the instance record is missing", async () => {
+    const fixture = createLaunchFixture();
+    const result = await runCli(fixture, [
+      "stop",
+      "--id",
+      "ghost",
+      "--work-root",
+      fixture.paths.workRoot,
+      "--dry-run",
+      "--json",
+    ]);
+
+    expect(result.code).toBe(1);
+    expect(fixture.fs.writes).toEqual([]);
+    const doc = JSON.parse(result.out) as { readonly ok: boolean; readonly results: readonly unknown[] };
+    expect(doc.ok).toBe(false);
+    expect(doc.results).toHaveLength(1);
+  });
+});

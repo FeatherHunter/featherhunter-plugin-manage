@@ -473,3 +473,55 @@ describe("run command", () => {
     expect(report.checks.find((check) => check.id === "page-handle")?.source).toBe("custom");
   });
 });
+
+describe("run --dry-run", () => {
+  it("plans the scenario file and its steps without creating a run directory or executing anything", async () => {
+    const fixture = createLaunchFixture();
+    fixture.fs.seedFile(scenarioPath, "// real fixture is imported from disk\n");
+
+    const result = await run(
+      fixture,
+      ["run", scenarioPath, "--work-root", fixture.paths.workRoot, "--dry-run", "--json"],
+      { importModule: async (specifier) => import(/* @vite-ignore */ specifier) },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.err).toBe("");
+    expect(result.out.trim().split("\n")).toHaveLength(1);
+    const doc = JSON.parse(result.out) as {
+      readonly schemaVersion: number;
+      readonly command: string;
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly runId: string;
+        readonly runDir: string;
+        readonly evidenceDir: string;
+        readonly scenarioFile: string;
+        readonly scenarios: readonly { readonly id: string; readonly stepCount: number }[];
+        readonly scenarioCount: number;
+        readonly stepCount: number;
+        readonly concurrency: number;
+        readonly failFast: boolean;
+        readonly collectAll: boolean;
+      };
+    };
+    expect(doc.schemaVersion).toBe(1);
+    expect(doc.command).toBe("run");
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan?.runId.startsWith("run-")).toBe(true);
+    expect(doc.plan?.scenarioFile).toBe(scenarioPath);
+    expect(doc.plan?.scenarioCount).toBe(1);
+    expect(doc.plan?.stepCount).toBe(3);
+    expect(doc.plan?.scenarios[0]?.id).toBe("fixture-plugin-smoke");
+    expect(doc.plan?.scenarios[0]?.stepCount).toBe(3);
+    expect(doc.plan?.concurrency).toBe(1);
+    expect(doc.plan?.failFast).toBe(false);
+    expect(doc.plan?.collectAll).toBe(false);
+
+    expect(fixture.fs.writes).toEqual([]);
+    expect(await fixture.fs.exists(joinFsPath(fixture.paths.workRoot, "runs"))).toBe(false);
+    expect(fixture.process.spawns).toHaveLength(0);
+    expect(fixture.http.request).toBeDefined();
+    expect((fixture.http as { readonly requests?: readonly unknown[] }).requests ?? []).toHaveLength(0);
+  });
+});

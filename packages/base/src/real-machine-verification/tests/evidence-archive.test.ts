@@ -461,3 +461,98 @@ describe("evidence CLI", () => {
     expect(emptyIo.stderr.join("")).toContain("add 需要至少一个");
   });
 });
+
+describe("evidence --dry-run", () => {
+  it("plans an archive without creating the archive root or copying any file", async () => {
+    const { fs, clock } = workspace();
+    seedBatch(fs);
+    const capture = captureIo();
+
+    const code = await runEvidenceCommand(
+      parseArgs(["evidence", "archive", "--dir", BATCH_DIR, "--work-root", WORK_ROOT, "--json", "--dry-run"]),
+      { ports: cliPorts(fs, clock), io: capture.io },
+    );
+
+    expect(code).toBe(0);
+    expect(capture.stderr).toEqual([]);
+    const doc = parseSingleJson(capture.stdout);
+    expect(doc.schemaVersion).toBe(1);
+    expect(doc.command).toBe("evidence");
+    expect(doc.subcommand).toBe("archive");
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan.batch).toEqual({ name: "batch-1", dir: BATCH_DIR });
+    expect(doc.plan.directory).toBe(
+      joinFsPath(joinFsPath(WORK_ROOT, "evidence-archive"), archiveDirectoryBaseName("batch-1", ISO)),
+    );
+    expect(doc.plan.createdAt).toBe(ISO);
+    expect(doc.plan.fileCount).toBe(3);
+    expect(doc.plan.files.map((file: { readonly path: string }) => file.path)).toEqual([
+      "evidence/evidence.json",
+      "evidence/files/environment.txt",
+      "logs/run.log",
+    ]);
+    expect(doc.plan.copied.files).toBe(3);
+    expect(doc.plan.copied.bytes).toBeGreaterThan(0);
+    expect(doc.plan.sumsPath).toBe(joinFsPath(doc.plan.directory, SUMS));
+    expect(doc.plan.fileDigest).toMatch(/^[0-9a-f]{64}$/);
+
+    expect(fs.writes).toEqual([]);
+    expect(await fs.exists(ARCHIVE_ROOT)).toBe(false);
+  });
+
+  it("plans an add against the existing manifest without copying bytes or publishing it", async () => {
+    const { fs, clock } = workspace();
+    const ports = cliPorts(fs, clock);
+    const source = p(WORK_ROOT, "src", "first.txt");
+    fs.seedFile(source, "first\n");
+
+    const firstIo = captureIo();
+    const first = await runEvidenceCommand(
+      parseArgs(["evidence", "add", "--file", source, "--check", "smoke=pass", "--json"]),
+      batchDeps(ports, firstIo.io),
+    );
+    expect(first).toBe(0);
+
+    fs.writes.splice(0);
+    const second = p(WORK_ROOT, "src", "second.txt");
+    fs.seedFile(second, "second\n");
+    const capture = captureIo();
+    const code = await runEvidenceCommand(
+      parseArgs([
+        "evidence",
+        "add",
+        "--file",
+        second,
+        "--check",
+        "again=pass",
+        "--dir",
+        BATCH_DIR,
+        "--json",
+        "--dry-run",
+      ]),
+      { ports, io: capture.io },
+    );
+
+    expect(code).toBe(0);
+    expect(capture.stderr).toEqual([]);
+    const doc = parseSingleJson(capture.stdout);
+    expect(doc.subcommand).toBe("add");
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan.batch.name).toBe("batch-1");
+    expect(doc.plan.batch.dir).toBe(BATCH_DIR);
+    expect(doc.plan.fileCount).toBe(1);
+    expect(doc.plan.files[0]).toMatchObject({
+      source: second,
+      name: "second.txt",
+      target: joinFsPath(BATCH_DIR, "evidence", "files", "second.txt"),
+      bytes: 7,
+      sha256: sha256Text("second\n"),
+    });
+    expect(doc.plan.checks.map((check: { readonly name: string }) => check.name)).toEqual(["again"]);
+    expect(doc.plan.manifest.replacing).toBe(true);
+    expect(doc.plan.manifest.itemCount).toBe(2);
+
+    expect(fs.writes).toEqual([]);
+    expect(await fs.exists(joinFsPath(BATCH_DIR, "evidence", "files", "second.txt"))).toBe(false);
+  });
+});

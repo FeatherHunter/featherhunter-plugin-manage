@@ -37,15 +37,16 @@ import {
   writeRunReport,
   type HumanReportTail,
 } from "../../orchestration/report";
-import { prepareRunDirectory } from "../../orchestration/run-directory";
+import { planRunDirectory, prepareRunDirectory } from "../../orchestration/run-directory";
 import { executePlan } from "../../orchestration/runner";
 import { planSelfCheck, SELF_CHECK_COMMAND, type SelfCheckContext } from "../../orchestration/self-check";
 import { profileDirectory, resolveDshHome, resolveWorkRoot } from "../../orchestration/context";
 import { checkId } from "../../orchestration/types";
 import { joinFsPath } from "../../runtime/paths";
 import type { RuntimeFacts } from "../../runtime/types";
-import type { ParsedArgs } from "../args";
+import { flagProblems, type ParsedArgs } from "../args";
 import type { CliIo } from "../io";
+import { emitUsageFailure, failureJson } from "./failure";
 
 /** Everything the command needs injected; the CLI wires the real machine. */
 export interface SelfCheckCommandDeps {
@@ -59,14 +60,167 @@ export interface SelfCheckCommandDeps {
 const DECLARATION_CHECK_ID = checkId("profile-declaration");
 const DECLARATION_CHECK_TITLE = "the plugin declares and loads its verification profile";
 
+const SELF_CHECK_USAGE =
+  "dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json] [--dry-run]";
+
+const SELF_CHECK_FLAGS: ReadonlySet<string> = new Set([
+  "--json",
+  "--dry-run",
+  "--profile",
+  "--declaration",
+  "--work-root",
+  "--screen",
+]);
+
+
+function selfCheckPlanJson(
+  plan: {
+    readonly runId: string;
+    readonly runDir: string;
+    readonly evidenceDir: string;
+  },
+  environment: {
+    readonly workRoot: string;
+    readonly profile: string;
+    readonly dshHome: string;
+    readonly profileDir: string;
+    readonly screenRequested: boolean;
+    readonly declaration: {
+      readonly path: string;
+      readonly kind: string;
+      readonly exportName: string;
+      readonly requiredNode: string;
+    };
+  },
+  checks: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly hard: boolean;
+    readonly requires: readonly string[];
+    readonly onMissing: string;
+  }[],
+): string {
+  return `${JSON.stringify({
+    schemaVersion: 1,
+    command: SELF_CHECK_COMMAND,
+    ok: true,
+    dryRun: true,
+    plan: {
+      workRoot: environment.workRoot,
+      runId: plan.runId,
+      runDir: plan.runDir,
+      evidenceDir: plan.evidenceDir,
+      profile: environment.profile,
+      profileDir: environment.profileDir,
+      dshHome: environment.dshHome,
+      declaration: environment.declaration,
+      screenRequested: environment.screenRequested,
+      checks: checks.map((check) => ({
+        id: check.id,
+        title: check.title,
+        hard: check.hard,
+        requires: check.requires,
+        onMissing: check.onMissing,
+      })),
+      checkCount: checks.length,
+    },
+  })}\n`;
+}
+
+function renderSelfCheckPlan(
+  plan: { readonly runId: string; readonly runDir: string; readonly evidenceDir: string },
+  environment: {
+    readonly workRoot: string;
+    readonly profile: string;
+    readonly dshHome: string;
+    readonly profileDir: string;
+    readonly screenRequested: boolean;
+    readonly declaration: {
+      readonly path: string;
+      readonly kind: string;
+      readonly exportName: string;
+      readonly requiredNode: string;
+    };
+  },
+  checks: readonly { readonly id: string; readonly title: string; readonly hard: boolean }[],
+): string {
+  const lines: string[] = [];
+  lines.push("self-check plan (dry run) — nothing was written and nothing was executed");
+  lines.push(`declaration: ${environment.declaration.path} (${environment.declaration.kind}, export ${environment.declaration.exportName})`);
+  lines.push(`required node: ${environment.declaration.requiredNode}`);
+  lines.push(`profile: ${environment.profile}`);
+  lines.push(`profile dir: ${environment.profileDir}`);
+  lines.push(`dsh home: ${environment.dshHome}`);
+  lines.push(`work root: ${environment.workRoot}`);
+  lines.push(`run dir: ${plan.runDir}`);
+  lines.push(`evidence dir: ${plan.evidenceDir}`);
+  lines.push(`screen requested: ${String(environment.screenRequested)}`);
+  lines.push(`checks: ${checks.length}`);
+  for (const check of checks) lines.push(`  - ${check.id} (${check.hard ? "hard" : "soft"}): ${check.title}`);
+  lines.push("dry run: nothing was written");
+  return `${lines.join("\n")}\n`;
+}
+
 /** Run one `self-check` invocation and return its exit code. */
 export async function runSelfCheckCommand(args: ParsedArgs, deps: SelfCheckCommandDeps): Promise<number> {
   const { ports, io } = deps;
   const { clock, env, fs } = ports;
   const cwd = env.cwd();
+  const problems = flagProblems(args, SELF_CHECK_FLAGS);
+  if (problems.length > 0) return emitUsageFailure(io, args.json, SELF_CHECK_COMMAND, problems, SELF_CHECK_USAGE);
+
   const startedMs = clock.nowMs();
   const startedAt = clock.iso(startedMs);
   const workRoot = resolveWorkRoot(cwd, args.workRoot);
+
+  if (args.dryRun) {
+    const loadOptions: LoadDeclarationOptions = {
+      fs,
+      cwd,
+      nodeVersion: deps.runtime.nodeVersion,
+      ...(args.declaration === undefined ? {} : { declarationPath: args.declaration }),
+    };
+    const declarationLoaded = await (deps.loadDeclaration ?? loadVerificationDeclaration)(loadOptions);
+    if (!declarationLoaded.ok) {
+      const failure = declarationLoaded.error;
+      io.stderr(`dsh-verify self-check: ${formatFailure(failure)}\n`);
+      if (args.json) io.stdout(`${JSON.stringify(failureJson(SELF_CHECK_COMMAND, "declaration", failure))}\n`);
+      return failure.kind === "failed" ? EXIT_CODES.hardFailure : EXIT_CODES.blocked;
+    }
+    const declaration = declarationLoaded.value;
+    const resolved = resolveProfile(declaration.profile, args.profile);
+    if (!resolved.ok) {
+      io.stderr(`dsh-verify self-check: ${formatFailure(resolved.error)}\n`);
+      if (args.json) io.stdout(`${JSON.stringify(failureJson(SELF_CHECK_COMMAND, "profile", resolved.error))}\n`);
+      return EXIT_CODES.blocked;
+    }
+    const profileName: ProfileName = resolved.value;
+    const dshHome = resolveDshHome(ports);
+    const profileDir = profileDirectory(dshHome, profileName);
+    const plannedRun = await planRunDirectory({ fs, workRoot, command: SELF_CHECK_COMMAND, startedAt });
+    if (!plannedRun.ok) {
+      io.stderr(`dsh-verify self-check: ${formatFailure(plannedRun.error)}\n`);
+      if (args.json) io.stdout(`${JSON.stringify(failureJson(SELF_CHECK_COMMAND, "report", plannedRun.error))}\n`);
+      return EXIT_CODES.blocked;
+    }
+    const plannedChecks = planSelfCheck({ profile: declaration.profile, screenRequested: args.screen });
+    const environment = {
+      workRoot,
+      profile: profileName as string,
+      dshHome,
+      profileDir,
+      screenRequested: args.screen,
+      declaration: {
+        path: declaration.path,
+        kind: declaration.kind,
+        exportName: declaration.exportName,
+        requiredNode: declaration.requiredNode,
+      },
+    };
+    if (args.json) io.stdout(selfCheckPlanJson(plannedRun.value, environment, plannedChecks.checks));
+    else io.stdout(renderSelfCheckPlan(plannedRun.value, environment, plannedChecks.checks));
+    return EXIT_CODES.ok;
+  }
 
   const prepared = await prepareRunDirectory({ fs, workRoot, command: SELF_CHECK_COMMAND, startedAt });
   if (!prepared.ok) {

@@ -17,9 +17,11 @@ import type { DeclarationLoadResult, LoadDeclarationOptions } from "../../declar
 import { loadDeclarationContext } from "../../orchestration/context";
 import {
   freezeCandidate,
+  planFreeze,
   type CandidateChanges,
   type FreezeFailure,
   type FreezeOutcome,
+  type FreezePlan,
 } from "../../orchestration/freeze";
 import { joinFsPath, resolveAgainst } from "../../runtime/paths";
 import { flagProblems, type ParsedArgs } from "../args";
@@ -34,10 +36,11 @@ export interface FreezeCommandDeps {
   readonly loadDeclaration?: (options: LoadDeclarationOptions) => Promise<DeclarationLoadResult>;
 }
 
-export const FREEZE_USAGE = "dsh-verify freeze [--out <dir>] [--allow-dirty] [--json]";
+export const FREEZE_USAGE = "dsh-verify freeze [--out <dir>] [--allow-dirty] [--json] [--dry-run]";
 
 const FREEZE_FLAGS: ReadonlySet<string> = new Set([
   "--json",
+  "--dry-run",
   "--profile",
   "--declaration",
   "--work-root",
@@ -146,6 +149,57 @@ function renderOutcome(outcome: FreezeOutcome): string {
   return `${lines.join("\n")}\n`;
 }
 
+
+function planJson(plan: FreezePlan): string {
+  return `${JSON.stringify({
+    schemaVersion: 1,
+    command: "freeze",
+    ok: true,
+    dryRun: true,
+    plan: {
+      outDir: plan.outDir,
+      candidateName: plan.candidateName,
+      candidateDir: plan.candidateDir,
+      rootPackage: plan.rootPackage,
+      git: plan.before,
+      generatedAt: plan.generatedAt,
+      build: plan.build,
+      pack: plan.pack,
+      previous:
+        plan.previous === null
+          ? null
+          : {
+              dir: plan.previous.dir,
+              manifestPath: plan.previous.manifestPath,
+              manifestSha256: plan.previous.manifestSha256,
+              commit: plan.previous.manifest.git.commit,
+            },
+      notes: plan.notes,
+    },
+  })}\n`;
+}
+
+function renderDryRun(plan: FreezePlan): string {
+  const lines: string[] = [];
+  lines.push("freeze plan (dry run) — nothing was written");
+  lines.push(`package: ${plan.rootPackage.name}@${plan.rootPackage.version}`);
+  lines.push(`candidate: ${plan.candidateName}`);
+  lines.push(`candidate dir: ${plan.candidateDir}`);
+  lines.push(`out dir: ${plan.outDir}`);
+  lines.push(`git: ${plan.before.commit} (${plan.before.branch}, dirty=${String(plan.before.dirty)})`);
+  if (plan.before.dirty) lines.push(`dirty files: ${plan.before.dirtyFiles.length}`);
+  lines.push(plan.build === null ? "build: no build command declared" : `build: ${plan.build.argv.join(" ")} (cwd ${plan.build.cwd})`);
+  lines.push(`pack: ${plan.pack.argv.join(" ")}`);
+  lines.push(
+    plan.previous === null
+      ? `previous: none for ${plan.before.commit.slice(0, 12)}`
+      : `previous: ${plan.previous.dir} (sha256 ${plan.previous.manifestSha256})`,
+  );
+  for (const note of plan.notes) lines.push(`note: ${note}`);
+  lines.push("dry run: nothing was written");
+  return `${lines.join("\n")}\n`;
+}
+
 /** Run one `freeze` invocation and return its exit code. */
 export async function runFreezeCommand(args: ParsedArgs, deps: FreezeCommandDeps): Promise<number> {
   const { ports, io } = deps;
@@ -177,6 +231,19 @@ export async function runFreezeCommand(args: ParsedArgs, deps: FreezeCommandDeps
   const outDir = args.out === undefined
     ? joinFsPath(context.value.workRoot, "candidates")
     : resolveAgainst(cwd, args.out);
+
+  if (args.dryRun) {
+    const planned = await planFreeze({ ports, context: context.value, outDir, allowDirty: args.allowDirty });
+    if (!planned.ok) {
+      const error: FreezeFailure = planned.error;
+      io.stderr(`dsh-verify freeze: ${formatFailure(error)} (stage: ${error.stage})\n`);
+      if (args.json) io.stdout(failureJson(error.stage, error));
+      return error.blocked ? EXIT_CODES.blocked : EXIT_CODES.hardFailure;
+    }
+    if (args.json) io.stdout(planJson(planned.value));
+    else io.stdout(renderDryRun(planned.value));
+    return EXIT_CODES.ok;
+  }
 
   io.stderr(`dsh-verify freeze: building ${context.value.profile.packageName} from ${cwd}\n`);
   const frozen = await freezeCandidate({

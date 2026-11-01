@@ -366,3 +366,52 @@ describe("self-check: profile custom checks", () => {
     expect(result.code).toBe(0);
   });
 });
+
+describe("self-check --dry-run", () => {
+  it("prints the run plan and check list without creating the run directory", async () => {
+    const fixture = createFixture();
+    const capture = captureIo();
+    const code = await main(
+      ["self-check", "--work-root", fixture.paths.workRoot, "--dry-run", "--json"],
+      {
+        ports: fixture.ports,
+        io: capture.io,
+        runtime: fixture.runtime,
+        loadDeclaration: declarationLoader(ok(fixtureDeclaration(fixture))),
+      },
+    );
+
+    expect(code).toBe(0);
+    expect(capture.stderr()).toBe("");
+    const stdout = capture.stdout();
+    expect(stdout.trim().split("\n")).toHaveLength(1);
+    const doc = JSON.parse(stdout) as {
+      readonly schemaVersion: number;
+      readonly command: string;
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly runId: string;
+        readonly runDir: string;
+        readonly evidenceDir: string;
+        readonly profile: string;
+        readonly declaration: { readonly path: string; readonly kind: string; readonly requiredNode: string };
+        readonly screenRequested: boolean;
+        readonly checks: readonly { readonly id: string }[];
+        readonly checkCount: number;
+      };
+    };
+    expect(doc.schemaVersion).toBe(1);
+    expect(doc.command).toBe("self-check");
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan?.runId.startsWith("self-check-")).toBe(true);
+    expect(doc.plan?.profile).toBe("web");
+    expect(doc.plan?.declaration.path).toBe(fixture.paths.cwd + "\\verify\\profile.ts");
+    expect(doc.plan?.declaration.requiredNode).toBe("22.6.0");
+    expect(doc.plan?.screenRequested).toBe(false);
+    expect(doc.plan?.checkCount).toBe(doc.plan?.checks.length);
+    expect(doc.plan?.checks.length).toBeGreaterThan(0);
+
+    expect(fixture.fs.writes).toEqual([]);
+    expect(await fixture.fs.exists(fixture.paths.workRoot)).toBe(false);
+  });
+});

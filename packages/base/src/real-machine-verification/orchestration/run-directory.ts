@@ -39,24 +39,33 @@ export function toRunIdSegment(value: string): string {
  * Failing to create the directory is a real error: without it there is nowhere to
  * put the report, and the caller must not pretend the run was recorded.
  */
-export async function prepareRunDirectory(
+export async function planRunDirectory(
   options: PrepareRunDirectoryOptions,
 ): Promise<Result<PreparedRunDirectory>> {
   const { fs, workRoot, command, startedAt } = options;
   const runsRoot = joinFsPath(workRoot, "runs");
-  const madeRoot = await fs.makeDir(runsRoot);
-  if (!madeRoot.ok) return madeRoot;
-
   const baseId = `${toRunIdSegment(command)}-${toRunIdSegment(startedAt)}`;
   for (let ordinal = 1; ordinal <= 999; ordinal += 1) {
     const runId = ordinal === 1 ? baseId : `${baseId}-${ordinal}`;
     const runDir = joinFsPath(runsRoot, runId);
     if (await fs.exists(runDir)) continue;
-    const made = await fs.makeDir(runDir);
-    if (!made.ok) return made;
     return ok({ runId, runDir, evidenceDir: joinFsPath(runDir, "evidence") });
   }
   return err(
     failure("conflict", `could not find a free run directory under ${runsRoot}`, "clean the work root or pass --work-root"),
   );
+}
+
+export async function prepareRunDirectory(
+  options: PrepareRunDirectoryOptions,
+): Promise<Result<PreparedRunDirectory>> {
+  const { fs, workRoot } = options;
+  const planned = await planRunDirectory(options);
+  if (!planned.ok) return planned;
+  const runsRoot = joinFsPath(workRoot, "runs");
+  const madeRoot = await fs.makeDir(runsRoot);
+  if (!madeRoot.ok) return madeRoot;
+  const made = await fs.makeDir(planned.value.runDir);
+  if (!made.ok) return made;
+  return ok(planned.value);
 }

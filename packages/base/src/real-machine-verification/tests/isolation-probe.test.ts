@@ -274,3 +274,52 @@ describe("dsh-verify isolation", () => {
     expect(doc.error.message).toContain("--bogus");
   });
 });
+
+describe("isolation --dry-run", () => {
+  it("plans the redirected probe without creating the run root or spawning the child", async () => {
+    const fixture = createIsolationFixture();
+    const run = await runIsolation(fixture, ["--json", "--dry-run"]);
+
+    expect(run.code).toBe(0);
+    expect(run.err).toBe("");
+    const doc = JSON.parse(run.out) as {
+      readonly schemaVersion: number;
+      readonly command: string;
+      readonly dryRun?: boolean;
+      readonly plan?: {
+        readonly runId: string;
+        readonly runDir: string;
+        readonly probeRoot: string;
+        readonly redirectedHome: string;
+        readonly workdir: string;
+        readonly realSettingsPath: string | null;
+        readonly pluginSettingsDir: string | null;
+        readonly probe: {
+          readonly argv: readonly string[];
+          readonly cwd: string;
+          readonly envNames: readonly string[];
+          readonly timeoutMs: number;
+          readonly markerPath: string;
+        } | null;
+        readonly checks: readonly { readonly id: string }[];
+      };
+    };
+    expect(doc.schemaVersion).toBe(1);
+    expect(doc.command).toBe(ISOLATION_COMMAND);
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan?.runId.startsWith("isolation-")).toBe(true);
+    expect(doc.plan?.probeRoot).toBe(joinFsPath(fixture.paths.workRoot, "isolation", doc.plan?.runId ?? ""));
+    expect(doc.plan?.redirectedHome).toBe(joinFsPath(doc.plan?.probeRoot ?? "", "userprofile"));
+    expect(doc.plan?.workdir).toBe(joinFsPath(doc.plan?.probeRoot ?? "", "workdir"));
+    expect(doc.plan?.probe?.argv[1]).toBe("-e");
+    expect(doc.plan?.probe?.argv[2]).toBe("<probe script>");
+    expect(doc.plan?.probe?.envNames).toContain("USERPROFILE");
+    expect(doc.plan?.probe?.cwd).toBe(doc.plan?.workdir);
+    expect(doc.plan?.probe?.markerPath.endsWith("settings.yaml")).toBe(true);
+    expect(doc.plan?.checks.map((check) => check.id)).toEqual(["isolation-home", "settings-isolated"]);
+
+    expect(fixture.command.requests).toEqual([]);
+    expect(fixture.fs.writes).toEqual([]);
+    expect(await fixture.fs.exists(joinFsPath(fixture.paths.workRoot, "runs"))).toBe(false);
+  });
+});

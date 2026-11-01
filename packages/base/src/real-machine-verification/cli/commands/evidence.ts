@@ -28,8 +28,9 @@ import { asEvidencePath, parseBatchName, parseCheckId } from "../../contracts/br
 import type { EvidenceManifest, EvidenceManifestItem } from "../../contracts/evidence-contract";
 import type { Ports } from "../../contracts/ports";
 import { failure, formatFailure, ok, type Failure, type Result } from "../../contracts/result";
-import { archiveEvidence } from "../../evidence/archive";
+import { archiveEvidence, planEvidenceArchive } from "../../evidence/archive";
 import {
+  EVIDENCE_MANIFEST_FILENAME,
   buildEvidenceManifest,
   loadEvidenceManifest,
   mergeEvidenceManifest,
@@ -54,14 +55,15 @@ import type { CliIo } from "../io";
 
 /** The usage line, repeated in errors so a caller never has to read `describe`. */
 export const EVIDENCE_USAGE =
-  "dsh-verify evidence add|archive|verify [--file <p>]... [--check <id>=pass|fail] [--archive-root <dir>] [--dir <batch-or-archive-dir>] [--name <batch-name>] [--work-root <dir>] [--json]";
+  "dsh-verify evidence add|archive|verify [--file <p>]... [--check <id>=pass|fail] [--archive-root <dir>] [--dir <batch-or-archive-dir>] [--name <batch-name>] [--work-root <dir>] [--json] [--dry-run]";
 
 const EVIDENCE_SUBCOMMANDS = ["add", "archive", "verify"] as const;
 type EvidenceSubcommand = (typeof EVIDENCE_SUBCOMMANDS)[number];
 
-const ADD_FLAGS: ReadonlySet<string> = new Set(["--json", "--file", "--check", "--dir", "--name", "--work-root"]);
+const ADD_FLAGS: ReadonlySet<string> = new Set(["--json", "--dry-run", "--file", "--check", "--dir", "--name", "--work-root"]);
 const ARCHIVE_FLAGS: ReadonlySet<string> = new Set([
   "--json",
+  "--dry-run",
   "--archive-root",
   "--dir",
   "--name",
@@ -436,6 +438,58 @@ async function runAdd(args: ParsedArgs, deps: EvidenceCommandDeps): Promise<numb
     merged = mergeResult.value;
   }
 
+
+  if (args.dryRun) {
+    const manifestPath =
+      existing.value === null ? joinFsPath(evidenceRoot, EVIDENCE_MANIFEST_FILENAME) : existing.value.manifestPath;
+    const plan = {
+      batch: { name: batch.batchName, dir: batch.batchDir, root: batch.workRoot },
+      evidenceRoot,
+      filesDir,
+      files: prepared.map((file) => ({
+        source: file.absolutePath,
+        name: file.name,
+        target: joinFsPath(filesDir, file.name),
+        bytes: file.bytes,
+        sha256: file.sha256,
+      })),
+      fileCount: prepared.length,
+      items,
+      checks,
+      manifest: {
+        path: manifestPath,
+        replacing: existing.value !== null,
+        itemCount: merged.items.length,
+      },
+    };
+    if (args.json) {
+      io.stdout(
+        `${JSON.stringify({
+          schemaVersion: 1,
+          command: "evidence",
+          subcommand: "add",
+          ok: true,
+          dryRun: true,
+          plan,
+        })}\n`,
+      );
+    } else {
+      io.stdout(`batch ${batch.batchName} (${batch.batchDir})\n`);
+      io.stdout(`would copy ${prepared.length} file(s):\n`);
+      for (const file of plan.files) {
+        io.stdout(`  ${file.source} -> ${file.target} (${file.bytes} bytes, sha256 ${file.sha256})\n`);
+      }
+      for (const check of checks) {
+        io.stdout(`check ${check.name} ${check.ok ? "pass" : "fail"}\n`);
+      }
+      io.stdout(
+        `manifest ${manifestPath} (${existing.value === null ? "new" : "replace"}, ${merged.items.length} item(s))\n`,
+      );
+      io.stdout("dry run: nothing was written\n");
+    }
+    return EXIT_CODES.ok;
+  }
+
   // Copy payload, then verify the copies, then publish the manifest.
   const copiedPaths: string[] = [];
   const rollbackCopies = async (): Promise<void> => {
@@ -528,6 +582,50 @@ async function runArchive(args: ParsedArgs, deps: EvidenceCommandDeps): Promise<
     args.archiveRoot === undefined
       ? joinFsPath(batch.workRoot, DEFAULT_ARCHIVE_ROOT_DIRNAME)
       : resolveAgainst(ports.env.cwd(), args.archiveRoot);
+
+  if (args.dryRun) {
+    const planned = await planEvidenceArchive({
+      fs: ports.fs,
+      clock: ports.clock,
+      batchDir: batch.batchDir,
+      batchName: batch.batchName,
+      archiveRoot,
+    });
+    if (!planned.ok) return failWith(args, deps, "archive", planned.error, "archive");
+    const plan = planned.value;
+    if (args.json) {
+      io.stdout(
+        `${JSON.stringify({
+          schemaVersion: 1,
+          command: "evidence",
+          subcommand: "archive",
+          ok: true,
+          dryRun: true,
+          plan: {
+            batch: { name: batch.batchName, dir: batch.batchDir },
+            archiveRoot,
+            directory: plan.directory,
+            createdAt: plan.createdAt,
+            files: plan.files,
+            fileCount: plan.files.length,
+            copied: plan.copied,
+            fileDigest: plan.fileDigest,
+            sumsPath: joinFsPath(plan.directory, "SHA256SUMS.txt"),
+          },
+        })}\n`,
+      );
+    } else {
+      io.stdout(`archive ${plan.directory} (dry run)\n`);
+      io.stdout(`batch ${batch.batchName} (${batch.batchDir})\n`);
+      io.stdout(`would copy ${plan.copied.files} file(s), ${plan.copied.bytes} byte(s)\n`);
+      for (const file of plan.files) io.stdout(`  ${file.path} (${file.bytes} bytes, sha256 ${file.sha256})\n`);
+      io.stdout(`SHA256SUMS.txt ${joinFsPath(plan.directory, "SHA256SUMS.txt")}\n`);
+      io.stdout(`digest ${plan.fileDigest}\n`);
+      io.stdout("dry run: nothing was written\n");
+    }
+    return EXIT_CODES.ok;
+  }
+
   const archived = await archiveEvidence({
     fs: ports.fs,
     clock: ports.clock,

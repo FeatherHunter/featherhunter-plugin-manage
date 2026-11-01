@@ -17,7 +17,7 @@ import { parseBatchName, type Sha256Hex } from "../contracts/branding";
 import { digestOfFiles, sha256Text } from "../contracts/identity";
 import type { ClockPort, FsPort } from "../contracts/ports";
 import { err, failure, ok, type Result } from "../contracts/result";
-import { walkFiles } from "../runtime/fs-utils";
+import { walkFiles, type WalkedEntry } from "../runtime/fs-utils";
 import { joinFsPath } from "../runtime/paths";
 import {
   ARCHIVE_NOTES_DIRNAME,
@@ -69,36 +69,31 @@ function joinRelativePath(root: string, relativePath: string): string {
   return relativePath.split("/").reduce((current, segment) => joinFsPath(current, segment), root);
 }
 
-/** Create the first free `<base>[-n]` directory under the archive root. */
-async function allocateArchiveDirectory(
-  fs: FsPort,
-  archiveRoot: string,
-  baseName: string,
-): Promise<Result<string>> {
-  const createdRoot = await fs.makeDir(archiveRoot);
-  if (!createdRoot.ok) return createdRoot;
-  for (let ordinal = 1; ordinal <= MAX_EVIDENCE_ORDINAL; ordinal += 1) {
-    const candidate = joinFsPath(archiveRoot, ordinal === 1 ? baseName : `${baseName}-${ordinal}`);
-    if (await fs.exists(candidate)) continue;
-    const made = await fs.makeDir(candidate);
-    if (!made.ok) return made;
-    return ok(candidate);
-  }
-  return err(
-    failure(
-      "conflict",
-      `归档目录序号已用尽：${baseName}`,
-      "同一秒内已归档 999 次；等待下一秒或用 --archive-root 换一个归档根",
-      { archiveRoot, baseName },
-    ),
-  );
+/** Everything archive decides before it writes: source files and destination. */
+export interface EvidenceArchivePlan {
+  readonly batchName: string;
+  readonly batchDir: string;
+  readonly archiveRoot: string;
+  readonly createdAt: string;
+  readonly baseName: string;
+  readonly directory: string;
+  readonly entries: readonly WalkedEntry[];
+  readonly files: readonly ArchivedEvidenceFile[];
+  readonly copied: {
+    readonly files: number;
+    readonly bytes: number;
+  };
+  readonly fileDigest: Sha256Hex;
 }
 
 /**
- * Copy `batchDir` into `<archiveRoot>/<batchName>-<timestamp>[-n]` and write a
- * path-sorted SHA256SUMS.txt for the copied files.
+ * Hash the batch and choose the archive directory without creating either.
+ *
+ * `--dry-run` prints this plan; `archiveEvidence` writes exactly this plan.
  */
-export async function archiveEvidence(options: ArchiveEvidenceOptions): Promise<Result<EvidenceArchiveResult>> {
+export async function planEvidenceArchive(
+  options: ArchiveEvidenceOptions,
+): Promise<Result<EvidenceArchivePlan>> {
   const { fs, clock, batchDir, archiveRoot } = options;
   const batchName = parseBatchName(options.batchName);
   if (!batchName.ok) return batchName;
@@ -151,9 +146,58 @@ export async function archiveEvidence(options: ArchiveEvidenceOptions): Promise<
   }
   const createdAt = clock.iso();
   const baseName = archiveDirectoryBaseName(batchName.value, createdAt);
-  const allocated = await allocateArchiveDirectory(fs, archiveRoot, baseName);
-  if (!allocated.ok) return allocated;
-  const directory = allocated.value;
+  let directory = "";
+  for (let ordinal = 1; ordinal <= MAX_EVIDENCE_ORDINAL; ordinal += 1) {
+    const candidate = joinFsPath(archiveRoot, ordinal === 1 ? baseName : `${baseName}-${ordinal}`);
+    if (await fs.exists(candidate)) continue;
+    directory = candidate;
+    break;
+  }
+  if (directory === "") {
+    return err(
+      failure(
+        "conflict",
+        `归档目录序号已用尽：${baseName}`,
+        "同一秒内已归档 999 次；等待下一秒或用 --archive-root 换一个归档根",
+        { archiveRoot, baseName },
+      ),
+    );
+  }
+  const digest = digestOfFiles(files.map((file) => ({ path: file.path, size: file.bytes, sha256: file.sha256 })));
+  if (!digest.ok) return digest;
+  return ok({
+    batchName: batchName.value,
+    batchDir,
+    archiveRoot,
+    createdAt,
+    baseName,
+    directory,
+    entries,
+    files,
+    copied: {
+      files: files.length,
+      bytes: files.reduce((total, file) => total + file.bytes, 0),
+    },
+    fileDigest: digest.value,
+  });
+}
+
+/**
+ * Copy `batchDir` into the planned archive directory and write a path-sorted
+ * SHA256SUMS.txt for the copied files.
+ */
+export async function archiveEvidence(options: ArchiveEvidenceOptions): Promise<Result<EvidenceArchiveResult>> {
+  const { fs } = options;
+  const planned = await planEvidenceArchive(options);
+  if (!planned.ok) return planned;
+  const plan = planned.value;
+  const directory = plan.directory;
+  const createdRoot = await fs.makeDir(plan.archiveRoot);
+  if (!createdRoot.ok) return createdRoot;
+  const madeDirectory = await fs.makeDir(directory);
+  if (!madeDirectory.ok) return madeDirectory;
+  const entries = plan.entries;
+  const files = plan.files;
   const discardPartial = async (): Promise<void> => {
     await fs.remove(directory, { recursive: true });
   };
@@ -204,24 +248,16 @@ export async function archiveEvidence(options: ArchiveEvidenceOptions): Promise<
     await discardPartial();
     return writtenSums;
   }
-  const digest = digestOfFiles(files.map((file) => ({ path: file.path, size: file.bytes, sha256: file.sha256 })));
-  if (!digest.ok) {
-    await discardPartial();
-    return digest;
-  }
   return ok({
     directory,
-    batchName: batchName.value,
-    batchDir,
-    createdAt,
+    batchName: plan.batchName,
+    batchDir: plan.batchDir,
+    createdAt: plan.createdAt,
     files,
     sumsPath,
     sumsSha256: sha256Text(sums.value),
-    fileDigest: digest.value,
-    copied: {
-      files: files.length,
-      bytes: files.reduce((total, file) => total + file.bytes, 0),
-    },
+    fileDigest: plan.fileDigest,
+    copied: plan.copied,
   });
 }
 
