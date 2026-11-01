@@ -81,4 +81,24 @@
 - **GitHub Release 补齐（2026-11-01 01:36）**：此前只做了 npm publish，GitHub 仓库页的 Releases 仍停在 v0.4.39（owner 反馈「没看到 dsh-prompt 有发布最新版本」即此）。已补：tag `v0.4.40` → commit `ae7c6b5`；GitHub Release [v0.4.40](https://github.com/FeatherHunter/dsh-prompt/releases/tag/v0.4.40) 设为 **Latest**，notes 取自 CHANGELOG 0.4.40 段，资产 `dsh-prompt-0.4.40.tgz` 与 `dsh-prompt.tgz`（各 998,150B）。
 - **发版口径修正为「npm publish + GitHub Release 一次完成」**：`publish.yml` 新增 `Create GitHub release` 步骤（`permissions: contents: write`；发 latest 时按 CHANGELOG 对应版本段建 release，附 `npm pack` 产物 `<pkg>-<ver>.tgz` 与稳定名 `dsh-prompt.tgz`）；`Publish to npm` 改为幂等（`npm view <pkg>@<ver>` 已存在则跳过）。commit `f140852`；run [41225497257](https://github.com/FeatherHunter/dsh-prompt/actions/runs/41225497257) 验证幂等路径 success（npm 已有该版本、release 已存在，两处均跳过）。
 
+## 发版记录：dsh-opencode-palette 2.1.11（2026-11-01 01:48 +08:00）
+
+- 版本 2.1.10→2.1.11；内容 = 页头 ActionCluster（base 0.1.5 彩色三图标）+ 删面板底部联系整行 + 产物重建。
+- 变更 commit `d1695e1`（6 files +109/−9：package.json / package-lock 两处 / readme:version 刷两 README / `package/release-notes-2.1.11.md` / 新增 `.github/workflows/publish.yml`），push `3b01032..d1695e1` main。发布流程 = workflow_dispatch：typecheck → check-deps --warn-only → fonts → build:artifacts → npm test → verify:artifacts → 幂等 npm publish → `package/` 内 pack → GitHub Release（2 资产）。
+- 首跑 run [41262130385](https://github.com/FeatherHunter/dsh-opencode-palette/actions/runs/41262130385) 红：CI Node 的 `navigator.language=en-US` 让 `dsh-plugin-update` 的 `resolveLang` 走英文，`tests/update-panel.test.ts` 三条中文断言与实际 'Check for updates' 等不符；`tests/panel-render.test.ts` 在 Linux 上 `createRequire('D:/0Tools/DSH Desktop/...')` 抛 ERR_INVALID_ARG_VALUE。修法 commit `501bdb5`（3 files +18/−13）：测试显式固定 zh 语言、回退路径改为 `createRequire(import.meta.url)` 主 + Windows 路径 try/catch 追加。强制 en-US 复跑 68/68、全量 312/312。
+- 重跑 run [41262443628](https://github.com/FeatherHunter/dsh-opencode-palette/actions/runs/41262443628) success：7 files / 704.1 kB / shasum `b9ed38757cb37ea19f14f47ec5f637bca54adc15` / integrity `sha512-NeoMOYZ34XEGT6iylqn5JSjmmYafcyuevFUgm65L91tNe+QraraiYZMXC7rJSfhahCFM/f3qsnzGBOQPz/HxpA==`，tag+Release [v2.1.11](https://github.com/FeatherHunter/dsh-opencode-palette/releases/tag/v2.1.11)（Latest，资产 `dsh-opencode-palette-2.1.11.tgz` 与别名 `dsh-opencode-palette.tgz` 各 704,112B，sha256 `66a82308…1b9697`）。
+- 可见性：publish 01:48，npmmirror 01:58 可见（latest=2.1.11）；jsDelivr/unpkg `@2.1.11/package.json` 均 200。收尾 commit `304bc6c` 回填 release notes 哈希段。
+
+## 发版记录：ilife 0.3.86（七包，2026-11-01 10:23 +08:00）
+
+- 七个包整体 0.3.85→0.3.86（dsh-life-pack + 六单品 dsh-bill-ilife / dsh-calorie / dsh-chef / dsh-home-ilife / dsh-memo-ilife / dsh-schedule-ilife；其余 base-*/skill-* 保持 0.3.55）；内容同 palette 的页头簇换代 + 作者插件卡 tooltip + 弹窗二维码修复。
+- 变更 commit `d1c2953f`（12 files +188/−20：7 个 package.json / 两处 README 版本行 / pnpm-lock 六处 importer / `.changeset/08-header-action-cluster.md` / `docs/releases/v0.3.86.md` / 新增 `.github/workflows/publish.yml`），tag `v0.3.86`。
+- 首次 publish run [41263086785](https://github.com/FeatherHunter/ilife/actions/runs/41263086785) 红：`check-publish --pre` 报 `dsh-life-pack` 内嵌 `dsh-plugin-update` 必须声明 `^0.18.39`（#1282 latest tag 冻锁），当时为 `^0.18.38`——本机 npmjs 被拦时该校验离线 WARN 跳过，联网 CI 立刻红。修法 commit `2cb115f9`：`packages/plugin-manager/package.json` 升 `^0.18.39`、pnpm-lock 两处条目与 importer 同步、`docs/releases/v0.3.86.md` 补一条；本地把 `.pnpm` 里的 0.18.39 换入后重建，`packages/plugin-manager/dist/client.js` 1,294,902B 含 0.18.39（0.18.38 命中 0）、base banner v0.1.5、0.3.86。tag 强移到该提交（58e9a90f）。
+- 第二次 run [41263467373](https://github.com/FeatherHunter/ilife/actions/runs/41263467373)：npm publish 步成功（七包全部真发 0.3.86），但打包步红——从仓库根 `npm pack "packages/plugin-manager"` 被 npm 当成 GitHub 简写（`ssh://git@github.com/packages/plugin-manager.git`，Permission denied publickey）。修法 commit `148770f2`：改在包目录内打包 `( cd "packages/$dir" && npm pack --pack-destination "$OUT" )`。
+- 第三次 run [41264795579](https://github.com/FeatherHunter/ilife/actions/runs/41264795579) success：publish 幂等跳过、打包 7+1 资产、tag 已存在跳过新建、Release [v0.3.86](https://github.com/FeatherHunter/ilife/releases/tag/v0.3.86) 为 **Latest**（8 资产：七包 + `dsh-life-pack.tgz` 别名，life-pack 1,903,363B、其余 18–20 万 B），notes 取自 `docs/releases/v0.3.86.md`。
+- 已发 npm shasum：dsh-life-pack `7233e6ff…6b4d42`、dsh-bill-ilife `aa9c14c5…0948d5`、dsh-calorie `dae6dcf2…3d7856b`、dsh-chef `993917e6…bb98d`、dsh-home-ilife `c663aaa4…869ac1`、dsh-memo-ilife `8008199a…916172`、dsh-schedule-ilife `58c409d4…6e6815`。
+- 资产抽检：`dsh-life-pack-0.3.86.tgz` 内 `package/dist/client.js` 1,339,485B，base banner v0.1.5 命中 1、v0.1.4 命中 0，0.18.39 命中 36、0.18.38 命中 0，`dsh-base-cluster__btn` ×49；`dsh-calorie-0.3.86.tgz` 内 version 0.3.86、依赖 dsh-life-pack 0.3.86。
+- 镜像：jsDelivr/unpkg 七包 0.3.86 均 200；npmmirror 起初六个已同步、dsh-calorie 滞后（latest 仍 0.3.85），已用 `PUT https://registry.npmmirror.com/dsh-calorie/sync` 触发补同步（201 ok:true），随后复查。
+- 环境限制：本机 registry.npmjs.org TLS 被拦（curl exit 35），两仓发布均走 GitHub Actions；GitHub Actions 队列近期拥堵（排队 10–17 分钟），重跑需耐心等待。
+
 ## 进度
