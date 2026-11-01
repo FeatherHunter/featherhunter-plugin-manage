@@ -71,6 +71,12 @@ D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」
 owner 观感反馈（2026-11-01）：联系弹窗三张卡标题都是「DSH 插件交流群」，owner 追问能否在名字前加各渠道（飞书 / QQ / 微信）的官方 LOGO，好让三张卡一眼区分。
 
 已备讨论稿（三种做法：单色品牌标 16px / 彩色徽章 18px / 品牌色文字 chip；另附中英双语对照），截图见会话。技术面结论：改动点很小——`packages/base/src/client/modal.ts` 的 `buildCard()` 里 `cardTitle.textContent = pickText(group.title, lang)` 一行，内联 SVG 即可，不需要动 data/CDN。但落地需要 base 发包 + 五仓换钉，且会改动 C4/C6 的观感证据，需重跑 human gate。待 owner 拍板方案与时机后，另开票实施。
+
+### local — 2026-11-01T08:15:49.827Z
+2026-11-01 补充（渠道徽标已落地，本票观感证据需重做）：
+- 联系弹窗群卡已改为「18px 彩色渠道官方徽章 + 群名」，微信卡重复副标题已删，来源为票 .scratch/contact-channel-badges/issues/01（提交 94bbace）。
+- 因此本票 C4「联系弹窗群卡观感」与 C6 相关的整卡观感截图/判定仍停留在旧版（三张同形卡片），证据已作废，需按新弹窗重做后再闭环。真机/真实页面其余检查项不受影响。
+- 本票保持 open，等 owner 重验观感与 D 组 desktop 安装授权。
 ## 2026-11-01 00:55 0.1.5 轮：A/C 组代理实测补齐，B/D/E 仍待仓主
 
 - 规格 `.scratch/header-action-cluster-v2` 的票 01–08 已全部关闭；base 已发到 0.1.5，五仓换代（HEAD==origin，依赖精确 0.1.5）并装入 web profile，owner 2026-11-01 00:44 人眼验收通过。
