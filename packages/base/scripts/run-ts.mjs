@@ -21,7 +21,7 @@ await build({
   platform: "node",
   format: "esm",
   target: "node18",
-  external: ["pngjs", "jpeg-js"],
+  external: ["pngjs", "jpeg-js", "esbuild"],
   logLevel: "silent",
 });
 const mod = await import(pathToFileURL(outfile).href);

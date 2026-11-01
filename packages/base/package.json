@@ -37,17 +37,23 @@
       "import": "./dist/node/index.js",
       "default": "./dist/node/index.js"
     },
+    "./real-machine-verification": {
+      "types": "./dist/real-machine-verification/index.d.ts",
+      "import": "./dist/real-machine-verification/index.js",
+      "default": "./dist/real-machine-verification/index.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
-    "dsh-base": "dist/node/cli.js"
+    "dsh-base": "dist/node/cli.js",
+    "dsh-verify": "dist/real-machine-verification/cli/main.js"
   },
   "peerDependencies": {
     "react": "^18 || ^19"
   },
   "scripts": {
-    "build": "node build.mjs",
-    "build:demo": "node build.mjs --demo",
+    "build": "node scripts/run-ts.mjs build",
+    "build:demo": "node scripts/run-ts.mjs build --demo",
     "build:data": "node scripts/run-ts.mjs build-data",
     "data:check": "node scripts/run-ts.mjs build-data --check",
     "contact:update": "node scripts/run-ts.mjs contact-update",
