@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ModelSelection } from "../contracts/verification-profile";
+import { parseVerificationProfile, type ModelSelection } from "../contracts/verification-profile";
 import { inspectModelConfig, planModelConfigEdit, scanPatch } from "../contracts/profile-rules";
 
 const SELECTION: ModelSelection = {
@@ -219,3 +219,76 @@ describe("planModelConfigEdit", () => {
     expect(edited.error.message).toContain("llm-pi-ai");
   });
 });
+describe("verification profile browser field", () => {
+  const BASE = {
+    id: "browser-fixture",
+    packageName: "browser-fixture",
+    defaultProfile: "web",
+    clientEntry: "lib/client.js",
+  } as const;
+
+  it("defaults to false, so page checks are not invented without an adapter", () => {
+    const parsed = parseVerificationProfile(BASE);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.browser).toBe(false);
+  });
+
+  it("normalizes a module-only declaration without inventing an exportName", () => {
+    const parsed = parseVerificationProfile({ ...BASE, browser: { module: "verify/browser.mjs" } });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.browser).toEqual({ module: "verify/browser.mjs" });
+    expect(Object.keys(parsed.value.browser)).toEqual(["module"]);
+  });
+
+  it("keeps a package name and a named export", () => {
+    const parsed = parseVerificationProfile({
+      ...BASE,
+      browser: { module: "@scope/browser-adapter", exportName: "createCdpBrowserFactory" },
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.browser).toEqual({
+      module: "@scope/browser-adapter",
+      exportName: "createCdpBrowserFactory",
+    });
+  });
+
+  it.each([
+    "C:/browser.mjs",
+    "/opt/browser.mjs",
+    "../browser.mjs",
+    "verify/../browser.mjs",
+    "verify//browser.mjs",
+    "",
+  ])("rejects the unsafe module %j", (module) => {
+    const parsed = parseVerificationProfile({ ...BASE, browser: { module } });
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error.code).toBe("invalid-input");
+    expect(parsed.error.message).toContain("browser.module");
+  });
+
+  it("rejects an exportName that is not a JavaScript identifier", () => {
+    const parsed = parseVerificationProfile({
+      ...BASE,
+      browser: { module: "verify/browser.mjs", exportName: "not-valid" },
+    });
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error.code).toBe("invalid-input");
+    expect(parsed.error.message).toContain("browser.exportName");
+  });
+
+  it("rejects a non-object browser declaration", () => {
+    const parsed = parseVerificationProfile({
+      ...BASE,
+      browser: "verify/browser.mjs" as never,
+    });
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error.message).toContain("browser must be an object");
+  });
+});
+

@@ -44,12 +44,26 @@ export type ModelConfigProblemCode =
   | "model-mismatch"
   | "api-key-env-mismatch"
   | "model-not-declared"
-  | "models-empty";
+  | "models-empty"
+  | "reference-model-mismatch";
 
 export interface ModelConfigProblem {
   readonly code: ModelConfigProblemCode;
   readonly message: string;
   readonly hint?: string;
+  /** The literal the declaration asks for; for CLI rendering, never a secret. */
+  readonly expected?: string;
+  /** The literal the patch file carries (or a named absence). */
+  readonly actual?: string;
+  /** Which top-level entry the problem belongs to, when it is entry-specific. */
+  readonly entryId?: string;
+}
+
+/** One reference party (e.g. vision-router) that names a provider/model pair. */
+export interface ModelConfigReference {
+  readonly entryId: string;
+  readonly provider: string;
+  readonly model: string | null;
 }
 
 /** What the patch file currently says about the model. */
@@ -59,6 +73,7 @@ export interface ModelConfigState {
   readonly defaultModel: string | null;
   readonly apiKeyEnv: string | null;
   readonly declaredModels: readonly string[];
+  readonly references: readonly ModelConfigReference[];
   readonly problems: readonly ModelConfigProblem[];
 }
 
@@ -174,6 +189,9 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
       code: "missing-default-model-entry",
       message: "profile has no agent-default-model entry",
       hint: "the profile cannot name a default model; install or repair the profile first",
+      expected: "agent-default-model entry",
+      actual: "absent",
+      entryId: "agent-default-model",
     });
   } else {
     const provider = findScalar(scan.lines, defaultEntry.startLine, defaultEntry.endLine, "provider");
@@ -184,6 +202,9 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
       problems.push({
         code: "provider-mismatch",
         message: `default provider is ${JSON.stringify(defaultProvider)}, expected ${JSON.stringify(selection.provider)}`,
+        expected: selection.provider,
+        actual: defaultProvider ?? "(missing)",
+        entryId: "agent-default-model",
       });
     }
     if (defaultModel !== selection.model) {
@@ -191,6 +212,9 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
         code: "model-mismatch",
         message: `default model is ${JSON.stringify(defaultModel)}, expected ${JSON.stringify(selection.model)}`,
         hint: "model ids are compared verbatim; a near-miss id is a different model to the host",
+        expected: selection.model,
+        actual: defaultModel ?? "(missing)",
+        entryId: "agent-default-model",
       });
     }
   }
@@ -202,6 +226,9 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
       code: "missing-provider-entry",
       message: "profile has no llm-pi-ai entry",
       hint: "enable the pi-ai provider in this profile before verifying a model",
+      expected: "llm-pi-ai entry",
+      actual: "absent",
+      entryId: "llm-pi-ai",
     });
   } else {
     const providers = findBlock(scan.lines, providerEntry.startLine, providerEntry.endLine, "providers");
@@ -212,6 +239,9 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
         problems.push({
           code: "provider-mismatch",
           message: `llm-pi-ai declares no provider ${JSON.stringify(selection.provider)}`,
+          expected: selection.provider,
+          actual: "(no such provider block)",
+          entryId: "llm-pi-ai",
         });
       } else {
         const providerEnd = Math.min(blockEnd(scan.lines, providerKey.line, providerKey.indent), providersEnd);
@@ -221,11 +251,20 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
           problems.push({
             code: "api-key-env-mismatch",
             message: `provider ${selection.provider} reads its key from ${JSON.stringify(apiKeyEnv)}, expected ${JSON.stringify(selection.apiKeyEnv)}`,
+            expected: selection.apiKeyEnv,
+            actual: apiKeyEnv ?? "(missing)",
+            entryId: "llm-pi-ai",
           });
         }
         const models = findBlock(scan.lines, providerKey.line + 1, providerEnd, "models");
         if (models === null) {
-          problems.push({ code: "models-empty", message: `provider ${selection.provider} declares no models list` });
+          problems.push({
+            code: "models-empty",
+            message: `provider ${selection.provider} declares no models list`,
+            expected: `a models list declaring ${selection.model}`,
+            actual: "no models list",
+            entryId: "llm-pi-ai",
+          });
         } else {
           const modelsEnd = Math.min(blockEnd(scan.lines, models.line, models.indent), providerEnd);
           const ids: string[] = [];
@@ -235,18 +274,56 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
           }
           declaredModels = ids;
           if (ids.length === 0) {
-            problems.push({ code: "models-empty", message: `provider ${selection.provider} declares an empty models list` });
+            problems.push({
+              code: "models-empty",
+              message: `provider ${selection.provider} declares an empty models list`,
+              expected: `a models list declaring ${selection.model}`,
+              actual: "empty models list",
+              entryId: "llm-pi-ai",
+            });
           } else if (!ids.includes(selection.model)) {
             problems.push({
               code: "model-not-declared",
               message: `provider ${selection.provider} does not declare model ${JSON.stringify(selection.model)}`,
               hint: "a model id that is referenced elsewhere but not declared here fails at request time, not at boot",
+              expected: selection.model,
+              actual: ids.join(", "),
+              entryId: "llm-pi-ai",
             });
           }
         }
       }
     } else {
-      problems.push({ code: "provider-mismatch", message: "llm-pi-ai entry has no providers block" });
+      problems.push({
+        code: "provider-mismatch",
+        message: "llm-pi-ai entry has no providers block",
+        expected: selection.provider,
+        actual: "(no providers block)",
+        entryId: "llm-pi-ai",
+      });
+    }
+  }
+
+  // Reference parties (vision-router and friends) repeat the model id. The host
+  // sends that id verbatim, so a near-miss here fails at request time with
+  // 404/UNKNOWN_MODEL even though the default entry is right.
+  const references: ModelConfigReference[] = [];
+  for (const entry of scan.entries) {
+    if (entry.id === "agent-default-model" || entry.id === "llm-pi-ai") continue;
+    for (const item of collectReferenceItems(scan.lines, entry)) {
+      references.push({ entryId: item.entryId, provider: item.provider, model: item.model });
+      if (item.provider === selection.provider && item.model !== null && item.model !== selection.model) {
+        problems.push({
+          code: "reference-model-mismatch",
+          message:
+            `${entry.id} references provider ${JSON.stringify(item.provider)} with model ` +
+            `${JSON.stringify(item.model)}, expected ${JSON.stringify(selection.model)}`,
+          hint: "reference parties must use the declared model id verbatim; a near-miss id is a different model at request time",
+          expected: selection.model,
+          actual: item.model,
+          entryId: entry.id,
+        });
+      }
     }
   }
 
@@ -256,8 +333,46 @@ export function inspectModelConfig(text: string, selection: ModelSelection): Mod
     defaultModel,
     apiKeyEnv,
     declaredModels: Object.freeze(declaredModels),
+    references: Object.freeze(references),
     problems: Object.freeze(problems),
   };
+}
+
+/** One `- provider: <p>` list item inside an entry, with its optional `model`. */
+interface ReferenceItem {
+  readonly entryId: string;
+  readonly provider: string;
+  readonly modelLine: number | null;
+  readonly model: string | null;
+}
+
+/**
+ * Collect the `- provider: <p>` list items of one entry (the shape a reference
+ * party such as vision-router uses). A mapping-style provider list is not a
+ * reference party and is ignored.
+ */
+function collectReferenceItems(lines: readonly string[], entry: PatchEntry): ReferenceItem[] {
+  const found: ReferenceItem[] = [];
+  const itemRe = /^(\s*)-\s+provider:\s*(.*?)\s*$/;
+  for (let index = entry.startLine; index < entry.endLine; index += 1) {
+    const match = itemRe.exec(lines[index]);
+    if (match === null) continue;
+    const itemIndent = match[1].length;
+    let itemEnd = index + 1;
+    for (; itemEnd < entry.endLine; itemEnd += 1) {
+      if (isBlankOrComment(lines[itemEnd])) continue;
+      if (indentOf(lines[itemEnd]) <= itemIndent) break;
+    }
+    const model = findScalar(lines, index + 1, itemEnd, "model");
+    found.push({
+      entryId: entry.id,
+      provider: unquoteScalar(match[2]),
+      modelLine: model?.line ?? null,
+      model: model?.value ?? null,
+    });
+    index = itemEnd - 1;
+  }
+  return found;
 }
 
 /* -------------------------------------------------------------------- editing */
@@ -313,6 +428,10 @@ export function planModelConfigEdit(text: string, selection: ModelSelection): Re
 
   // 2. llm-pi-ai: providers.<provider>.apiKeyEnv and providers.<provider>.models[].
   lines = ensureProviderEntry(lines, selection, notes);
+
+  // 3. Reference parties: align the model id of every item that names this
+  //    provider. In-place replacements, so the line numbers stay valid.
+  lines = alignReferenceModels(lines, selection, notes);
 
   const nextText = lines.join(scan.eol) + (scan.trailingNewline ? scan.eol : "");
   const after = inspectModelConfig(nextText, selection);
@@ -402,7 +521,7 @@ function ensureProviderEntry(initial: readonly string[], selection: ModelSelecti
     const providerIndent = state.providers.indent + 2;
     const fieldsIndent = providerIndent + 2;
     lines.splice(
-      state.providersEnd,
+      state.providers.line + 1,
       0,
       `${" ".repeat(providerIndent)}${renderKey(selection.provider)}:`,
       `${" ".repeat(fieldsIndent)}apiKeyEnv: ${renderScalar(selection.apiKeyEnv)}`,
@@ -417,7 +536,7 @@ function ensureProviderEntry(initial: readonly string[], selection: ModelSelecti
   const keyEnv = findScalar(lines, state.provider.line + 1, state.providerEnd, "apiKeyEnv");
   if (keyEnv === null) {
     lines.splice(
-      state.providerEnd,
+      state.provider.line + 1,
       0,
       `${" ".repeat(state.provider.indent + 2)}apiKeyEnv: ${renderScalar(selection.apiKeyEnv)}`,
     );
@@ -432,8 +551,9 @@ function ensureProviderEntry(initial: readonly string[], selection: ModelSelecti
   // 4. The models list.
   if (state.models === null) {
     const modelsIndent = state.provider.indent + 2;
+    const afterKeyEnv = findScalar(lines, state.provider.line + 1, state.providerEnd, "apiKeyEnv");
     lines.splice(
-      state.providerEnd,
+      afterKeyEnv === null ? state.provider.line + 1 : afterKeyEnv.line + 1,
       0,
       `${" ".repeat(modelsIndent)}models:`,
       ...modelsFields.map((line) => `${" ".repeat(modelsIndent + 2)}${line}`),
@@ -455,6 +575,35 @@ function ensureProviderEntry(initial: readonly string[], selection: ModelSelecti
   if (hasModel) return lines;
   lines.splice(modelsEnd, 0, ...modelsFields.map((line) => `${" ".repeat(itemIndent)}${line}`));
   notes.push(`added model ${selection.model} to provider ${selection.provider}`);
+  return lines;
+}
+
+/**
+ * Rewrite the `model:` line of each reference item that names the configured
+ * provider. Items for other providers are left alone. A trailing comment on the
+ * rewritten line is kept.
+ */
+function alignReferenceModels(
+  initial: readonly string[],
+  selection: ModelSelection,
+  notes: string[],
+): string[] {
+  const lines = [...initial];
+  const scan = scanPatch(lines.join("\n"));
+  for (const entry of scan.entries) {
+    if (entry.id === "agent-default-model" || entry.id === "llm-pi-ai") continue;
+    for (const item of collectReferenceItems(lines, entry)) {
+      if (item.provider !== selection.provider) continue;
+      if (item.modelLine === null || item.model === null || item.model === selection.model) continue;
+      const line = lines[item.modelLine];
+      const match = /^(\s*model:\s*)(.*?)(\s+#.*)?$/.exec(line);
+      if (match === null) continue;
+      lines[item.modelLine] = `${match[1]}${renderScalar(selection.model)}${match[3] ?? ""}`;
+      notes.push(
+        `aligned ${entry.id} reference model id from ${item.model} to ${selection.model}`,
+      );
+    }
+  }
   return lines;
 }
 
