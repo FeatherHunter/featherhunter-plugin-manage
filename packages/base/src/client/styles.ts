@@ -136,6 +136,9 @@ export const BASE_CSS = [
   ".dsh-base-modal__card-subtitle:hover{background:rgba(127,127,127,.1);color:var(--dsw-alias-label-secondary,#4e5969)}",
   ".dsh-base-modal__card-subtitle[data-copied='true']{color:var(--dsw-alias-link,#4d6bfe)}",
   ".dsh-base-modal__card-subtitle:focus-visible{outline:2px solid var(--dsw-alias-link,#4d6bfe);outline-offset:2px}",
+  // Invisible subtitle row: same box metrics as the copyable subtitle button, so
+  // cards that dropped their subtitle keep the QR codes on one horizontal line.
+  ".dsh-base-modal__card-subtitle-gap{display:block;align-self:center;min-height:1.5em;padding:2px 6px;font-size:11px;line-height:1.5;visibility:hidden;pointer-events:none}",
   // The QR surface stays white in every theme: scanners need the printed contrast.
   // border-box keeps the 6px white quiet zone inside the card column: with content-box
   // the image's padding escapes to the right and the QR sits visibly off-centre.

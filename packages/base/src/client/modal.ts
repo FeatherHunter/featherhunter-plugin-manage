@@ -237,6 +237,13 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
       subtitle.title = t("copyHint");
       subtitle.addEventListener("click", () => copyText(subtitle, subtitle.textContent ?? ""));
       card.append(subtitle);
+    } else {
+      // Reserve the subtitle row on cards without one, so every QR code starts
+      // on the same line (WeChat's redundant subtitle was removed).
+      const gap = doc.createElement("span");
+      gap.className = "dsh-base-modal__card-subtitle-gap";
+      gap.setAttribute("aria-hidden", "true");
+      card.append(gap);
     }
 
     if (qrSrc) {

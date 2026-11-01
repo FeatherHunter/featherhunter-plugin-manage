@@ -121,14 +121,16 @@ export function formatValidity(
   if (days <= 0) {
     // Last valid day: the code still works today but not tomorrow.
     if (options.lang === "en") {
-      return `Valid today (until ${month}/${day}), refreshed on re-entry`;
+      return `Valid today (until ${month}/${day})`;
     }
-    return `该二维码今天（${month} 月 ${day} 日前）有效，重新进入将更新`;
+    return `该二维码今天（${month} 月 ${day} 日前）有效`;
   }
+  // No "refreshed on re-entry" tail: the QR only changes when the manifest is
+  // republished, so promising a refresh on reopen would be wrong.
   if (options.lang === "en") {
-    return `Valid for ${days} day${days === 1 ? "" : "s"} (until ${month}/${day}), refreshed on re-entry`;
+    return `Valid for ${days} day${days === 1 ? "" : "s"} (until ${month}/${day})`;
   }
-  return `该二维码 ${days} 天内（${month} 月 ${day} 日前）有效，重新进入将更新`;
+  return `该二维码 ${days} 天内（${month} 月 ${day} 日前）有效`;
 }
 
 /** Narrow an unknown JSON value to a plain object (arrays and null excluded). */

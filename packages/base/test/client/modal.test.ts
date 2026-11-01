@@ -4,7 +4,7 @@ import * as React from "react";
 import { channelBadge } from "../../src/client/channel-badges";
 import { createBaseUI } from "../../src/client/index";
 import { resolveText } from "../../src/client/texts";
-import { BASELINE } from "../../src/core/index";
+import { BASELINE, formatValidity } from "../../src/core/index";
 import { installDialogPolyfill, resetClientDom } from "./helpers";
 
 let polyfill: ReturnType<typeof installDialogPolyfill>;
@@ -15,8 +15,11 @@ beforeEach(() => {
   document.documentElement.lang = "zh-CN";
 });
 
-function openDialog(ui: ReturnType<typeof createBaseUI>): HTMLDialogElement {
-  ui.openContactModal();
+function openDialog(
+  ui: ReturnType<typeof createBaseUI>,
+  options?: Parameters<ReturnType<typeof createBaseUI>["openContactModal"]>[0],
+): HTMLDialogElement {
+  ui.openContactModal(options);
   const dialog = document.querySelector("dialog");
   if (!dialog) throw new Error("expected a <dialog> element");
   return dialog;
@@ -113,7 +116,8 @@ describe("contact modal lifecycle", () => {
 
   it("puts the channel badge in front of the card title and drops the redundant WeChat subtitle", () => {
     const ui = createBaseUI(React, { lang: "zh" });
-    const dialog = openDialog(ui);
+    const now = new Date("2026-11-01T00:00:00+08:00");
+    const dialog = openDialog(ui, { now });
 
     for (const group of BASELINE.manifest.groups) {
       const title = dialog.querySelector<HTMLElement>(
@@ -136,5 +140,29 @@ describe("contact modal lifecycle", () => {
     // QQ keeps its real group number.
     const qq = dialog.querySelector<HTMLElement>('[data-group-id="qq"]');
     expect(qq?.querySelector(".dsh-base-modal__card-subtitle")?.textContent).toContain("1020866453");
+
+    // WeChat's limited-time note is exactly the formatter output: no promise
+    // that reopening the dialog refreshes the QR code.
+    const wechatGroup = BASELINE.manifest.groups.find((group) => group.id === "wechat");
+    const wechatNote =
+      wechat?.querySelector<HTMLElement>(".dsh-base-modal__card-note")?.textContent ?? "";
+    expect(wechatNote).toBe(formatValidity(wechatGroup?.validUntil, { lang: "zh", now }));
+    expect(wechatNote).not.toContain("重新进入");
+
+    // Every card keeps one subtitle slot between title and QR code: the
+    // copyable subtitle button when present, an aria-hidden spacer otherwise,
+    // so all QR codes start on the same horizontal line.
+    for (const card of dialog.querySelectorAll<HTMLElement>(".dsh-base-modal__card")) {
+      const slot = card.children.item(1);
+      expect(slot, "missing subtitle slot in " + card.dataset.groupId).not.toBeNull();
+      const isSubtitle = slot!.classList.contains("dsh-base-modal__card-subtitle");
+      const isGap = slot!.classList.contains("dsh-base-modal__card-subtitle-gap");
+      expect(isSubtitle || isGap, "unexpected subtitle slot in " + card.dataset.groupId).toBe(true);
+      if (isGap) {
+        expect(slot!.getAttribute("aria-hidden")).toBe("true");
+        expect(slot!.textContent).toBe("");
+        expect(slot!.children).toHaveLength(0);
+      }
+    }
   });
 });
