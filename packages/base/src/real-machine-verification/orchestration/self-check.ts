@@ -18,11 +18,14 @@ import type { EvidenceStore } from "../evidence/store";
 import type { ReadFileSlice } from "../runtime/types";
 import { failed, passed, type CheckModule, type CheckPlan } from "./types";
 import { createDshRuntimeCheck } from "./checks/dsh-runtime";
+import { createModelConfiguredCheck } from "./checks/model-configured";
+import { createModelCredentialCheck } from "./checks/model-credential";
 import { createNodeVersionCheck } from "./checks/node-version";
 import { createPackageInstalledCheck } from "./checks/package-installed";
 import { createProfileDeclarationCheck } from "./checks/profile-declaration";
 import { createProfilePresentCheck } from "./checks/profile-present";
 import { createScreenPresentCheck } from "./checks/screen-present";
+import { createSkillsSetCheck } from "./checks/skills-set";
 
 /** The command name this plan reports under. */
 export const SELF_CHECK_COMMAND = "self-check";
@@ -106,6 +109,9 @@ export function planSelfCheck(input: SelfCheckPlanInput): CheckPlan<SelfCheckCon
     createNodeVersionCheck(),
     createProfilePresentCheck(),
     createPackageInstalledCheck(),
+    createSkillsSetCheck(),
+    createModelConfiguredCheck(),
+    createModelCredentialCheck(),
   ];
   if (input.screenRequested) checks.push(createScreenPresentCheck());
 

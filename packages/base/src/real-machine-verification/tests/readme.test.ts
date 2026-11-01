@@ -20,6 +20,9 @@ const SELF_CHECK_CHECKS = [
   "node-version",
   "profile-present",
   "package-installed",
+  "skills-set",
+  "model-configured",
+  "model-credential",
   "screen-present",
 ] as const;
 

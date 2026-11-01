@@ -75,7 +75,7 @@ describe("self-check: --json output contract", () => {
     expect(result.stderr).toMatch(/^ok profile-declaration .+$/m);
     expect(result.stderr).toMatch(/^report: .+$/m);
     expect(result.stderr).toMatch(/^report-sha256: [0-9a-f]{64}$/m);
-    expect(result.stderr).toMatch(/^passed \(5 pass, 0 fail, 0 skip, 0 blocked\)$/m);
+    expect(result.stderr).toMatch(/^passed \(5 pass, 0 fail, 3 skip, 0 blocked\)$/m);
 
     // The printed digest names the bytes that were written to disk.
     const run = readRunDirectory(fixture.fs, fixture.paths.workRoot);
@@ -177,6 +177,28 @@ describe("self-check: report artifacts", () => {
         model: { provider: "minimax", model: "fixture-model", apiKeyEnv: "MINIMAX_API_KEY" },
       },
     });
+
+    // The credential check resolves the reference from the process environment;
+    // the model-configuration check needs the profile's patch layer to match the
+    // declaration, so seed a consistent patch. This test is about secret hygiene,
+    // not about model-configuration detection (that has its own tests).
+    fixture.fs.seedFile(
+      `${fixture.paths.profileDir}\\cordis.patch.yml`,
+      [
+        "- id: agent-default-model",
+        "  config:",
+        "    provider: minimax",
+        "    model: fixture-model",
+        "- id: llm-pi-ai",
+        "  config:",
+        "    providers:",
+        "      minimax:",
+        "        apiKeyEnv: MINIMAX_API_KEY",
+        "        models:",
+        "          - id: fixture-model",
+        "",
+      ].join("\n"),
+    );
 
     const result = await runCli(fixture, ["--json"]);
     const run = readRunDirectory(fixture.fs, fixture.paths.workRoot);

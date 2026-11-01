@@ -59,7 +59,7 @@ function checkOf(report: RunReport, id: string) {
 }
 
 describe("self-check: the green path", () => {
-  it("passes all five checks and exits 0", async () => {
+  it("passes the five built-in checks, skips the undeclared skill/model checks and exits 0", async () => {
     const fixture = createFixture();
     const result = await runSelfCheck(fixture);
 
@@ -67,11 +67,23 @@ describe("self-check: the green path", () => {
     expect(result.report.command).toBe("self-check");
     expect(result.report.profile).toBe("web");
     expect(result.report.state).toBe("passed");
-    expect(result.report.checks.map((check) => check.status)).toEqual(["pass", "pass", "pass", "pass", "pass"]);
+    expect(result.report.checks.map((check) => check.status)).toEqual([
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "skip",
+      "skip",
+      "skip",
+    ]);
     expect(statusOf(result.report, "dsh-runtime")).toBe("pass");
     expect(statusOf(result.report, "node-version")).toBe("pass");
     expect(statusOf(result.report, "profile-present")).toBe("pass");
     expect(statusOf(result.report, "package-installed")).toBe("pass");
+    expect(statusOf(result.report, "skills-set")).toBe("skip");
+    expect(statusOf(result.report, "model-configured")).toBe("skip");
+    expect(statusOf(result.report, "model-credential")).toBe("skip");
   });
 
   it("names the executable, the archive entry and the client entry digest in detail", async () => {
@@ -94,6 +106,10 @@ describe("self-check: the green path", () => {
       const matching = lines.filter((line) => line.startsWith(`ok ${id} `));
       expect(matching, id).toHaveLength(1);
       expect(matching[0], id).toMatch(/^ok [a-z][a-z0-9-]+ .+$/);
+    }
+    for (const id of ["skills-set", "model-configured", "model-credential"]) {
+      const matching = lines.filter((line) => line.startsWith(`skip ${id} `));
+      expect(matching, id).toHaveLength(1);
     }
     expect(result.stdout).toContain("report: ");
     expect(result.stdout).toContain("report-sha256: ");

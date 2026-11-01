@@ -45,6 +45,9 @@ describe("planSelfCheck", () => {
       "node-version",
       "profile-present",
       "package-installed",
+      "skills-set",
+      "model-configured",
+      "model-credential",
     ]);
   });
 
