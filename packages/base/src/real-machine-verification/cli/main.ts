@@ -26,17 +26,23 @@ import {
 } from "../capability-description";
 import type { Ports } from "../contracts/ports";
 import type { DeclarationLoadResult, LoadDeclarationOptions } from "../declaration/loader";
+import { loadBatchContextForEvidence } from "../orchestration/batch";
 import { createNodePorts, createRuntimeFacts } from "../runtime/platform/defaults";
 import type { RuntimeFacts } from "../runtime/types";
 import { parseArgs } from "./args";
+import { runBatchCommand } from "./commands/batch";
 import { runCleanupCommand } from "./commands/cleanup";
-import { runEvidenceCommand } from "./commands/evidence";
 import { runConcurrentCommand } from "./commands/concurrent";
+import { runEvidenceCommand } from "./commands/evidence";
 import { runFreezeCommand } from "./commands/freeze";
+import { runInstallCommand } from "./commands/install";
 import { runIsolationCommand } from "./commands/isolation";
 import { runLaunchCommand } from "./commands/launch";
 import { runModelCommand } from "./commands/model";
+import { runScenarioCommand } from "./commands/run";
 import { runSelfCheckCommand } from "./commands/self-check";
+import { runSingleInstanceCommand } from "./commands/single-instance";
+import { runSkillsCommand } from "./commands/skills";
 import { runStopCommand } from "./commands/stop";
 import { isCliEntryPoint } from "./entry";
 import { createNodeIo, type CliIo } from "./io";
@@ -59,6 +65,11 @@ export const IMPLEMENTED: ReadonlySet<string> = new Set<string>([
   "evidence",
   "concurrent",
   "cleanup",
+  "batch",
+  "run",
+  "install",
+  "skills",
+  "single-instance",
 ]);
 
 /** Injection points for tests and for agents driving the CLI in-process. */
@@ -258,8 +269,66 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
     });
   }
 
+  if (parsed.command === "batch") {
+    return runBatchCommand(parsed, {
+      ports: deps.ports ?? createNodePorts(),
+      io,
+      runtime: runtimeFacts(deps),
+      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+    });
+  }
+
+  if (parsed.command === "run") {
+    return runScenarioCommand(parsed, {
+      ports: deps.ports ?? createNodePorts(),
+      io,
+      runtime: runtimeFacts(deps),
+      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+    });
+  }
+
+  if (parsed.command === "install") {
+    return runInstallCommand(parsed, {
+      ports: deps.ports ?? createNodePorts(),
+      io,
+      runtime: runtimeFacts(deps),
+      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+    });
+  }
+
+  if (parsed.command === "skills") {
+    return runSkillsCommand(parsed, {
+      ports: deps.ports ?? createNodePorts(),
+      io,
+      runtime: runtimeFacts(deps),
+      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+    });
+  }
+
+  if (parsed.command === "single-instance") {
+    return runSingleInstanceCommand(parsed, {
+      ports: deps.ports ?? createNodePorts(),
+      io,
+      runtime: runtimeFacts(deps),
+      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+    });
+  }
+
   if (parsed.command === "evidence") {
-    return runEvidenceCommand(parsed, { ports: deps.ports ?? createNodePorts(), io });
+    const ports = deps.ports ?? createNodePorts();
+    return runEvidenceCommand(parsed, {
+      ports,
+      io,
+      loadBatch: (context) =>
+        loadBatchContextForEvidence(
+          {
+            ...(context.batch === undefined ? {} : { batch: context.batch }),
+            ...(context.name === undefined ? {} : { name: context.name }),
+            ...(context.workRoot === undefined ? {} : { workRoot: context.workRoot }),
+          },
+          { ports, cwd: ports.env.cwd() },
+        ),
+    });
   }
 
   if (parsed.command === "cleanup") {

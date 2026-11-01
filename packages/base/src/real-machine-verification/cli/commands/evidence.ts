@@ -96,6 +96,15 @@ export interface EvidenceCommandDeps {
   readonly ports: Ports;
   readonly io: CliIo;
   readonly batch?: EvidenceBatchContext;
+  /**
+   * Resolve `--batch` / `--name` into the identity-bearing batch context.
+   *
+   * The CLI wires this to the batch layer so a named batch that has no record or
+   * no frozen candidate is a blocked prerequisite instead of an evidence package
+   * that can never be bound. Injected context still wins; no name means `null`
+   * and the command keeps its own default.
+   */
+  readonly loadBatch?: (args: ParsedArgs) => Promise<Result<EvidenceBatchContext | null, Failure>>;
 }
 
 /** The evidence-side half of the JSON contract: one failure document. */
@@ -610,7 +619,13 @@ export async function runEvidenceCommand(args: ParsedArgs, deps: EvidenceCommand
     return reject(args, deps.io, args.positional[1] ?? null, "usage", validation.message);
   }
   const subcommand = validation.subcommand;
-  if (subcommand === "add") return runAdd(args, deps);
-  if (subcommand === "archive") return runArchive(args, deps);
-  return runVerify(args, deps);
+  let resolved = deps;
+  if (deps.batch === undefined && deps.loadBatch !== undefined) {
+    const loaded = await deps.loadBatch(args);
+    if (!loaded.ok) return failWith(args, deps, subcommand, loaded.error, "batch");
+    if (loaded.value !== null) resolved = { ...deps, batch: loaded.value };
+  }
+  if (subcommand === "add") return runAdd(args, resolved);
+  if (subcommand === "archive") return runArchive(args, resolved);
+  return runVerify(args, resolved);
 }

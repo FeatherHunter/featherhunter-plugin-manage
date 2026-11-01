@@ -33,6 +33,12 @@ export interface CheckResult {
   readonly hint?: string;
   readonly evidence: readonly EvidenceItemRef[];
   readonly durationMs: number;
+  /**
+   * Where the check came from: the tool's own plan or a scenario body.
+   * Optional so every pre-scenario construction stays valid; the scenario runner
+   * sets it explicitly and the report can then keep the two apart.
+   */
+  readonly source?: "builtin" | "custom";
 }
 
 /** Aggregated counters for a report or exit-code decision. */

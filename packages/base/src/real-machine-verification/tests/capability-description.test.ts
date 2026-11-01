@@ -139,13 +139,15 @@ describe("built-in checks", () => {
 });
 
 describe("implemented commands", () => {
-  it("only implements commands the description owns", () => {
-    const described = new Set(describeCapability().commands.map((command) => command.name));
-    for (const name of IMPLEMENTED) {
-      expect(described.has(name), name).toBe(true);
-    }
-    // `describe` and `self-check` ship; the other thirteen are contract-only
-    // until their own tickets land, and must exit 2 rather than pretend to work.
+  it("implements exactly the commands the description owns, once every ticket has landed", () => {
+    const described = describeCapability()
+      .commands.map((command) => command.name)
+      .sort();
+    // The description is the contract and IMPLEMENTED is the truth; they must not
+    // drift. A described command that is missing here exits 2 rather than pretend
+    // to work, so this assertion is what keeps "documented" and "reachable" the
+    // same set (spec: command surface).
+    expect([...IMPLEMENTED].sort()).toEqual(described);
     expect(IMPLEMENTED.has("describe")).toBe(true);
     expect(IMPLEMENTED.has("self-check")).toBe(true);
   });

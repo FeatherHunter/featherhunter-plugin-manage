@@ -1,0 +1,231 @@
+/**
+ * `install` is tested through its command entry with a real tarball fixture and
+ * a fake filesystem. The assertions are the external contract: the extracted
+ * tree, the five post-install checks, the JSON report and the exit codes.
+ */
+import { createHash } from "node:crypto";
+
+import { describe, expect, it } from "vitest";
+
+import { parseArgs } from "../cli/args";
+import { runInstallCommand, type InstallCommandDeps } from "../cli/commands/install";
+import { ok } from "../contracts/result";
+import type { BinaryWriter } from "../runtime/platform/binary-writer";
+import { joinFsPath } from "../runtime/paths";
+import { makeTgz } from "./support/fake-freeze";
+import { captureIo } from "./support/fake-capture";
+import {
+  createLaunchFixture,
+  fixtureLoader,
+  type LaunchFixture,
+} from "./support/fake-launch";
+import { buildProfile, declarationFixture } from "./support/fake-machine";
+
+interface CheckJson {
+  readonly id: string;
+  readonly status: string;
+  readonly expected?: string;
+  readonly actual?: string;
+  readonly hint?: string;
+}
+
+interface InstallJson {
+  readonly schemaVersion: number;
+  readonly command: string;
+  readonly ok: boolean;
+  readonly method?: string;
+  readonly expectedSource?: string;
+  readonly packageVersion?: string;
+  readonly checks?: readonly CheckJson[];
+  readonly error?: { readonly code: string; readonly message: string; readonly hint?: string; readonly stage?: string };
+}
+
+const TGZ_PATH = "C:\\fake\\repo\\fixture-plugin-0.1.0.tgz";
+
+function tgzFor(bannerVersion = "0.1.0"): Uint8Array {
+  return makeTgz({
+    "package/package.json": JSON.stringify({
+      name: "fixture-plugin",
+      version: "0.1.0",
+      main: "lib/client.js",
+    }),
+    "package/lib/client.js": `/*! fixture-plugin v${bannerVersion} */\nexport const client = true;\n`,
+  });
+}
+
+function sha256Hex(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+function candidateFor(tgz: Uint8Array): Record<string, unknown> {
+  const packageJson = JSON.stringify({
+    name: "fixture-plugin",
+    version: "0.1.0",
+    main: "lib/client.js",
+  });
+  const client = "/*! fixture-plugin v0.1.0 */\nexport const client = true;\n";
+  return {
+    schemaVersion: 2,
+    generatedAt: "2026-11-01T20:00:00.000Z",
+    tool: "dsh-verify",
+    version: "0.1.5",
+    validity: "development",
+    sourceStable: true,
+    git: { commit: "a".repeat(40), branch: "main", dirty: false, dirtyFiles: [] },
+    package: {
+      tgzPath: TGZ_PATH,
+      tgzBytes: tgz.byteLength,
+      tgzSha256: sha256Hex(Buffer.from(tgz).toString("binary")),
+      filename: "fixture-plugin-0.1.0.tgz",
+      files: [
+        { path: "lib/client.js", bytes: client.length, sha256: sha256Hex(client) },
+        { path: "package.json", bytes: packageJson.length, sha256: sha256Hex(packageJson) },
+      ],
+      fileCount: 2,
+      fileDigest: "b".repeat(64),
+      manifestDigest: "c".repeat(64),
+    },
+  };
+}
+
+function fixture(): LaunchFixture {
+  return createLaunchFixture({
+    declaration: declarationFixture({
+      profile: buildProfile({
+        packageName: "fixture-plugin",
+        defaultProfile: "web",
+        clientEntry: "lib/client.js",
+      }),
+    }),
+  });
+}
+
+function binaryWriter(fake: LaunchFixture): BinaryWriter {
+  return {
+    async write(path, bytes) {
+      fake.fs.seedFile(path, bytes);
+      return ok({ bytes: bytes.byteLength });
+    },
+  };
+}
+
+async function run(
+  fake: LaunchFixture,
+  argv: readonly string[],
+  extra: Partial<InstallCommandDeps> = {},
+): Promise<{ readonly code: number; readonly out: string; readonly err: string }> {
+  const capture = captureIo();
+  const deps: InstallCommandDeps = {
+    ports: fake.ports,
+    io: capture.io,
+    runtime: fake.runtime,
+    loadDeclaration: fixtureLoader(fake),
+    binaryWriter: binaryWriter(fake),
+    ...extra,
+  };
+  const code = await runInstallCommand(parseArgs(argv), deps);
+  return { code, out: capture.stdout(), err: capture.stderr() };
+}
+
+describe("install command", () => {
+  it("extracts the tarball and reports every post-install check", async () => {
+    const fake = fixture();
+    fake.fs.seedFile(TGZ_PATH, tgzFor());
+
+    const result = await run(fake, [
+      "install",
+      "--tgz",
+      TGZ_PATH,
+      "--work-root",
+      fake.paths.workRoot,
+      "--json",
+    ]);
+
+    expect(result.code).toBe(0);
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.ok).toBe(true);
+    expect(payload.method).toBe("extract");
+    expect(payload.expectedSource).toBe("tgz");
+    expect(payload.packageVersion).toBe("0.1.0");
+    expect(payload.checks?.map((check) => check.id)).toEqual([
+      "package-installed",
+      "package-version",
+      "package-client-entry",
+      "package-version-constant",
+      "package-files",
+    ]);
+    expect(payload.checks?.every((check) => check.status === "pass")).toBe(true);
+
+    const target = joinFsPath(fake.paths.profileDir, "node_modules", "fixture-plugin");
+    const client = await fake.fs.readText(joinFsPath(target, "lib", "client.js"));
+    expect(client.ok && client.value).toContain("/*! fixture-plugin v0.1.0 */");
+    const dependency = await fake.fs.readJson(joinFsPath(fake.paths.profileDir, "package.json"));
+    expect(dependency.ok).toBe(true);
+    if (dependency.ok) {
+      const value = dependency.value as { readonly dependencies?: Record<string, string> };
+      expect(value.dependencies?.["fixture-plugin"]).toMatch(/^file:/);
+    }
+  });
+
+  it("fails with exit 1 and expected/actual/hint when the version constant disagrees", async () => {
+    const fake = fixture();
+    fake.fs.seedFile(TGZ_PATH, tgzFor("9.9.9"));
+
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--json"]);
+
+    expect(result.code).toBe(1);
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.ok).toBe(false);
+    const constant = payload.checks?.find((check) => check.id === "package-version-constant");
+    expect(constant?.status).toBe("fail");
+    expect(constant?.expected).toContain("fixture-plugin");
+    expect(constant?.actual).toContain("9.9.9");
+    expect(constant?.hint).toBeTruthy();
+  });
+
+  it("refuses a cross-drive cli install with exit 2 and points at extract", async () => {
+    const fake = fixture();
+    const crossDrive = "D:\\candidate\\fixture-plugin-0.1.0.tgz";
+    fake.fs.seedFile(crossDrive, tgzFor());
+
+    const result = await run(fake, ["install", "--tgz", crossDrive, "--method", "cli", "--json"]);
+
+    expect(result.code).toBe(2);
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.code).toBe("unsupported");
+    expect(payload.error?.message).toContain("across drives");
+    expect(payload.error?.hint).toContain("--method extract");
+  });
+
+  it("verifies against a candidate manifest and names it as the expected source", async () => {
+    const fake = fixture();
+    const tgz = tgzFor();
+    fake.fs.seedFile(TGZ_PATH, tgz);
+    const candidateDir = "C:\\fake\\repo\\candidate";
+    fake.fs.seedJson(candidateDir + "\\candidate.json", candidateFor(tgz));
+
+    const result = await run(fake, [
+      "install",
+      "--tgz",
+      TGZ_PATH,
+      "--candidate",
+      candidateDir,
+      "--json",
+    ]);
+
+    expect(result.code).toBe(0);
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.expectedSource).toBe("candidate");
+    expect(payload.checks?.every((check) => check.status === "pass")).toBe(true);
+  });
+
+  it("rejects an unknown method as a usage error with exit 2", async () => {
+    const fake = fixture();
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--method", "copy", "--json"]);
+    expect(result.code).toBe(2);
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.error?.stage).toBe("usage");
+    expect(payload.error?.message).toContain("--method");
+  });
+});
