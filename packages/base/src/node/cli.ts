@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { formatDoctorReport, runDoctor } from "./doctor";
@@ -329,8 +329,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   }
 }
 
-const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
-if (import.meta.url === entryUrl) {
+// A `file:`/`link:` install reaches this file through a junction or symlink;
+// Node reports import.meta.url as the real path while argv[1] keeps the link.
+// Accept either spelling, otherwise a linked install silently runs nothing.
+const entryUrls = new Set<string>();
+if (process.argv[1]) {
+  entryUrls.add(pathToFileURL(process.argv[1]).href);
+  try {
+    entryUrls.add(pathToFileURL(realpathSync(process.argv[1])).href);
+  } catch {
+    // The argv path may not exist (deleted while running); the literal URL stands.
+  }
+}
+if (entryUrls.has(import.meta.url)) {
   void main().then((code) => {
     process.exitCode = code;
   });

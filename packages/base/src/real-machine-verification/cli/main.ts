@@ -16,7 +16,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import {
   describeCapability,
@@ -32,6 +32,7 @@ import { parseArgs } from "./args";
 import { runLaunchCommand } from "./commands/launch";
 import { runSelfCheckCommand } from "./commands/self-check";
 import { runStopCommand } from "./commands/stop";
+import { isCliEntryPoint } from "./entry";
 import { createNodeIo, type CliIo } from "./io";
 
 const CLI_NAME = "dsh-verify";
@@ -212,8 +213,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   return EXIT_CODES.blocked;
 }
 
-const entryUrl = process.argv[1] === undefined ? "" : pathToFileURL(process.argv[1]).href;
-if (import.meta.url === entryUrl) {
+if (isCliEntryPoint(process.argv[1], import.meta.url)) {
   void main().then((code) => {
     process.exitCode = code;
   });
