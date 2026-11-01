@@ -1,6 +1,6 @@
 <!-- DSH-FORMAT: md-v1 -->
 <!-- DSH-TITLE: 页头操作组 ActionCluster v2 与 base 0.1.2 五仓换代 -->
-<!-- DSH-STATUS: ready-for-agent -->
+<!-- DSH-STATUS: closed -->
 <!-- DSH-LABELS: ready-for-agent -->
 <!-- DSH-IDEMPOTENCY-KEY: hac2-spec-0001 -->
 <!-- DSH-CREATED: 2026-10-31T10:32:22.462Z -->
@@ -127,4 +127,77 @@
 - 重启 web 实例（127.0.0.1:3080）后 CDP 复验：五插件设置页版本文案分别为 0.4.40 / 1.9.0-beta.33 / v2.1.11 / dsh-life-pack 0.3.86 / v0.2.26；每页仍恰 1 个 `.dsh-base-cluster` + 3 枚 `__btn`；MattSkills 作者插件卡 4 行、hover 首行 `.dsh-base-tip` 恰 1 枚 role=tooltip、opacity 1、文案为完整介绍词；联系弹窗 3 卡（feishu/qq/wechat）三张 `.dsh-base-modal__qr` 均 data:image/png、natural 320×320、computed box-sizing=border-box。截图：`.tmp/web5-settings.png`、`.tmp/web5-five-pages.png`、`.tmp/web5-mattskills.png`、`.tmp/web5-contact-npm.png`。
 - 结论：本地 tarball 仅保留在 `D:/temp/hac2-pack/` 作历史备份，profile 不再引用；票 09 已关闭（规格下实施票 09/09 全部 resolved）。
 
+## 收口评论：规格 00 独立复核（2026-11-01 13:05 +08:00）
+
+复核人：本会话 agent（lead）。触发：用户 2026-11-01 指令——8/8 实施票已关只是触发，不是完成证明；四项（承诺落地 / 长线分支 / 提交上检查可复跑 / 遗留清零）缺一不关。本记录按四项逐条给出可复跑证据；结论：四项全部成立，关闭本规格。
+
+说明：规格正文没有单列用户故事验收表，按工作区惯例以「规格 验收口径 5 条 + 各实施票验收标准」合并核对（此约定写在这里，供复核者沿用）。
+
+## 一、承诺落地：票 01–09 逐票核对（全部 closed，无 wontfix / duplicate / 缩减范围票）
+
+核对方式：打开每张票的验收标准 → 用 git show 看交付提交里的真实代码/测试 → 在本会话复跑对应测试；票的 closed 状态与正文自述不作为证据。
+
+| 票 | 交付提交（仓） | 实际检查到的实现 / 测试 |
+|---|---|---|
+| 01 四方向原型与方向拍板 | manage prototype/header-action-cluster 分支 9e1ac64（四方向 header-action-cluster.html ?v=1..4）、253b0ff + 108b3c9（图标样张 action-icon-set.html / action-icon-set-v2.html） | 原型文件在分支上可打开；用户拍板 B 静默簇、Issue 落点 /issues 列表、图标 16px、只保留页头图标（记录在票 01 与规格 验收记录）；分支未合并属预期（一次性原型） |
+| 02 base 预清理 + 最后一天文案 | manage 6be5500（packages/base） | styles.ts 已无 7px 内嵌圆角与内嵌描边 hairline 规则（现存 "padding:7px 4px" 是正常行内边距）；core/index.ts formatValidity 末日中文「该二维码今天（M 月 D 日前）有效，重新进入将更新」/ 英文 "Valid today (until M/D), refreshed on re-entry"；test/client/validity.test.ts 四个边界用例（含 "says today instead of zero days on the last valid day"）；本会话 vitest 通过 |
+| 03 ActionCluster v2 + demo 样张 | manage 495c6b7（9 文件 +1314/−81） | cluster.ts（createActionCluster：items、size 14/16/18 默认 16、gap 4、variant quiet/tray、maxVisible 溢出）、cluster-icons.ts（三色渐变 SVG）、hover-tip.ts（共享气泡：body 挂载、离开延迟 160ms、同时只显示一个、Escape、aria-describedby、无包裹 span）、styles.ts 径向光晕 + prefers-reduced-motion、index.ts 导出 ui.ActionCluster / ui.clusterIcons、demo 五状态明暗样张；cluster.test.ts 覆盖 "renders one container with three independent coloured buttons, no wrapper"、"defaults the issue target to the issue list, not /issues/new"、尺寸/间距、legacy tray、共享气泡、溢出、英文文案、quiet 样式；本会话 typecheck / vitest / build / build:demo 全绿 |
+| 04 base 0.1.2 构建与发布 | base 98054d9 / 24c8409 / ad84c86 / 97fe5d8（manage 仓 packages/base） | GitHub Actions publish-base.yml run 41198426062 成功，npm shasum db73b979…；jsDelivr 与 npmmirror 均可读到 0.1.2（本会话对 0.1.5 复核三通道同样 200） |
+| 05 五仓升 0.1.2 打包 | prompt 6c0d8c0；deck b521ddf5；palette 1cfeffe + 0c47124；im 181e01f + cc1eda1；ilife f534348a | 五仓 package.json 依赖声明 0.1.2，tarball 在 D:/temp/hac2-pack/ 可安装；后续 0.1.3/0.1.4/0.1.5 换代覆盖（见票 07/08） |
+| 06 web profile 人眼验收 + HUMAN-GATE | 五仓 0.1.2 安装后的 profile + HUMAN-GATE 记录 | 用户 2026-11-01 00:44 人眼验收原话「效果蛮好的，有你可以自行验证的你可以直接验证了。我目前看到的效果都满意」；CDP 矩阵记录（五页各 1 个 .dsh-base-cluster + 3 按钮、tooltip 文案、作者卡、弹窗三码）；票 14 已更新（进度 80%，B 通过，D/E 留 owner 真机） |
+| 07 二维码兜底 0.1.3 | base eb8ee78；0.1.4 修正 4555f74；五仓 0.1.4：prompt f2669c4 / deck 3f1bca2f / palette bce5583 / im 0956a23 / ilife 8110a9fc | content.ts MANIFEST_TIMEOUT_MS=1500、CONTENT_IMAGE_TIMEOUT_MS=6000、MANIFEST_FAILURE_TTL_MS=60*1000（成功缓存 30min）；build-data.ts BUNDLED_PLATFORMS 含 wechat；baseline.ts 三平台（feishu/qq/wechat，含 wechat 卡）；content.test.ts 20 例含 "times out a hanging channel and moves on (1.5s window, no retries)"、"retries a failed fetch after the 60s failure window, not before"；0.1.4 QR box-sizing 修复；本会话复跑 0.1.5 同一代码路径通过 |
+| 08 作者插件卡 HoverTip + 文案 + 0.1.5 | base 9ca64c6；五仓 0.1.5：prompt eabd828 / deck 61b557d4 / palette 3b01032 / im e7651a9 / ilife c7f0ea8 | hover-tip.ts（TIP_HIDE_DELAY=160、createTipController、Escape、aria-describedby）；texts.ts contactTip「扫码加入交流群，反馈、建议、idea 都欢迎🎉」/ issueTip「任何功能需求、故障、建议、意见都可以提ISSUE问题单🙏」（含英文）；plugins.ts rowTip 绑定 onMouseEnter/onFocus；plugins.test.ts 气泡用例；五仓产物 banner "dsh-featherhunter-plugin-base v0.1.5"；profile 重装后 CDP 复核（1 簇 92×28 + 3 按钮 28×28、tooltip、弹窗三卡 320×320 显示 215×215、13/13 padding、viewport 1000/900 无溢出、dark rgb(10,10,10)） |
+| 09 web profile 改 npm 正式版 | deck beta.33（80788911 等）+ im 0.2.26（e947af7） | profile package.json / pnpm-lock.yaml 无 file: 依赖；安装版本 dsh-im-companion 0.2.26、dsh-life-pack 0.3.86、dsh-mattpocock-skills-deck 1.9.0-beta.33、dsh-opencode-palette 2.1.11、dsh-prompt 0.4.40；五个已安装 client bundle 内 banner 均为 v0.1.5；CDP 复验五页 1+3 簇、tooltip、弹窗三码 |
+
+结论：规格 验收口径 5 条（base 三通道与 demo、票 07 二维码兜底、五仓门禁/banner/tarball/commit+push、票 08 气泡文案与 0.1.5、最终 owner 人眼验收 + 票 14 更新 + 收口）逐条有实现或测试证据；无「不做 / 重复」票需要用户追认。
+
+## 二、变更在长线分支上（六仓，2026-11-01 12:56 复核）
+
+| 仓 | 长线分支 | 当前 HEAD 与上游 | 交付提交是否在长线分支上 |
+|---|---|---|---|
+| featherhunter-plugin-manage | main | d4dd3fc == origin/main | 规格/票/收口记录直接提交 main（先例 0969bb1 同类收口） |
+| dsh-prompt | main | f140852 == origin/main | eabd828 是 origin/main 祖先（git merge-base --is-ancestor 退出 0）；v0.4.40 已发布 |
+| dsh-mattpocock-skills-deck | main | 本地 80788911；origin/main 已由另一会话推进到 84ca70b7（#1782，与本规格无关） | 61b557d4、80788911 均是 origin/main 祖先（退出 0）；npm 1.9.0-beta.33 已发布 |
+| dsh-opencode-palette | main | 304bc6c == origin/main | 3b01032 是祖先；2.1.11 已发布 |
+| dsh-im-companion | master | e947af7 == origin/master | e7651a9 是祖先；0.2.26 已发布 |
+| ilife | master | 148770f2 == origin/master | c7f0ea8 是祖先；0.3.86 已发布 |
+
+复核命令（任选其一可复跑）：`git merge-base --is-ancestor <交付提交> origin/<长线分支>; echo $?` 应为 0；`git log --oneline origin/<长线分支> | grep <交付提交>`；npm 版本用 `npm view <pkg>@<ver> version`（本机 npm registry TLS 受限，本次改用 npmmirror/jsDelivr HTTP 200 与 profile 安装版本核对）。
+
+## 三、检查在注释所写提交上复跑（本会话结果，非记忆）
+
+| 仓 / 提交 | 命令 | 结果 |
+|---|---|---|
+| manage @ d4dd3fc（packages/base 0.1.5） | `pnpm run typecheck` / `pnpm run test` / `pnpm run build` / `pnpm run build:demo` / `pnpm run data:check` | 全部退出 0；vitest：Test Files 27 passed \| 1 skipped (28)，Tests 347 passed \| 6 skipped (353)，16.66s（2026-11-01 13:00 在 manage d4dd3fc 复跑）；data:check "generated data is up to date" |
+| dsh-mattpocock-skills-deck @ 80788911 | `npm run verify:parallel`（仓内 docs/agents/verification.md 规定的唯一判据） | 退出 0：520/520 步，wall 166.1s，主链真红 0 步，冒烟真红 0 步，冒烟 5/5 PASS；另 `readme:check` 退出 0。（初次 `npm run test` 报 client.js 产物缓存不一致，按文档 `node scripts/build.mts` 重建后 verify-leaves 全过——是构建缓存问题，非代码红） |
+| dsh-opencode-palette @ 304bc6c | `npm run build` / `npm run test` / `npm run verify:artifacts` / `npm run readme:check` | 全部退出 0；312 用例通过；verify:artifacts 两次构建 sha256 逐字节一致（8 个产物、LF） |
+| dsh-im-companion @ e947af7 | `npm run check` / `npm run readme:check` | 退出 0；guard 191 文件 ≤300 行 PASS，#170/#178 证明 PASS |
+| dsh-prompt @ f140852 | `pnpm run build` / `typecheck` / `check` / `readme:check` / `test:star-history` / `test:issue-37` | build 0、typecheck 0、readme:check 0、test:star-history 17/17 通过、test:issue-37 "ALL PASS: #37"；`check` 退出 2 仅因 `check:update-pkg` 需联网（npm ECONNRESET，已登记的离线既有红），其余链内步骤（含 typecheck）均通过 |
+| ilife @ 148770f2 | `pnpm run build` / `test:types` / `gen:check` / `publish:pre` / `boundaries` / `base:floor` / `doctor` / `readme:check` | 全部退出 0；publish:pre 离线跳过上游查证但 PASS；base:floor 15/15 |
+| base 0.1.5 三通道 | npmmirror / jsDelivr HTTP GET | 均 200，version=0.1.5（npmmirror shasum 722b9678…） |
+| web profile | 读 ~/.dsh/profiles/web/package.json + pnpm-lock.yaml + node_modules | 五个版本与 spec 发版记录一致，无 file: 依赖；五个已安装 client bundle banner 均为 v0.1.5 |
+
+自检：以上检查跑在各仓 HEAD（manage d4dd3fc、prompt f140852、deck 80788911、palette 304bc6c、im e947af7、ilife 148770f2），与本记录第二节所写提交一致；本收口记录本身只改 manage 仓 .scratch 文档，不改代码。
+
+## 四、遗留处理（逐条有落点）
+
+1. 票 14（base-package-rollout）保持 open：B 组 owner 已确认，D 组定为临时验证（不发版）待 owner 授权在 desktop profile 安装验形态，E 组离线降级待 owner 真机；规格 遗留已记。责任人：用户真机；本规格关闭不阻塞票 14。
+2. prompt `test:star-history` 既有红：已由 ae7c6b5 修复，本会话复跑 17/17 通过 → 已在规格 遗留回填「已修复」。
+3. prompt `test:issue-89` 僵尸红、`check:update-pkg` 需联网：保持登记（本机 registry TLS 受限，发版走 GitHub Actions），未新增处理。
+4. ilife `ci-gates-295`、`p10-boundaries`：保持登记；本会话 boundaries 门禁 0。
+5. palette `check-deps` 离线 '?'：保持登记。
+6. 新发现（本会话首次登记）：ilife 全量 `npm test` 有既有红——tooling/check-combos.mjs:20 的 /schema/i 命中 packages/base-combos/combos.yaml:282 "- key: calorie.data.schema"（"FAIL: 说明书禁业务表语义（命中 /schema/i），0 表红线"）。引入时间早于本规格（/schema/i 于 59d2cc44 2026-09-06，calorie.data.schema 于 645c048a 2026-09-25），本规格未改 tooling；ilife AGENTS.md:89 规定 pnpm test 全量只与主线基线比对、不单独拦路，故不影响本规格交付。建议 ilife 仓补登记到其 known-red 清单（下一步：用户/后续会话，非本规格阻塞）。
+7. manage 未合并分支 prototype/header-action-cluster（9e1ac64、253b0ff、108b3c9 三个原型提交）：票 01 明确为一次性原型，保留不合并、不删除（删除需用户同意）；特此列出。
+8. 各仓非本规格的既有未提交/未跟踪/工作树/分支：deck 15 个未跟踪 .scratch-*（他人在途）、im 2 个 docs/research 改动（10/25–10/31）、prompt 7 个未合并分支 + 2 个工作树、deck ~20 分支 / ~60 工作树 / 2 stash、im 10 分支 / 5 工作树、manage 未跟踪 .dsh-mattskillsdeck-cache/——均早于本规格且属其他会话，保持原状交其 owner。
+9. 临时文件：D:/temp/hac2-pack/ 的 tarball 与 web profile 备份按规格记录保留为历史证据；manage .tmp/ 证据目录已被 .gitignore 忽略，未入库。
+
+## 五、收口方式说明
+
+- 工作区约定与先例：markdown 后端的 spec 容器不支持 deck_issue_patch 评论（工具报 map.md not-found，见 0969bb1 先例的同一说明），故收口评论按约定直接回填本 spec.md 正文，同时把头部 DSH-STATUS 改为 closed；这与用户在详情页点「完成」等效（本次由用户 2026-11-01 指令授权 agent 执行关闭）。
+- 关闭不改变票 14 的 open 状态，也不回滚任何实现票。
+
+
 ## 进度
+
+- 进度：100%（2026-11-01T13:10:00+08:00）：独立复核四项通过（规格承诺落地 / 长线分支 / 提交上检查复跑 / 遗留清零），规格关闭；收口评论见上一节。
+
