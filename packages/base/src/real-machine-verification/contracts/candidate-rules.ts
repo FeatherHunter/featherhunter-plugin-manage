@@ -16,7 +16,7 @@
 import type { CommitSha, Sha256Hex } from "./branding";
 import { parseCommitSha, parseSha256Hex } from "./branding";
 import { err, ok, type Result } from "./result";
-import type { VerificationBase } from "./identity";
+import { canonicalJson, sha256Text, type VerificationBase } from "./identity";
 
 /** The manifest schema this package understands. A different number is rejected loudly. */
 export const CANDIDATE_SCHEMA_VERSION = 2;
@@ -26,6 +26,23 @@ export interface CandidatePackageFile {
   readonly path: string;
   readonly bytes: number;
   readonly sha256: Sha256Hex;
+}
+
+/**
+ * What the packaged client entry says about itself. The check is honest about
+ * its limits: when the entry is absent or carries no recognizable constant the
+ * status is `blocked`, never `ok`.
+ */
+export type CandidateEntryStatus = "ok" | "blocked" | "mismatch";
+
+export interface CandidateEntryCheck {
+  /** Profile-declared path inside the package, e.g. `dist/client/index.js`. */
+  readonly clientEntry: string;
+  readonly foundPackageName: string | null;
+  readonly foundVersion: string | null;
+  readonly status: CandidateEntryStatus;
+  /** sha256 of the packaged entry file; null when the entry was not in the package. */
+  readonly sha256: Sha256Hex | null;
 }
 
 /** The frozen build description written to `candidate.json`. */
@@ -45,6 +62,8 @@ export interface CandidateManifest {
     readonly commit: CommitSha;
     readonly branch: string;
     readonly dirty: boolean;
+    /** Sorted porcelain paths observed at freeze time; evidence for `dirty`. */
+    readonly dirtyFiles: readonly string[];
   };
   readonly package: {
     readonly tgzPath: string;
@@ -57,11 +76,24 @@ export interface CandidateManifest {
     readonly fileCount: number;
     /** Digest over `files` (path + sha256), independent of the tarball packaging. */
     readonly fileDigest: Sha256Hex;
-    /** Digest over the canonical manifest, used to notice unreproducible rebuilds. */
+    /** Digest over the packed package.json plus the source commit; notices version/commit-only rebuilds. */
     readonly manifestDigest: Sha256Hex;
     /** Commit compiled into the client bundle; must equal `git.commit` when present. */
     readonly buildCommit?: CommitSha | null;
   };
+  /** What the packaged client entry declares. Absent when it could not be inspected. */
+  readonly entry?: CandidateEntryCheck;
+  /** Free-form but stable caveats, e.g. "no build commit embedded". */
+  readonly notes?: readonly string[];
+}
+
+/**
+ * Digest over the package manifest plus the source commit. Unlike `fileDigest`
+ * (file contents only) this notices version/commit changes that leave every
+ * file byte identical, which is what makes a rebuild comparable.
+ */
+export function packageManifestDigest(packageManifest: unknown, commit: CommitSha): Sha256Hex {
+  return sha256Text(canonicalJson({ commit, manifest: packageManifest }));
 }
 
 /** The identity a batch stores: enough to recognize the candidate without the manifest. */
@@ -161,6 +193,16 @@ export function parseCandidateManifest(value: unknown): Result<CandidateManifest
   if (!commit.ok) return commit;
   if (typeof value.git.branch !== "string") return invalid("candidate manifest git.branch must be a string");
   if (typeof value.git.dirty !== "boolean") return invalid("candidate manifest git.dirty must be a boolean");
+  const dirtyFiles: string[] = [];
+  if (value.git.dirtyFiles !== undefined) {
+    if (!Array.isArray(value.git.dirtyFiles)) return invalid("candidate manifest git.dirtyFiles must be an array");
+    for (const [index, item] of value.git.dirtyFiles.entries()) {
+      if (typeof item !== "string" || item.length === 0) {
+        return invalid(`candidate manifest git.dirtyFiles[${index}] must be a non-empty string`);
+      }
+      dirtyFiles.push(item);
+    }
+  }
 
   if (!isRecord(value.package)) return invalid("candidate manifest package must be an object");
   const pkg = value.package;
@@ -205,6 +247,58 @@ export function parseCandidateManifest(value: unknown): Result<CandidateManifest
     buildCommit = parsed.value;
   }
 
+  let entry: CandidateEntryCheck | undefined;
+  if (value.entry !== undefined) {
+    if (!isRecord(value.entry)) return invalid("candidate manifest entry must be an object");
+    const raw = value.entry;
+    if (typeof raw.clientEntry !== "string" || raw.clientEntry.length === 0 || raw.clientEntry.includes("\\")) {
+      return invalid("candidate manifest entry.clientEntry must be a non-empty /-separated path");
+    }
+    if (raw.status !== "ok" && raw.status !== "blocked" && raw.status !== "mismatch") {
+      return invalid(`candidate manifest entry.status ${JSON.stringify(raw.status)} must be "ok", "blocked" or "mismatch"`);
+    }
+    const found = (field: "foundPackageName" | "foundVersion"): string | null => {
+      const rawValue = raw[field];
+      if (rawValue === null) return null;
+      if (typeof rawValue !== "string" || rawValue.length === 0) {
+        throw new Error(`candidate manifest entry.${field} must be null or a non-empty string`);
+      }
+      return rawValue;
+    };
+    let foundPackageName: string | null;
+    let foundVersion: string | null;
+    try {
+      foundPackageName = found("foundPackageName");
+      foundVersion = found("foundVersion");
+    } catch (error) {
+      return invalid(error instanceof Error ? error.message : String(error));
+    }
+    let entrySha: Sha256Hex | null = null;
+    if (raw.sha256 !== null) {
+      const parsed = readSha(raw.sha256, "entry.sha256");
+      if (!parsed.ok) return parsed;
+      entrySha = parsed.value;
+    }
+    entry = {
+      clientEntry: raw.clientEntry,
+      foundPackageName,
+      foundVersion,
+      status: raw.status,
+      sha256: entrySha,
+    };
+  }
+
+  let notes: readonly string[] | undefined;
+  if (value.notes !== undefined) {
+    if (!Array.isArray(value.notes)) return invalid("candidate manifest notes must be an array");
+    for (const [index, item] of value.notes.entries()) {
+      if (typeof item !== "string" || item.length === 0) {
+        return invalid(`candidate manifest notes[${index}] must be a non-empty string`);
+      }
+    }
+    notes = [...(value.notes as string[])];
+  }
+
   const manifest: CandidateManifest = {
     schemaVersion: CANDIDATE_SCHEMA_VERSION,
     generatedAt: value.generatedAt,
@@ -212,7 +306,7 @@ export function parseCandidateManifest(value: unknown): Result<CandidateManifest
     version: value.version,
     validity: value.validity,
     sourceStable: value.sourceStable,
-    git: { commit: commit.value, branch: value.git.branch, dirty: value.git.dirty },
+    git: { commit: commit.value, branch: value.git.branch, dirty: value.git.dirty, dirtyFiles },
     package: {
       tgzPath: pkg.tgzPath,
       tgzBytes: pkg.tgzBytes as number,
@@ -226,6 +320,8 @@ export function parseCandidateManifest(value: unknown): Result<CandidateManifest
       ...(typeof pkg.npmShasum === "string" ? { npmShasum: pkg.npmShasum } : {}),
       ...(typeof pkg.npmIntegrity === "string" ? { npmIntegrity: pkg.npmIntegrity } : {}),
     },
+    ...(entry === undefined ? {} : { entry }),
+    ...(notes === undefined ? {} : { notes }),
   };
   return ok(manifest);
 }
