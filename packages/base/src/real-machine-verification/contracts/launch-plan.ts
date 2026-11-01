@@ -54,8 +54,14 @@ export interface LaunchRequest {
   readonly home: string;
   /** Redirected `USERPROFILE`/`HOME`, absolute. */
   readonly userprofile: string;
-  /** Instance working directory (holds the plugin cache and logs), absolute. */
+  /** Instance working directory (holds the plugin cache), absolute; also the child process's cwd. */
   readonly startCwd: string;
+  /**
+   * Where the instance stdout/stderr files are written. Defaults to `startCwd`;
+   * the launch orchestrator points it at the instance directory so logs survive
+   * next to `instance.json` even when the working directory is cleaned.
+   */
+  readonly logDir?: string;
   /** Cache directory the plugin writes under `startCwd`; `logs` lives inside it. */
   readonly pluginCacheDir?: string;
   readonly runtime: DshRuntimePaths;
@@ -198,6 +204,9 @@ export function planLaunch(request: LaunchRequest): Result<LaunchPlan> {
   if (!isAbsolutePath(request.startCwd)) {
     return invalid(`startCwd must be an absolute path, got ${JSON.stringify(request.startCwd)}`);
   }
+  if (request.logDir !== undefined && !isAbsolutePath(request.logDir)) {
+    return invalid(`logDir must be an absolute path, got ${JSON.stringify(request.logDir)}`);
+  }
   if (!isAbsolutePath(request.runtime.exe)) {
     return invalid(`runtime.exe must be an absolute path, got ${JSON.stringify(request.runtime.exe)}`);
   }
@@ -231,6 +240,7 @@ export function planLaunch(request: LaunchRequest): Result<LaunchPlan> {
   if (port === 0) {
     notes.push("port 0: the host chooses an ephemeral port, so concurrent instances cannot collide");
   }
+  notes.push(`executable ${request.runtime.exe} (asar entry ${request.runtime.cliJs})`);
 
   const plan: LaunchPlan = {
     profile: request.profile,
@@ -238,13 +248,16 @@ export function planLaunch(request: LaunchRequest): Result<LaunchPlan> {
     userprofile: request.userprofile,
     cwd: request.startCwd,
     port,
-    argv: ["--expose-internals", request.runtime.cliJs, "--profile", request.profile, "--port", String(port), "--no-open"],
+    // argv[0] is the executable itself: the process port spawns argv[0] and
+    // passes the rest as arguments. The host CLI entry runs under
+    // `--expose-internals` because it is an Electron main-process module.
+    argv: [request.runtime.exe, "--expose-internals", request.runtime.cliJs, "--profile", request.profile, "--port", String(port), "--no-open"],
     env: env.value,
     envNames,
     secretEnvNames: [...secretEnvNames].sort(),
     logFiles: {
-      stdout: joinPath(request.startCwd, "instance.stdout.log"),
-      stderr: joinPath(request.startCwd, "instance.stderr.log"),
+      stdout: joinPath(request.logDir ?? request.startCwd, "instance.stdout.log"),
+      stderr: joinPath(request.logDir ?? request.startCwd, "instance.stderr.log"),
       pluginLogDir: logDirectory,
     },
     tokenUrlPattern: TOKEN_URL_PATTERN,

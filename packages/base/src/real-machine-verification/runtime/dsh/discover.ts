@@ -50,6 +50,20 @@ export interface DiscoveredDsh {
   readonly tried: readonly string[];
 }
 
+/**
+ * The path to pass to the executable for one discovered install.
+ *
+ * Discovery reports the CLI entry as a posix path *inside* the archive because
+ * that is what archive inspection needs. Spawning needs the two joined back
+ * together, with forward slashes inside the archive — the same spelling a desktop
+ * install uses in its own argv.
+ */
+export function hostCliPath(discovered: Pick<DiscoveredDsh, "asarPath" | "cliJs">): string {
+  if (discovered.asarPath === null) return discovered.cliJs;
+  const archive = toPosixPath(discovered.asarPath);
+  return archive.endsWith("/") ? archive + discovered.cliJs : archive + "/" + discovered.cliJs;
+}
+
 export interface DiscoverDshOptions {
   readonly fs: FsPort;
   readonly env: EnvPort;

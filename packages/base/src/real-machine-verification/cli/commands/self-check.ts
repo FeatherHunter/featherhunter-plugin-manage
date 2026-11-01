@@ -40,9 +40,9 @@ import {
 import { prepareRunDirectory } from "../../orchestration/run-directory";
 import { executePlan } from "../../orchestration/runner";
 import { planSelfCheck, SELF_CHECK_COMMAND, type SelfCheckContext } from "../../orchestration/self-check";
+import { profileDirectory, resolveDshHome, resolveWorkRoot } from "../../orchestration/context";
 import { checkId } from "../../orchestration/types";
-import { resolveRealHome } from "../../runtime/dsh/home";
-import { isPosixAbsolute, isWindowsAbsolute, joinFsPath, resolveAgainst } from "../../runtime/paths";
+import { joinFsPath } from "../../runtime/paths";
 import type { RuntimeFacts } from "../../runtime/types";
 import type { ParsedArgs } from "../args";
 import type { CliIo } from "../io";
@@ -53,23 +53,6 @@ export interface SelfCheckCommandDeps {
   readonly io: CliIo;
   readonly runtime: RuntimeFacts;
   readonly loadDeclaration?: (options: LoadDeclarationOptions) => Promise<DeclarationLoadResult>;
-}
-
-/** `<cwd>/.scratch/verify` unless `--work-root` says otherwise. */
-function resolveWorkRoot(cwd: string, raw: string | undefined): string {
-  if (raw === undefined) return joinFsPath(cwd, ".scratch", "verify");
-  return isWindowsAbsolute(raw) || isPosixAbsolute(raw) ? raw : resolveAgainst(cwd, raw);
-}
-
-/** The DSH home: `DSH_HOME` when set, otherwise the real user home's `.dsh`. */
-function resolveDshHome(ports: Ports): string {
-  const configured = ports.env.get("DSH_HOME")?.trim();
-  if (configured !== undefined && configured.length > 0) {
-    return isWindowsAbsolute(configured) || isPosixAbsolute(configured)
-      ? configured
-      : resolveAgainst(ports.env.cwd(), configured);
-  }
-  return resolveRealHome(ports.env);
 }
 
 /** The one check a blocked/failed declaration reports under. */
@@ -182,7 +165,7 @@ export async function runSelfCheckCommand(args: ParsedArgs, deps: SelfCheckComma
   }
   const profileName: ProfileName = resolved.value;
   const dshHome = resolveDshHome(ports);
-  const profileDir = joinFsPath(dshHome, "profiles", profileName);
+  const profileDir = profileDirectory(dshHome, profileName);
 
   // A small environment snapshot: enough for another machine to understand the
   // run, and deliberately not a dump of the process environment (it can hold

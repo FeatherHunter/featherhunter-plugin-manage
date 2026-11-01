@@ -231,6 +231,7 @@ describe("planLaunch", () => {
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     expect(plan.value.argv).toEqual([
+      "C:\\DSH\\DSH.exe",
       "--expose-internals",
       "C:\\DSH\\cli.js",
       "--profile",
@@ -240,6 +241,28 @@ describe("planLaunch", () => {
       "--no-open",
     ]);
     expect(plan.value.port).toBe(0);
+  });
+
+  it("puts the executable itself at argv[0], because that is what the process port spawns", () => {
+    const plan = planLaunch(launchRequest());
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    // A pre-fix plan started at `--expose-internals`, which the spawn port would
+    // try to execute as a program name. Lock the position, not just membership.
+    expect(plan.value.argv[0]).toBe("C:\\DSH\\DSH.exe");
+    expect(plan.value.argv[1]).toBe("--expose-internals");
+    expect(plan.value.argv).toContain("--no-open");
+  });
+
+  it("writes the instance logs where the caller points them, defaulting to the working directory", () => {
+    const defaulted = planLaunch(launchRequest());
+    const rooted = planLaunch(launchRequest({ logDir: "C:\\instances\\abc123" }));
+    expect(defaulted.ok && rooted.ok).toBe(true);
+    if (!defaulted.ok || !rooted.ok) return;
+    expect(defaulted.value.logFiles.stdout).toBe(joinPath("C:\\work\\run-a", "instance.stdout.log"));
+    expect(rooted.value.logFiles.stdout).toBe(joinPath("C:\\instances\\abc123", "instance.stdout.log"));
+    expect(rooted.value.logFiles.stderr).toBe(joinPath("C:\\instances\\abc123", "instance.stderr.log"));
+    expect(rooted.value.cwd).toBe("C:\\work\\run-a");
   });
 
   it("redirects all three isolation variables", () => {
@@ -280,6 +303,42 @@ describe("planLaunch", () => {
     if (!withCache.ok || !withoutCache.ok) return;
     expect(withCache.value.logFiles.pluginLogDir).toBe(joinPath("C:\\work\\run-a", ".dsh-demo-cache", "logs"));
     expect(withoutCache.value.logFiles.pluginLogDir).toBeNull();
+  });
+
+  it("inherits a host variable only when the declaration allowlists it", () => {
+    const baseEnv = { ...launchRequest().baseEnv, HOST_ONLY_CANARY: "canary-value" };
+    const blocked = buildLaunchEnv(launchRequest({ baseEnv }));
+    const allowed = buildLaunchEnv(
+      launchRequest({ baseEnv, instanceEnvAllowlist: ["HOST_ONLY_CANARY"] }),
+    );
+    expect(blocked.ok && allowed.ok).toBe(true);
+    if (!blocked.ok || !allowed.ok) return;
+    // A stray parent variable stays out unless the declaration names it; being
+    // allowlisted is not a licence to copy everything else.
+    expect(blocked.value.HOST_ONLY_CANARY).toBeUndefined();
+    expect(blocked.value.SECRET_KEEP_ME_OUT).toBeUndefined();
+    expect(allowed.value.HOST_ONLY_CANARY).toBe("canary-value");
+    expect(allowed.value.SECRET_KEEP_ME_OUT).toBeUndefined();
+  });
+
+  it("merges env-file secret names with the model key and reports the count", () => {
+    const plan = planLaunch(
+      launchRequest({
+        model: { ...MODEL, secretValue: "real-key", source: "real-home-store" },
+        envFile: {
+          path: "C:\\work\\env.json",
+          values: { EXTRA_TOKEN: "tok", PLAIN_VALUE: "plain" },
+          names: ["EXTRA_TOKEN", "PLAIN_VALUE"],
+          secretNames: ["EXTRA_TOKEN"],
+        },
+      }),
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.value.env.EXTRA_TOKEN).toBe("tok");
+    expect(plan.value.env.PLAIN_VALUE).toBe("plain");
+    expect(plan.value.secretEnvNames).toEqual(["EXTRA_TOKEN", "MINIMAX_CN_API_KEY"]);
+    expect(plan.value.notes.join(" ")).toContain("injected 2 secret variable(s)");
   });
 
   it("rejects relative paths and impossible ports", () => {

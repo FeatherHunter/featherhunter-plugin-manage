@@ -1,6 +1,6 @@
 # 真机验证（real-machine-verification）
 
-把 `dsh-featherhunter-plugin-base` 加进插件仓依赖 → 写 `verify/profile.ts` → 跑 `npx dsh-verify self-check` → 读报告（人话行 / `--json` / 退出码 / 证据目录）。这四步就是今天可用的全部入口；更远的 launch / model / isolation 等命令已在 `describe` 契约里，但尚未实现。
+把 `dsh-featherhunter-plugin-base` 加进插件仓依赖 → 写 `verify/profile.ts` → 跑 `npx dsh-verify self-check` → 读报告（人话行 / `--json` / 退出码 / 证据目录）。这四步加上 `dsh-verify launch` / `dsh-verify stop`（起、停隔离实例）就是今天可用的全部入口；更远的 model / isolation 等命令已在 `describe` 契约里，但尚未实现。
 
 ## 第一步：安装
 
@@ -100,5 +100,7 @@ evidence: <work-root>/runs/<runId>/evidence (<n> item(s))
 
 ## 当前实现边界
 
-- 已实现命令：`describe`、`self-check`。`describe` 列出的其余命令是后续票的契约，运行时会明确提示「described but not implemented」并以 `2` 退出，不会假装成功。
-- 证据归档/校验（`evidence add` 等）、launch、model、isolation、batch、freeze、run、cleanup 尚未实现，本文件只描述已经可跑的行为。
+- 已实现命令：`describe`、`self-check`、`launch`、`stop`。`describe` 列出的其余命令是后续票的契约，运行时会明确提示「described but not implemented」并以 `2` 退出，不会假装成功。
+- `launch`：把源 profile 复制进 `<workRoot>/instances/<id>/home`，用白名单 env 起一个 detached 实例；等 stdout 打印 token URL 后再用 HTTP 双判据验收（`/connect` 拿到 cookie，`pluginInventory/list` 里所有 `enabled: true` 条目 `fiberPhase` 都是 `active`），最后写 `plan.json` 与 `instance.json`。`--dry-run` 与真实启动共用同一个计划函数，只打印不落盘；`--json` 输出单段 JSON；退出码 `0` 就绪 / `1` 没起来 / `2` 前置缺失。
+- `stop`：按 `instance.json` 停实例（`--id` / `--dir` / `--all`）；pid 已经不在也写 `stopped.json` 并算成功；`--all` 遇到顽固 pid 仍继续处理其余实例，最终以 `1` 点名该 pid。
+- 证据归档/校验（`evidence add` 等）、model、isolation、batch、freeze、run、cleanup 尚未实现，本文件只描述已经可跑的行为。

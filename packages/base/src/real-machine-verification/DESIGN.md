@@ -410,7 +410,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 | W11 | matt 迁移 | matt 仓：profile + 场景 + 删除通用代码 | DoD 8 |
 | W12 | 四仓接入 | palette / im / prompt / ilife：各一份 profile + script | DoD 9（palette 实际跑通） |
 
-### 16.1 原型资产去向（契约已冻结；runtime/evidence 是未接线原型）
+### 16.1 原型资产去向（契约已冻结；home/launch/http-session 已由 04 接管，其余 runtime/evidence 仍是原型）
 
 票 01 开工时，仓里已有同一能力的半成品骨架。不写清楚归属，后续票会各自重写一遍；所以这里一次写死：
 
@@ -432,10 +432,11 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 | `runtime/types.ts`、`runtime/paths.ts` | **已接管（02）** | 02 | RuntimeFacts/ResolvedPaths 与路径拼写被 self-check 使用；`tests/support/fake-fs.ts` 与 self-check 系列测试全替身驱动 |
 | `runtime/fs-utils.ts`（`deleteGuardReason` / `removeTree`） | 原型 | 17 | `cleanup` 用删除守卫验收（盘根/家目录/cwd 拒删） |
 | `runtime/dsh/discover.ts` | **已接管（02，已扩展）** | 02 | `dsh-runtime` 检查；新增 PATH wrapper 发现源与 exe-missing/structure-missing 分级（exe 在但 asar 缺 = fail），失败带完整候选列表 |
-| `runtime/dsh/home.ts` | 原型 | 04（profile 物化/复制）、12（workspace registry seeding） | 04 补 home 复制与清理单测；12 接 seeder |
-| `runtime/dsh/launch.ts` | 原型 | 04 | `launch/stop` 命令 + `instance.json` 生命周期 |
+| `runtime/dsh/home.ts` | **已接管（04）** | 04（profile 物化/复制）、12（workspace registry seeding） | `copyProfile` 复制源 profile 并清 `pluginCacheDir/logs`；单测 + 真机冒烟（隔离 home 冷启动自己初始化 storages）；12 接 seeder |
+| `runtime/dsh/launch.ts` | **已接管（04）** | 04 | `launch/stop` 命令 + `plan.json`/`instance.json`/`stopped.json` 生命周期；`waitForReady` 失败带日志尾部诊断；单测 + 真机冒烟 |
 | `runtime/dsh/logs.ts` | 原型 | 04（启动链路的日志定位）、12（日志查询原语） | `logs-readable` 检查接真机日志；坏行计数不致命 |
-| `runtime/dsh/http-session.ts` | 原型，**多通道 `POST /api/<channel>/<endpoint>` 写法已被规格纠正** | 04 | 接管时改为规格的单通道 `POST /api/<endpoint>`，并用真机会话冒烟验收 |
+| `runtime/dsh/http-session.ts` | **已接管（04，已按规格改为单通道）** | 04 | `POST /api/<endpoint>` + `{args}` 包装 + `origin` 头；`/connect` 只取 set-cookie；`pluginInventory/list` 的 enabled-only `active` 判据；假 HttpPort 逐项断言 + 真机冒烟 |
+| `runtime/dsh/credential-store.ts`、`orchestration/instance.ts`、`cli/commands/launch.ts`、`cli/commands/stop.ts`（04 新建） | 已接线 | 04 | 凭据只从 `refs:` 解析进内存、只进子进程 env；计划/执行共用同一 `planInstance` 值；`launch`/`stop` 的 CLI 契约与 exit code 有进程内测试 |
 | `runtime/dsh/isolation.ts` | 原型 | 05 | `settings-isolated` 探针：子进程真实解析 home + 真机设置文件前后哈希对比 |
 | `evidence/paths.ts`、`evidence/manifest.ts` | 原型 | 07 | 内容寻址落盘 + 不可变清单 + `SHA256SUMS` |
 | `runtime/platform/**`（02 新建：fs/command/clock/env/process/http/screen/defaults） | 已接线 | 03+ 复用 | 真实 Node 端口（process=detached spawn/taskkill，screen=PowerShell 等 best-effort），失败返回 `Result` 不 throw；测试只用 `tests/support/fake-*` |

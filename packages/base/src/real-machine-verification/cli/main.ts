@@ -29,7 +29,9 @@ import type { DeclarationLoadResult, LoadDeclarationOptions } from "../declarati
 import { createNodePorts, createRuntimeFacts } from "../runtime/platform/defaults";
 import type { RuntimeFacts } from "../runtime/types";
 import { parseArgs } from "./args";
+import { runLaunchCommand } from "./commands/launch";
 import { runSelfCheckCommand } from "./commands/self-check";
+import { runStopCommand } from "./commands/stop";
 import { createNodeIo, type CliIo } from "./io";
 
 const CLI_NAME = "dsh-verify";
@@ -39,7 +41,7 @@ const CLI_NAME = "dsh-verify";
  * capability description but missing here exits `2` with a sentence instead of
  * pretending to succeed — the description is the contract, this set is the truth.
  */
-export const IMPLEMENTED: ReadonlySet<string> = new Set<string>(["describe", "self-check"]);
+export const IMPLEMENTED: ReadonlySet<string> = new Set<string>(["describe", "self-check", "launch", "stop"]);
 
 /** Injection points for tests and for agents driving the CLI in-process. */
 export interface CliDeps {
@@ -191,6 +193,19 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
       runtime: runtimeFacts(deps),
       ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
     });
+  }
+
+  if (parsed.command === "launch") {
+    return runLaunchCommand(parsed, {
+      ports: deps.ports ?? createNodePorts(),
+      io,
+      runtime: runtimeFacts(deps),
+      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+    });
+  }
+
+  if (parsed.command === "stop") {
+    return runStopCommand(parsed, { ports: deps.ports ?? createNodePorts(), io });
   }
 
   io.stderr(`${CLI_NAME}: "${parsed.command}" reached an unexpected dispatch branch\n`);

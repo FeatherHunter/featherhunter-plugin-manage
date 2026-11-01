@@ -62,6 +62,8 @@ export class FakeFs implements FsPort {
   private readonly files = new Map<string, Uint8Array>();
   private readonly directories = new Set<string>();
   private readonly cwd: string;
+  /** Every mutating call, in order; tests assert a plan-only path records none. */
+  readonly writes: { readonly op: string; readonly path: string }[] = [];
 
   constructor(cwd = "C:\\fake\\repo") {
     this.cwd = fakePath(cwd);
@@ -150,6 +152,7 @@ export class FakeFs implements FsPort {
     const resolved = this.resolve(path);
     const parent = this.requireParent(resolved);
     if (!parent.ok) return parent;
+    this.writes.push({ op: "writeText", path: resolved });
     this.files.set(resolved, textEncoder.encode(text));
     return ok(undefined);
   }
@@ -201,6 +204,7 @@ export class FakeFs implements FsPort {
   }
 
   async makeDir(path: string): Promise<Result<void>> {
+    this.writes.push({ op: "makeDir", path: this.resolve(path) });
     let current = this.resolve(path);
     const pending: string[] = [];
     while (current !== "/") {
@@ -225,6 +229,7 @@ export class FakeFs implements FsPort {
         return err(failure("conflict", `ENOTEMPTY: directory not empty, rmdir '${resolved}'`));
       }
     }
+    this.writes.push({ op: "remove", path: resolved });
     for (const file of files) this.files.delete(file);
     for (const directory of directories) this.directories.delete(directory);
     return ok(undefined);
@@ -233,6 +238,7 @@ export class FakeFs implements FsPort {
   async copy(from: string, to: string, options: { readonly recursive?: boolean } = {}): Promise<Result<CopyOutcome>> {
     const source = this.resolve(from);
     const target = this.resolve(to);
+    this.writes.push({ op: "copy", path: source + "->" + target });
     const sourceFile = this.files.get(source);
     if (sourceFile !== undefined) {
       const parent = this.requireParent(target);
@@ -246,12 +252,15 @@ export class FakeFs implements FsPort {
     if (options.recursive !== true) {
       return err(failure("conflict", `EISDIR: illegal operation on a directory, copy '${source}'`));
     }
+    // A recursive copy creates the destination tree; mirror that here so a caller
+    // that copies a nested profile into a fresh home runs the same path as on disk.
+    this.seedDir(target);
     let files = 0;
     let bytes = 0;
     for (const [file, content] of matching) {
       const destination = `${target}/${file.slice(prefix.length)}`;
-      const parent = this.requireParent(destination);
-      if (!parent.ok) return parent;
+      const destinationParent = parentOf(destination);
+      if (destinationParent !== null) this.seedDir(destinationParent);
       this.files.set(destination, new Uint8Array(content));
       files += 1;
       bytes += content.byteLength;
@@ -260,6 +269,7 @@ export class FakeFs implements FsPort {
   }
 
   async move(from: string, to: string): Promise<Result<void>> {
+    this.writes.push({ op: "move", path: this.resolve(from) + "->" + this.resolve(to) });
     const copied = await this.copy(from, to, { recursive: true });
     if (!copied.ok) return copied;
     return this.remove(from, { recursive: true });
