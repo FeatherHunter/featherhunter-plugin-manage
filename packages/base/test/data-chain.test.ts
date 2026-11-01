@@ -175,7 +175,8 @@ describe("buildManifest", () => {
     const manifest = buildManifest({ version: "1.2.3", source, plugins });
 
     expect(manifest.version).toBe("1.2.3");
-    expect(manifest.updatedAt).toBe("2026-10-31T00:00:00+08:00");
+    // updatedAt is derived from the source date, so this pins the rule, not one data revision.
+    expect(manifest.updatedAt).toBe(`${source.updatedAt}T00:00:00+08:00`);
     expect(manifest.groups.map((group) => group.id)).toEqual(["feishu", "qq", "wechat"]);
     for (const group of manifest.groups) {
       expect(group.qr.kind).toBe("remote");

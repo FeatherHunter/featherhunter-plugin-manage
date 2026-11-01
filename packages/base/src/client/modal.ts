@@ -1,5 +1,6 @@
 import { formatValidity, isExpired, pickText, sortByOrder } from "../core/index";
 import type { Group, Lang } from "../core/types";
+import { channelBadge, createChannelBadge } from "./channel-badges";
 import { ensureBaseStyles } from "./styles";
 import { resolveText, type TextKey, type TextOverrides } from "./texts";
 
@@ -214,7 +215,18 @@ export function mountContactModal(config: ContactModalConfig): ContactModalHandl
 
     const cardTitle = doc.createElement("h3");
     cardTitle.className = "dsh-base-modal__card-title";
-    cardTitle.textContent = pickText(group.title, lang);
+    const badge = channelBadge(group.platform);
+    if (badge) {
+      cardTitle.append(createChannelBadge(doc, badge));
+      const channel = doc.createElement("span");
+      channel.className = "dsh-base-visually-hidden";
+      channel.textContent = t(badge.labelKey);
+      cardTitle.append(channel);
+    }
+    const cardName = doc.createElement("span");
+    cardName.className = "dsh-base-modal__card-name";
+    cardName.textContent = pickText(group.title, lang);
+    cardTitle.append(cardName);
     card.append(cardTitle);
 
     if (group.subtitle) {

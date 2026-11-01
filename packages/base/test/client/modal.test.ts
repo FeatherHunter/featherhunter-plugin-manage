@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import * as React from "react";
+import { channelBadge } from "../../src/client/channel-badges";
 import { createBaseUI } from "../../src/client/index";
+import { resolveText } from "../../src/client/texts";
 import { BASELINE } from "../../src/core/index";
 import { installDialogPolyfill, resetClientDom } from "./helpers";
 
@@ -107,5 +109,32 @@ describe("contact modal lifecycle", () => {
     first.closeContactModal();
     second.closeContactModal();
     expect(document.querySelector("dialog")).toBeNull();
+  });
+
+  it("puts the channel badge in front of the card title and drops the redundant WeChat subtitle", () => {
+    const ui = createBaseUI(React, { lang: "zh" });
+    const dialog = openDialog(ui);
+
+    for (const group of BASELINE.manifest.groups) {
+      const title = dialog.querySelector<HTMLElement>(
+        `[data-group-id="${group.id}"] .dsh-base-modal__card-title`,
+      );
+      expect(title, "missing title for group " + group.id).not.toBeNull();
+      // Badge first, then the visually hidden channel name, then the visible name.
+      expect(title?.firstElementChild?.classList.contains("dsh-base-modal__card-badge")).toBe(true);
+      const badge = channelBadge(group.platform);
+      expect(badge, "missing channel badge for " + group.platform).toBeDefined();
+      expect(title?.querySelector(".dsh-base-visually-hidden")?.textContent).toBe(
+        resolveText(badge!.labelKey, "zh"),
+      );
+      expect(title?.querySelector(".dsh-base-modal__card-name")?.textContent).toBe(group.title.zh);
+    }
+
+    // WeChat's "群聊：DSH 插件交流群" repeated the title, so it is gone from the card.
+    const wechat = dialog.querySelector<HTMLElement>('[data-group-id="wechat"]');
+    expect(wechat?.querySelector(".dsh-base-modal__card-subtitle")).toBeNull();
+    // QQ keeps its real group number.
+    const qq = dialog.querySelector<HTMLElement>('[data-group-id="qq"]');
+    expect(qq?.querySelector(".dsh-base-modal__card-subtitle")?.textContent).toContain("1020866453");
   });
 });

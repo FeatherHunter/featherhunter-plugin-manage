@@ -126,7 +126,12 @@ export const BASE_CSS = [
   ".dsh-base-modal__grid{display:grid;grid-template-columns:repeat(var(--dsh-base-columns,4),minmax(0,1fr));gap:14px;align-items:start}",
   ".dsh-base-modal__card{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0;padding:14px 12px;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.2));border-radius:14px;background:var(--dsw-alias-bg-layer-2,#fff);text-align:center}",
   ".dsh-base-modal__card--expired{background:var(--dsw-alias-state-warn-tertiary,#fffaf3);border-color:var(--dsw-alias-state-warn-secondary,rgba(180,83,9,.28))}",
-  ".dsh-base-modal__card-title{margin:0;font-size:13px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary,#1f2329)}",
+  ".dsh-base-modal__card-title{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 6px;margin:0;font-size:13px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary,#1f2329)}",
+  ".dsh-base-modal__card-name{min-width:0}",
+  // Brand colour comes from the data row as the --dsh-base-badge-color custom
+  // property; everything visual about the tile stays in this rule.
+  ".dsh-base-modal__card-badge{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;background:var(--dsh-base-badge-color,#6b7280);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}",
+  ".dsh-base-modal__card-badge svg{display:block;width:12px;height:12px}",
   ".dsh-base-modal__card-subtitle{display:inline-block;align-self:center;margin:0;padding:2px 6px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary,#86909c);font:inherit;font-size:11px;line-height:1.5;cursor:pointer;transition:background .15s ease,color .15s ease}",
   ".dsh-base-modal__card-subtitle:hover{background:rgba(127,127,127,.1);color:var(--dsw-alias-label-secondary,#4e5969)}",
   ".dsh-base-modal__card-subtitle[data-copied='true']{color:var(--dsw-alias-link,#4d6bfe)}",
@@ -164,6 +169,9 @@ export const BASE_CSS = [
   "@media (max-width:479px){.dsh-base-modal__grid{grid-template-columns:minmax(0,1fr)}}",
   "@media (max-width:719px){.dsh-base-modal__mobile-hint{display:inline}}",
   "@media (prefers-reduced-motion:reduce){.dsh-base-modal__close,.dsh-base-modal__card-subtitle,.dsh-base-contact-button,.dsh-base-contact-row,.dsh-base-plugins__row,.dsh-base-icon-action,.dsh-base-tip{transition:none}}",
+  // --- shared utilities --------------------------------------------------------
+  // Text read by assistive tech only (e.g. the channel name in a card title).
+  ".dsh-base-visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}",
 ].join("\n");
 
 /** Inject the stylesheet once per document. */

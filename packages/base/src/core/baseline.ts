@@ -5,8 +5,8 @@ export const BASELINE: BaselineContent = {
   "manifest": {
     "schema": 1,
     "version": "0.1.5",
-    "revision": 2,
-    "updatedAt": "2026-10-31T00:00:00+08:00",
+    "revision": 3,
+    "updatedAt": "2026-11-01T00:00:00+08:00",
     "fallbackUrl": "https://github.com/FeatherHunter/featherhunter-plugin-manage",
     "groups": [
       {
@@ -89,10 +89,6 @@ export const BASELINE: BaselineContent = {
         "title": {
           "zh": "DSH 插件交流群",
           "en": "DSH Plugin Community"
-        },
-        "subtitle": {
-          "zh": "群聊：DSH 插件交流群",
-          "en": "Group chat: DSH Plugin Community"
         },
         "validUntil": "2026-11-07"
       }

@@ -21,7 +21,10 @@ export type TextKey =
   | "starLabel"
   | "issueLabel"
   | "actionsLabel"
-  | "moreActions";
+  | "moreActions"
+  | "channelFeishu"
+  | "channelQq"
+  | "channelWechat";
 
 export type TextOverrides = Partial<Record<string, string>>;
 
@@ -52,6 +55,10 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     issueLabel: "提交 Issue",
     actionsLabel: "快捷操作",
     moreActions: "更多操作",
+    // Contact modal card titles: channel name in front of the group name.
+    channelFeishu: "飞书群",
+    channelQq: "QQ群",
+    channelWechat: "微信群",
   },
   en: {
     contact: "Contact us",
@@ -75,6 +82,10 @@ export const MESSAGES: Record<Lang, Record<TextKey, string>> = {
     issueLabel: "Open an issue",
     actionsLabel: "Quick actions",
     moreActions: "More actions",
+    // Contact modal card titles: channel name in front of the group name.
+    channelFeishu: "Feishu group",
+    channelQq: "QQ group",
+    channelWechat: "WeChat group",
   },
 };
 

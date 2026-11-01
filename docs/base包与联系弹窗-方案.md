@@ -58,7 +58,7 @@ packages/base/
 
 规则：清单全量（可增删换序）；空数组视为非法回退基线；单群过期只降级该卡；文件名带日期保证 CDN 缓存不串图；作者插件清单 5 项、每渲染面排除自己。
 
-群组数据一份、两个出口：README 版用 `readmeTitle` + `alt` + `card`（260 宽整卡，表格结构与现状逐字接近，ilife 用 `## 反馈与联系` 变体），弹窗版用 `title` + `subtitle` + `note` + 裁图 + `validUntil` 角注（见规格 §2 规则 9）。
+群组数据一份、两个出口：README 版用 `readmeTitle` + `alt` + `card`（260 宽整卡，表格结构与现状逐字接近，ilife 用 `## 反馈与联系` 变体），弹窗版用 `title` + `subtitle` + `note` + 裁图 + `validUntil` 角注（见规格 §2 规则 9），卡标题前再按 `platform` 渲染渠道官方徽标（方案 B：品牌色 18px 圆角块 + 白色官方标志，表在 `packages/base/src/client/channel-badges.ts`，新增渠道只加表项）。徽标是规格 §2 规则 9 / §5 群卡字段表之外的新增，决策与理由见 `docs/adr/0002-contact-modal-channel-badges.md`。
 
 作者插件清单的文案已由仓主于 2026-10-30 逐字定稿，落在 `contact/plugins.json`（顺序 deck → prompt → palette → im → ilife，每条 `order` + `verifiedAt`）。ilife 的「⚠️建设中⚠️」写在文案本身，所以设置面板卡与 README 中英两版显示完全一致。
 
@@ -102,7 +102,7 @@ const base = createBaseUI(React, { lang: "zh", selfId: "deck" })
 ## 8 联系弹窗
 
 - `<dialog>.showModal()`；标题区（CONNECT / 反馈与联系 + 关闭 x）→ 欢迎语 → 4 列群卡 → 底部「扫描二维码加入我们」提示。
-- 群卡：标题 / 副行 / 二维码（白底、pixelated、≥150px）/ 角注；过期卡换成兜底链接。
+- 群卡：渠道徽标 + 标题 / 副行 / 二维码（白底、pixelated、≥150px）/ 角注；过期卡换成兜底链接。
 - Esc、点遮罩关闭；焦点回归触发按钮；锁 body 滚动；`role=dialog` + `aria-modal`。
 - 手机端群号可点复制；不展示过期码；失败静默降级。
 
@@ -110,7 +110,7 @@ const base = createBaseUI(React, { lang: "zh", selfId: "deck" })
 
 | 块 | 标记 | 说明 |
 | --- | --- | --- |
-| 联系区 | `<!-- CONTACT-START/END -->` | 保持现状表格结构（CONNECT h2 或 ilife 的 `## 反馈与联系` + 欢迎语 + 三列 260 宽整卡），图片指向 npm CDN 精确版本；副行/角注只进弹窗 |
+| 联系区 | `<!-- CONTACT-START/END -->` | 保持现状表格结构（CONNECT h2 或 ilife 的 `## 反馈与联系` + 欢迎语 + 三列 260 宽整卡），图片指向 npm CDN 精确版本；副行/角注/渠道徽标只进弹窗 |
 | 星图区 | `<!-- STAR-START/END -->` | `<picture>` 深浅双图 + `?v=YYYYMMDDHHmm`；ilife 补 |
 | 致谢区 | 沿用 `<!-- THANKS-TABLE-*-START/END -->` | 表结构不变，纯函数生成 |
 | 作者其他插件区 | `<!-- MORE-START/END -->` | `<h2><sub>MORE</sub><br>作者的其他作品</h2>` + 引导句 + 4 行（顺序 deck → prompt → palette → im → ilife，文案与设置面板同源）；ilife 补；每仓排除自己 |

@@ -4,6 +4,7 @@
 <!-- DSH-BLOCKED-BY: 09, 10, 11, 12 -->
 <!-- DSH-IDEMPOTENCY-KEY: deck-d85fe86b-5978061 -->
 <!-- DSH-CREATED: 2026-10-31T03:47:24.367Z -->
+<!-- DSH-ASSIGNEES: lead -->
 # 14: HUMAN-GATE 真机与真实页面证据
 
 **What to build:** 五仓真实页面与真机证据汇总（由仓主执行、代理不自判）：真机扫码飞书/QQ/微信各一次、真实浏览器 dialog top layer 与焦点回归、GitHub 上四块观感、大陆网络三通道全失败降级。
@@ -65,6 +66,11 @@ D 组定性（回答 owner 提问「d 组是临时验证还是要发版本？」
 5) E3 恢复回源 PASS：unblock+reload 后 unpkg manifest 200（992ms），随后 jsdelivr 远程图 qr-feishu/qr-wechat-2026-10-31/qr-qq 全 200（1575–1657ms），弹窗 img 320×320/true——证明远程清单被采用并预取远程图。截图 .tmp/hg-e3-restored2.png。
 证据已写入 docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md §7.6，并把 §7.2 的 C4/C6/E 标为代理已自动化覆盖。
 剩余待 owner：C4/C6 主观观感一眼、D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）；B 组 owner 已确认。票保持 open。
+
+### local — 2026-11-01T07:43:18.579Z
+owner 观感反馈（2026-11-01）：联系弹窗三张卡标题都是「DSH 插件交流群」，owner 追问能否在名字前加各渠道（飞书 / QQ / 微信）的官方 LOGO，好让三张卡一眼区分。
+
+已备讨论稿（三种做法：单色品牌标 16px / 彩色徽章 18px / 品牌色文字 chip；另附中英双语对照），截图见会话。技术面结论：改动点很小——`packages/base/src/client/modal.ts` 的 `buildCard()` 里 `cardTitle.textContent = pickText(group.title, lang)` 一行，内联 SVG 即可，不需要动 data/CDN。但落地需要 base 发包 + 五仓换钉，且会改动 C4/C6 的观感证据，需重跑 human gate。待 owner 拍板方案与时机后，另开票实施。
 ## 2026-11-01 00:55 0.1.5 轮：A/C 组代理实测补齐，B/D/E 仍待仓主
 
 - 规格 `.scratch/header-action-cluster-v2` 的票 01–08 已全部关闭；base 已发到 0.1.5，五仓换代（HEAD==origin，依赖精确 0.1.5）并装入 web profile，owner 2026-11-01 00:44 人眼验收通过。

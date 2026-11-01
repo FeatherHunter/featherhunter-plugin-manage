@@ -70,6 +70,8 @@ describe("renderContactBlock", () => {
 
   it("dates a limited-time card from manifest.updatedAt when the file name has no date", () => {
     const manifest: Manifest = structuredClone(BASELINE.manifest);
+    // Pin the manifest date: this test is about the date source, not about the shipped data.
+    manifest.updatedAt = "2026-10-31T00:00:00+08:00";
     const wechat = manifest.groups.find((group) => group.id === "wechat")!;
     wechat.card = "card-wechat.png";
     wechat.validUntil = "2026-10-30";
