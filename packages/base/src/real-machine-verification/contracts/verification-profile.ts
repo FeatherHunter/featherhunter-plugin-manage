@@ -26,6 +26,19 @@ export interface ModelSelection {
   readonly input?: readonly ("text" | "image")[];
 }
 
+/**
+ * The browser adapter a plugin repository injects for page-level checks.
+ *
+ * The core package owns no browser library; the plugin repository owns the
+ * driver. `module` is either a path relative to the repository root (for
+ * example `verify/browser.mjs`) or an installed package name. `exportName`
+ * selects a named export; omitted means the module's default export.
+ */
+export interface BrowserAdapterDeclaration {
+  readonly module: string;
+  readonly exportName?: string;
+}
+
 /** A bundled-skill directory the package ships, and how many skills it must expose. */
 export interface BundledSkillsDeclaration {
   /** Directory inside the plugin package, `/`-separated, e.g. `bundled-skills`. */
@@ -85,6 +98,11 @@ export interface VerificationProfileInput {
   readonly bundledSkills?: BundledSkillsDeclaration | false;
   /** Model the run should configure; `false` means "do not touch model configuration". */
   readonly model?: ModelSelection | false;
+  /**
+   * Browser adapter used by page-level checks; `false` (or omitted) means "no
+   * adapter", and page checks report `blocked` rather than `fail`.
+   */
+  readonly browser?: BrowserAdapterDeclaration | false;
   /** Workspace backends the plugin understands, in preference order. */
   readonly workspaceBackends?: readonly string[];
   /** How to build the package under verification. */
@@ -105,6 +123,7 @@ export interface VerificationProfile {
   readonly pluginSettingsDir?: string;
   readonly bundledSkills: BundledSkillsDeclaration | false;
   readonly model: ModelSelection | false;
+  readonly browser: BrowserAdapterDeclaration | false;
   readonly workspaceBackends: readonly string[];
   readonly build?: { readonly command: string; readonly timeoutMs: number };
   readonly instanceEnvAllowlist: readonly string[];
@@ -114,6 +133,13 @@ export interface VerificationProfile {
 
 const PROFILE_ID_RE = /^[a-z][a-z0-9-]{1,63}$/;
 const NPM_PACKAGE_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+/**
+ * A browser adapter module: a package name or a `/`-separated relative module
+ * path. The rule rejects absolute paths and `..` segments, so the declaration
+ * can only name something the plugin repository itself owns.
+ */
+const BROWSER_MODULE_RE = /^(?:@[A-Za-z0-9][A-Za-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*(?:\/(?=[A-Za-z0-9._-]*[A-Za-z0-9])[A-Za-z0-9._-]+)*$/;
+const JAVASCRIPT_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const RELATIVE_POSIX_PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 const DIR_NAME_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -197,6 +223,30 @@ export function parseVerificationProfile(input: VerificationProfileInput): Resul
     }
   }
 
+  if (input.browser !== undefined && input.browser !== false) {
+    if (typeof input.browser !== "object" || input.browser === null) {
+      return invalid(
+        "browser must be an object { module, exportName? } or false",
+        "omit it, set false, or declare browser: { module: \"verify/browser.mjs\" }",
+      );
+    }
+    if (typeof input.browser.module !== "string" || !BROWSER_MODULE_RE.test(input.browser.module)) {
+      return invalid(
+        `browser.module ${JSON.stringify(input.browser.module)} must be a relative /-separated path or a package name`,
+        "for example verify/browser.mjs or @scope/browser-adapter; absolute paths and .. are rejected",
+      );
+    }
+    if (
+      input.browser.exportName !== undefined &&
+      (typeof input.browser.exportName !== "string" || !JAVASCRIPT_IDENTIFIER_RE.test(input.browser.exportName))
+    ) {
+      return invalid(
+        `browser.exportName ${JSON.stringify(input.browser.exportName)} must be a JavaScript identifier`,
+        "omit it to use the module's default export",
+      );
+    }
+  }
+
   if (input.build !== undefined) {
     if (typeof input.build.command !== "string" || input.build.command.trim().length === 0) {
       return invalid("build.command must be a non-empty shell command");
@@ -244,6 +294,12 @@ export function parseVerificationProfile(input: VerificationProfileInput): Resul
       ? (input.bundledSkills ?? false)
       : { dir: input.bundledSkills.dir, expected: input.bundledSkills.expected },
     model: input.model === false || input.model === undefined ? false : { ...input.model },
+    browser: input.browser === false || input.browser === undefined
+      ? false
+      : {
+          module: input.browser.module,
+          ...(input.browser.exportName === undefined ? {} : { exportName: input.browser.exportName }),
+        },
     workspaceBackends: [...workspaceBackends],
     ...(input.build === undefined
       ? {}
@@ -268,6 +324,11 @@ export function resolveProfile(
 /** True when the model section was declared (i.e. the run should configure it). */
 export function hasModel(profile: VerificationProfile): boolean {
   return profile.model !== false;
+}
+
+/** True when the repository declares a browser adapter for page-level checks. */
+export function hasBrowserAdapter(profile: VerificationProfile): boolean {
+  return profile.browser !== false;
 }
 
 /** True when the plugin ships bundled skills the run must find registered. */
