@@ -416,6 +416,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 
 - **契约层已冻结**：`contracts/**`（14 个文件）的导出签名与语义是票 01 的交付物，被 97 条单测覆盖；后续票只消费，不改签名，确需扩展走票面/adr。
 - **`runtime/**` 与 `evidence/**` 是原型**：未接线、无测试、不在 `index.ts` 的 re-export 面里。票 01 对它们的唯一要求是 typecheck 通过；行为正确性由下表接管票负责，接管票接线前它们不得被其他模块 import（`tests/self-contained.test.ts` 门禁保护）。
+- **票 02 已接线第一批**：`runtime/types.ts`、`runtime/paths.ts`、`runtime/dsh/discover.ts`（扩展）、新建 `runtime/platform/**`、`runtime/dsh/asar.ts`、`evidence/store.ts`、`declaration/`、`orchestration/`、`cli/args.ts`、`cli/commands/self-check.ts`，`self-check` 已进 `IMPLEMENTED`。本票未动 `runtime/dsh/{home,launch,logs,http-session,isolation}.ts` 与 `evidence/{paths,manifest}.ts`，它们继续按表归 04/05/06/07。
 
 | 原型资产（当前文件） | 现状 | 接管票 | 接管后的验收 |
 | --- | --- | --- | --- |
@@ -428,16 +429,20 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 | `contracts/skills-rules.ts` | 冻结 | 03 | `skills-set` 检查（禁计数） |
 | `contracts/scenario.ts` | 冻结 | 12 | 场景 DAG 与 L3 逃逸舱 |
 | `contracts/ports.ts` 的 `BrowserProbeFactory` / `Ticket` | 冻结 | 11 / 16 | 11 注入 Playwright 适配器（缺省 `blocked`）；16 注入票面适配器 |
-| `runtime/types.ts`、`runtime/paths.ts` | 原型 | 02 | RuntimeEnv/路径拼写基础设施接线 + 替身测试 |
+| `runtime/types.ts`、`runtime/paths.ts` | **已接管（02）** | 02 | RuntimeFacts/ResolvedPaths 与路径拼写被 self-check 使用；`tests/support/fake-fs.ts` 与 self-check 系列测试全替身驱动 |
 | `runtime/fs-utils.ts`（`deleteGuardReason` / `removeTree`） | 原型 | 17 | `cleanup` 用删除守卫验收（盘根/家目录/cwd 拒删） |
-| `runtime/dsh/discover.ts` | 原型 | 02 | `dsh-runtime` 检查；失败返回完整候选列表 |
+| `runtime/dsh/discover.ts` | **已接管（02，已扩展）** | 02 | `dsh-runtime` 检查；新增 PATH wrapper 发现源与 exe-missing/structure-missing 分级（exe 在但 asar 缺 = fail），失败带完整候选列表 |
 | `runtime/dsh/home.ts` | 原型 | 04（profile 物化/复制）、12（workspace registry seeding） | 04 补 home 复制与清理单测；12 接 seeder |
 | `runtime/dsh/launch.ts` | 原型 | 04 | `launch/stop` 命令 + `instance.json` 生命周期 |
 | `runtime/dsh/logs.ts` | 原型 | 04（启动链路的日志定位）、12（日志查询原语） | `logs-readable` 检查接真机日志；坏行计数不致命 |
 | `runtime/dsh/http-session.ts` | 原型，**多通道 `POST /api/<channel>/<endpoint>` 写法已被规格纠正** | 04 | 接管时改为规格的单通道 `POST /api/<endpoint>`，并用真机会话冒烟验收 |
 | `runtime/dsh/isolation.ts` | 原型 | 05 | `settings-isolated` 探针：子进程真实解析 home + 真机设置文件前后哈希对比 |
 | `evidence/paths.ts`、`evidence/manifest.ts` | 原型 | 07 | 内容寻址落盘 + 不可变清单 + `SHA256SUMS` |
-| `capability-description.ts`、`cli/main.ts`、`docs.ts`（票 01 新建） | 事实源已就位 | 01 冻结；15 使用；02–12 接线 | 15 用 `renderCapabilityMarkdown()` 生成 README/AGENTS-USAGE；各命令实现票只往 `IMPLEMENTED` 加名字，`describe` 一致性测试保持绿 |
+| `runtime/platform/**`（02 新建：fs/command/clock/env/process/http/screen/defaults） | 已接线 | 03+ 复用 | 真实 Node 端口（process=detached spawn/taskkill，screen=PowerShell 等 best-effort），失败返回 `Result` 不 throw；测试只用 `tests/support/fake-*` |
+| `runtime/dsh/asar.ts`（02 新建） | 已接线 | 02 | 读 Electron asar 头的 pickle 布局定位 host CLI 条目；真实安装实测格式由 `tests/asar.test.ts` 锁定 |
+| `evidence/store.ts`（02 新建） | 已接线 | 07 | 02 的最小证据落盘（`runs/<id>/evidence`，同名 `-2`/`-3` 绝不覆盖）；07 在它之上加归档/manifest/`SHA256SUMS`，不重写落盘 |
+| `declaration/loader.ts`、`orchestration/**`、`cli/args.ts`、`cli/commands/self-check.ts`（02 新建） | 已接线 | 03/04/11/12/16 扩展 | planSelfCheck → executePlan → report 三阶段；后续票只加 `CheckModule`/命令，不加 DSL/事件总线 |
+| `capability-description.ts`、`cli/main.ts`、`docs.ts`（票 01 新建） | 事实源已就位；02 已接线 self-check | 01 冻结；15 使用；02–12 接线 | 15 用 `renderCapabilityMarkdown()` 生成 README/AGENTS-USAGE；各命令实现票只往 `IMPLEMENTED` 加名字，`describe` 一致性测试保持绿。02 增了 `profile-declaration` 检查 id、`--declaration`/`--work-root` 全局参数，并把 `self-check` 的 usage/writes 改成实际行为 |
 
 接线规则：一张票接管一个原型文件时，同时删掉它的「原型」标记（若代码里已有）并把对应检查/命令从 `blocked` 变成可执行；没有接管的原型文件保持无导出、无消费者。
 

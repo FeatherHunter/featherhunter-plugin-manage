@@ -54,6 +54,7 @@ export const EXIT_CODE_SUMMARIES: Readonly<Record<keyof typeof EXIT_CODES, strin
 export const BUILT_IN_CHECK_IDS: readonly CheckId[] = [
   "dsh-runtime",
   "node-version",
+  "profile-declaration",
   "profile-present",
   "isolation-home",
   "settings-isolated",
@@ -113,6 +114,16 @@ export interface CapabilityDescription {
 
 const GLOBAL_FLAGS: readonly GlobalFlagDescription[] = [
   { name: "--json", summary: "Print exactly one JSON document on stdout and nothing else." },
+  {
+    name: "--declaration",
+    value: "<file>",
+    summary: "Load the verification declaration from this file instead of discovering verify/profile.ts.",
+  },
+  {
+    name: "--work-root",
+    value: "<dir>",
+    summary: "Write run reports and evidence under this directory (default: <cwd>/.scratch/verify).",
+  },
   { name: "--dry-run", summary: "Print the plan that would run; touch nothing." },
   { name: "--negative", value: "<case>", summary: "Run only the named negative fixture." },
   { name: "--verbose", summary: "Append diagnostics to stderr (never to stdout)." },
@@ -132,10 +143,12 @@ const COMMANDS: readonly CommandDescription[] = [
   {
     name: "self-check",
     layer: 1,
-    summary: "Read-only checks: runtime, profile, installed package, skills, model, credential.",
-    usage: "dsh-verify self-check [--profile <p>] [--fix] [--json]",
-    writes: "nothing unless --fix is given",
-    flags: ["--profile <p>", "--fix", "--json"],
+    summary:
+      "Read-only checks: declaration, DSH runtime, Node floor, profile, installed package, display (with --screen).",
+    usage:
+      "dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>] [--screen] [--json]",
+    writes: "run.json and evidence files under the work root",
+    flags: ["--profile <p>", "--declaration <file>", "--work-root <dir>", "--screen", "--json"],
   },
   {
     name: "launch",

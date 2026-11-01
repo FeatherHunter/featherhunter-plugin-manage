@@ -4,7 +4,7 @@
  * Three readers consume it: an agent calling `describe --json`, a human reading
  * `--help`, and the generated markdown that later becomes README/AGENTS-USAGE.
  * These tests pin the parts a caller can rely on — the fifteen command names, the
- * layer each one lives in, the nineteen check ids and the exit codes — and prove
+ * layer each one lives in, the twenty check ids and the exit codes — and prove
  * each of those three outputs is derived from the one description object rather
  * than from a second hand-written list.
  */
@@ -128,9 +128,9 @@ describe("commands", () => {
 });
 
 describe("built-in checks", () => {
-  it("declares nineteen unique ids that all satisfy the check-id contract", () => {
-    expect(BUILT_IN_CHECK_IDS).toHaveLength(19);
-    expect(new Set(BUILT_IN_CHECK_IDS).size).toBe(19);
+  it("declares twenty unique ids that all satisfy the check-id contract", () => {
+    expect(BUILT_IN_CHECK_IDS).toHaveLength(20);
+    expect(new Set(BUILT_IN_CHECK_IDS).size).toBe(20);
     for (const id of BUILT_IN_CHECK_IDS) {
       const parsed = parseCheckId(id);
       expect(parsed.ok, id).toBe(true);
@@ -144,8 +144,9 @@ describe("implemented commands", () => {
     for (const name of IMPLEMENTED) {
       expect(described.has(name), name).toBe(true);
     }
-    // This ticket ships `describe`; the other fourteen are contract-only until
-    // their own tickets land, and must exit 2 rather than pretend to work.
+    // `describe` and `self-check` ship; the other thirteen are contract-only
+    // until their own tickets land, and must exit 2 rather than pretend to work.
     expect(IMPLEMENTED.has("describe")).toBe(true);
+    expect(IMPLEMENTED.has("self-check")).toBe(true);
   });
 });
