@@ -77,6 +77,7 @@ function candidateFacts(overrides: Partial<CandidateFacts> = {}): CandidateFacts
     batchStartedAtMs: Date.parse(GENERATED_AT) - 60_000,
     currentHead: manifest.git.commit,
     base: { ref: "main", tip: manifest.git.commit, expectedVersion: manifest.version },
+    allowOutdatedBase: false,
     commitContainsBase: true,
     expectedVersion: manifest.version,
     tgzOnDisk: { exists: true, sha256: manifest.package.tgzSha256 },

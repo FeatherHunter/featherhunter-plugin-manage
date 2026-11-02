@@ -331,7 +331,7 @@ dsh-verify skills [--profile <p>] [--expect <n>] [--json]
 dsh-verify single-instance [--profile <p>] [--json]
 dsh-verify concurrent --count <N> [--profiles a,b,c] [--json]
 dsh-verify freeze [--out <d>] [--allow-dirty] [--json]
-dsh-verify batch open|status [--name <n>] [--base-ref <r>]
+dsh-verify batch open|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale]
 dsh-verify evidence add|archive|verify ...
 dsh-verify run <scenario.ts> [--concurrency <n>] [--json]
 dsh-verify cleanup [--yes] [--keep-batches 2]
@@ -343,7 +343,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 ## 11. 证据与身份链
 
 - 候选：`candidate.json`（文件集 + fileDigest + manifestDigest + buildCommit + validity + sourceStable）。
-- 批次：`batch.json`（startHead + base{ref,tip,expectedVersion} + candidate + preflight + instance + status）。
+- 批次：`batch.json`（startHead + base{ref,tip,expectedVersion} + preflight + instance + status）。批次两段写：`batch open --base-ref` 先落 `candidate: null`（批次先于候选开始），候选冻进批次目录后 `batch open --candidate` 按固定顺序实测（目录/时间/HEAD/构建提交/稳定/祖先/版本/哈希/摘要），通过才写 `candidate` 并产出身份行；`batch status` 的 `candidate-identity` 重算清单与 tgz，抓候选漂移。
 - 身份行：`批次 X；候选提交 <40>；候选包 sha256 <64>`，逐字契约，`parseIdentityLine` 只认这一种；发布前检查从**候选文件**读、不读本机 batch.json（跨机器可复核）。
 - 证据：`evidence.json` = 检查项 + 证据项 + 身份绑定；**绑定的 candidate 由命令层注入，`--meta` 不得覆盖**。
 - 归档：整批复制到 `<root>/evidence-archive/<批次名>-<时间戳>/` + `SHA256SUMS.txt`；**不可变**，更正写旁注文件。

@@ -10,7 +10,7 @@
  */
 import type { CommandOutcome, CommandRequest, Ports } from "../../contracts/ports";
 import { ok, type Result } from "../../contracts/result";
-import { sha256Text } from "../../contracts/identity";
+import { digestOfFiles, sha256Text } from "../../contracts/identity";
 import { defineVerificationProfile } from "../../contracts/verification-profile";
 import type { VerificationDeclaration } from "../../declaration/loader";
 import { joinFsPath } from "../../runtime/paths";
@@ -21,13 +21,29 @@ export const FIXTURE_HEAD = "0123456789abcdef0123456789abcdef01234567";
 export const OTHER_HEAD = "89abcdef0123456789abcdef0123456789abcdef";
 export const BASE_TIP = "abcdef0123456789abcdef0123456789abcdef01";
 export const NEW_BASE_TIP = "2222222222222222222222222222222222222222";
+/** The bytes the fixture candidate tarball contains. */
+export const CANDIDATE_TGZ_CONTENT = "fixture candidate tarball\n";
 /** The tarball digest the fixture candidate manifest declares (`package.tgzSha256`). */
-export const CANDIDATE_TGZ_SHA256 = "a".repeat(64);
+export const CANDIDATE_TGZ_SHA256 = sha256Text(CANDIDATE_TGZ_CONTENT);
 
-const SHA_A = "a".repeat(64);
-const SHA_B = "b".repeat(64);
-const SHA_C = "c".repeat(64);
-const SHA_D = "d".repeat(64);
+export const SHA_A = "a".repeat(64);
+export const SHA_B = "b".repeat(64);
+export const SHA_C = "c".repeat(64);
+export const SHA_D = "d".repeat(64);
+
+/** A package.json inside the candidate package, and the digest its file list produces. */
+export function candidatePackageFile(version: string): { path: string; text: string; bytes: number; sha256: string } {
+  const path = "package.json";
+  const text = `{"name":"fixture-plugin","version":"${version}"}\n`;
+  return { path, text, bytes: text.length, sha256: sha256Text(text) };
+}
+
+export function candidateFileDigest(version: string): string {
+  const file = candidatePackageFile(version);
+  const digested = digestOfFiles([{ path: file.path, size: file.bytes, sha256: file.sha256 }]);
+  if (!digested.ok) throw new Error("fixture file list is invalid");
+  return digested.value;
+}
 
 export interface FakeBatchOptions {
   readonly cwd?: string;
@@ -60,10 +76,22 @@ export interface CandidateFixture {
 
 export interface SeedCandidateOptions {
   readonly dirName?: string;
+  /** Seed into `batches/<batchName>/pkg` instead of the default candidates root. */
+  readonly batchName?: string;
   readonly commit?: string;
   readonly version?: string;
   readonly validity?: "release" | "development";
   readonly generatedAt?: string;
+  /** Override the declared tarball digest (models a hand-edited manifest). */
+  readonly tgzSha256?: string;
+  /** Override the declared file digest (models a hand-edited manifest). */
+  readonly fileDigest?: string;
+  /** Skip writing the tarball file (models a candidate whose package went missing). */
+  readonly tgzMissing?: boolean;
+  /** Write these bytes into the tarball instead of the canonical content (models a replaced package). */
+  readonly tgzContent?: string;
+  /** Stamp `package.buildCommit` (models a package built from another commit). */
+  readonly buildCommit?: string | null;
 }
 
 export interface SeedEvidenceOptions {
@@ -92,9 +120,17 @@ function commandOutcome(
   });
 }
 
-function candidateManifest(
-  options: { commit: string; version: string; validity: "release" | "development"; generatedAt: string; dir: string },
-): Record<string, unknown> {
+function candidateManifest(options: {
+  commit: string;
+  version: string;
+  validity: "release" | "development";
+  generatedAt: string;
+  dir: string;
+  tgzSha256: string;
+  fileDigest: string;
+  buildCommit?: string | null;
+}): Record<string, unknown> {
+  const file = candidatePackageFile(options.version);
   return {
     schemaVersion: 2,
     generatedAt: options.generatedAt,
@@ -110,13 +146,14 @@ function candidateManifest(
     },
     package: {
       tgzPath: joinFsPath(options.dir, `fixture-plugin-${options.version}.tgz`),
-      tgzBytes: 256,
-      tgzSha256: CANDIDATE_TGZ_SHA256,
+      tgzBytes: CANDIDATE_TGZ_CONTENT.length,
+      tgzSha256: options.tgzSha256,
       filename: `fixture-plugin-${options.version}.tgz`,
-      files: [{ path: "package.json", bytes: 48, sha256: SHA_B }],
+      files: [{ path: file.path, bytes: file.bytes, sha256: file.sha256 }],
       fileCount: 1,
-      fileDigest: SHA_C,
+      fileDigest: options.fileDigest,
       manifestDigest: SHA_D,
+      ...(options.buildCommit === undefined ? {} : { buildCommit: options.buildCommit }),
     },
   };
 }
@@ -137,6 +174,10 @@ export class FakeBatchWorld {
   dirtyFiles: string[];
   baseRef: string;
   baseTip: string | null;
+  /** What `git show <baseRef>:package.json` answers; `null` models an unreadable baseline version. */
+  baseVersion: string | null;
+  /** Whether the baseline tip is an ancestor of the candidate commit; `"unknown"` models a git that cannot answer. */
+  baseContainsCommit: boolean | "unknown";
   /** When true every git invocation fails, so no HEAD can be read. */
   headFailure: boolean;
 
@@ -152,6 +193,8 @@ export class FakeBatchWorld {
     this.dirtyFiles = [...(options.dirtyFiles ?? [])];
     this.baseRef = options.baseRef ?? "main";
     this.baseTip = options.baseTip === undefined ? BASE_TIP : options.baseTip;
+    this.baseVersion = this.version;
+    this.baseContainsCommit = true;
     this.headFailure = options.headFailure ?? false;
     this.fs = new FakeFs(this.cwd);
     this.env = new FakeEnv({ cwd: this.cwd, values: { ComSpec: "C:\\Windows\\system32\\cmd.exe" } });
@@ -212,28 +255,42 @@ export class FakeBatchWorld {
     return joinFsPath(this.batchDir(name), "batch.json");
   }
 
-  /** Seed another candidate under the default work root; returns its identity. */
+  /**
+   * Seed a candidate (default: under the work root's `candidates/`; pass
+   * `batchName` to seed it inside a batch directory, which is where a sealed
+   * candidate must live).
+   */
   seedCandidate(options: SeedCandidateOptions = {}): CandidateFixture {
-    const dirName = options.dirName ?? "cand-1";
-    const dir = joinFsPath(this.workRoot, "candidates", dirName);
+    const dir =
+      options.batchName === undefined
+        ? joinFsPath(this.workRoot, "candidates", options.dirName ?? "cand-1")
+        : joinFsPath(this.batchDir(options.batchName), options.dirName ?? "pkg");
     const commit = options.commit ?? this.head;
     const version = options.version ?? this.version;
+    const tgzSha256 = options.tgzSha256 ?? CANDIDATE_TGZ_SHA256;
+    const fileDigest = options.fileDigest ?? candidateFileDigest(version);
     const manifest = candidateManifest({
       commit,
       version,
       validity: options.validity ?? "release",
       generatedAt: options.generatedAt ?? "2026-11-01T20:00:00.000Z",
       dir,
+      tgzSha256,
+      fileDigest,
+      ...(options.buildCommit === undefined ? {} : { buildCommit: options.buildCommit }),
     });
     const path = joinFsPath(dir, "candidate.json");
     this.fs.seedJson(path, manifest);
+    if (options.tgzMissing !== true) {
+      this.fs.seedFile(joinFsPath(dir, `fixture-plugin-${version}.tgz`), options.tgzContent ?? CANDIDATE_TGZ_CONTENT);
+    }
     const text = this.fs.readFileSync(path);
     return {
       dir,
       path,
       text,
       sha256: sha256Text(text),
-      tgzSha256: CANDIDATE_TGZ_SHA256,
+      tgzSha256,
       commit,
       version,
     };
@@ -291,6 +348,21 @@ export class FakeBatchWorld {
           return commandOutcome(request, `${this.baseTip}\n`);
         }
         return commandOutcome(request, "", 128, "fatal: Needed a single revision\n");
+      }
+      if (subcommand === "show" && (request.argv[2] ?? "").endsWith(":package.json")) {
+        if (this.baseVersion === null) {
+          return commandOutcome(request, "", 128, "fatal: path 'package.json' does not exist in the given tree\n");
+        }
+        return commandOutcome(
+          request,
+          `${JSON.stringify({ name: this.packageName, version: this.baseVersion })}\n`,
+        );
+      }
+      if (subcommand === "merge-base" && request.argv[2] === "--is-ancestor") {
+        if (this.baseContainsCommit === "unknown") {
+          return commandOutcome(request, "", 128, "fatal: bad object\n");
+        }
+        return commandOutcome(request, "", this.baseContainsCommit ? 0 : 1);
       }
       return commandOutcome(request, "", 1, `unexpected git call: ${request.argv.join(" ")}`);
     }

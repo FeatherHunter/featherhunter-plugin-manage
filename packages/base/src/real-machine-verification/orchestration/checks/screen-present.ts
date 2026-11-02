@@ -36,6 +36,11 @@ export function createScreenPresentCheck(): CheckModule<SelfCheckContext> {
           screens.error.hint ??
             "provide a working ScreenPort (runtime/platform/screen.ts creates the Node one) or omit --screen to skip it",
           evidence,
+          {
+            code: "prerequisite-missing",
+            message: "the screen probe failed",
+            hint: screens.error.hint ?? "provide a working ScreenPort, or omit --screen",
+          },
         );
       }
       const list = screens.value;
@@ -51,6 +56,11 @@ export function createScreenPresentCheck(): CheckModule<SelfCheckContext> {
           "the screen probe reported no displays (headless session?)",
           "run on a machine with a display, or omit --screen",
           evidence,
+          {
+            code: "platform-unsupported",
+            message: "the host exposes no display",
+            hint: "run on a machine with a display, or omit --screen",
+          },
         );
       }
       const primary = list.find((screen) => screen.primary) ?? list[0];

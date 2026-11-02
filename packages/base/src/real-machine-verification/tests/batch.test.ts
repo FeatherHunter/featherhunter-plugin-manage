@@ -1,6 +1,8 @@
 /**
- * Batch tests: the identity wire format, the freshness double criterion and the
- * evidence binding, all driven through the command layer with a scripted git.
+ * Batch tests: the identity wire format, the two-phase open (prepare, then seal
+ * against a candidate that actually lives in the batch directory), the freshness
+ * double criterion, the sealed-candidate re-check and the evidence binding, all
+ * driven through the command layer with a scripted git.
  *
  * The wire format is locked here because a release comment quotes it verbatim:
  * the same test both renders and parses the two lines, so a change in either
@@ -18,7 +20,7 @@ import {
   parseIdentityLine,
 } from "../contracts/identity";
 import { loadBatchContextForEvidence } from "../orchestration/batch";
-import { failure, ok } from "../contracts/result";
+import { ok } from "../contracts/result";
 import { joinFsPath } from "../runtime/paths";
 import { captureIo } from "./support/fake-capture";
 import {
@@ -27,10 +29,18 @@ import {
   FakeBatchWorld,
   NEW_BASE_TIP,
   OTHER_HEAD,
+  type CandidateFixture,
+  type SeedCandidateOptions,
 } from "./support/fake-batch";
 
 const COMMIT = FIXTURE_HEAD;
 const SHA = "e".repeat(64);
+
+interface BlockedReasonJson {
+  readonly code: string;
+  readonly message: string;
+  readonly hint?: string;
+}
 
 interface CheckJson {
   readonly id: string;
@@ -41,7 +51,17 @@ interface CheckJson {
   readonly expected?: string;
   readonly actual?: string;
   readonly hint?: string;
+  readonly blockedReason?: BlockedReasonJson;
   readonly reason: string | null;
+}
+
+interface CandidateJson {
+  readonly path: string;
+  readonly manifest: string;
+  readonly commit: string;
+  readonly version: string;
+  readonly manifestSha256: string;
+  readonly tgzSha256: string;
 }
 
 interface BatchJson {
@@ -59,11 +79,13 @@ interface BatchJson {
     readonly dryRun?: boolean;
     readonly status?: string;
   };
+  readonly phase?: "prepared" | "sealed" | "reused";
   readonly identityLine?: string;
   readonly baseLine?: string | null;
   readonly record?: Record<string, unknown>;
   readonly base?: { readonly ref: string; readonly tip: string; readonly expectedVersion: string; readonly allowOutdated: boolean } | null;
-  readonly candidate?: { readonly commit: string; readonly version: string; readonly manifestSha256: string };
+  readonly candidate?: CandidateJson | null;
+  readonly candidateProblems?: readonly { readonly code: string; readonly message: string }[];
   readonly checks?: readonly CheckJson[];
   readonly evidence?: {
     readonly readable: boolean;
@@ -73,7 +95,7 @@ interface BatchJson {
   };
   readonly freshness?: { readonly status: string; readonly problems: readonly { readonly code: string }[] };
   readonly allowedStale?: boolean;
-  readonly error?: { readonly code: string; readonly message: string; readonly hint?: string; readonly stage: string };
+  readonly error?: { readonly code: string; readonly message: string; readonly hint?: string; readonly stage: string; readonly details?: unknown };
   readonly notes?: readonly string[];
 }
 
@@ -122,12 +144,31 @@ function recordOf(world: FakeBatchWorld, name: string): Record<string, unknown> 
   return world.fs.readJsonSync(world.batchFile(name)) as Record<string, unknown>;
 }
 
-function identityLineFor(name: string, world: FakeBatchWorld): string {
-  return `- 验证身份：批次 ${name}；候选提交 ${world.candidate.commit}；候选包 sha256 ${world.candidate.tgzSha256}`;
+function identityLineFor(name: string, candidate: { readonly commit: string; readonly tgzSha256: string }): string {
+  return `- 验证身份：批次 ${name}；候选提交 ${candidate.commit}；候选包 sha256 ${candidate.tgzSha256}`;
 }
 
 function baseLineFor(ref: string, tip: string, version: string): string {
   return `- 验证基线：本地 ${ref} ${tip}；目标版本 ${version}`;
+}
+
+/** Prepare the batch, seed a candidate inside its directory, then seal it. */
+async function openSealed(
+  world: FakeBatchWorld,
+  name = "batch-a",
+  options: {
+    readonly baseRef?: string | null;
+    readonly allowStale?: boolean;
+    readonly candidate?: SeedCandidateOptions;
+  } = {},
+): Promise<{ prepared: RunResult; sealed: RunResult; candidate: CandidateFixture }> {
+  const prepArgv = ["open", "--name", name];
+  if (options.baseRef !== null) prepArgv.push("--base-ref", options.baseRef ?? "main");
+  if (options.allowStale === true) prepArgv.push("--allow-stale");
+  const prepared = await runBatch(world, prepArgv);
+  const candidate = world.seedCandidate({ batchName: name, ...(options.candidate ?? {}) });
+  const sealed = await runBatch(world, ["open", "--name", name, "--candidate", candidate.dir]);
+  return { prepared, sealed, candidate };
 }
 
 /* ------------------------------------------------------------------ format */
@@ -203,14 +244,14 @@ describe("batch identity wire format", () => {
 
 /* -------------------------------------------------------------------- open */
 
-describe("dsh-verify batch open", () => {
-  it("records the batch and prints the two lines verbatim", async () => {
+describe("dsh-verify batch open (prepare)", () => {
+  it("prepares the batch without a candidate and prints the base line", async () => {
     const world = new FakeBatchWorld();
     const result = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
     expect(result.code).toBe(0);
     const lines = result.out.trim().split("\n");
     expect(lines[0] ?? "").toMatch(/^ok batch-open /);
-    expect(lines[1]).toBe(identityLineFor("batch-a", world));
+    expect(lines[1]).toContain("尚未冻结候选");
     expect(lines[2]).toBe(baseLineFor("main", BASE_TIP, "1.2.3"));
 
     const record = recordOf(world, "batch-a");
@@ -218,33 +259,29 @@ describe("dsh-verify batch open", () => {
     expect(record.batchName).toBe("batch-a");
     expect(record.startHead).toBe(FIXTURE_HEAD);
     expect(record.status).toBe("active");
-    expect(record.identityLine).toBe(identityLineFor("batch-a", world));
+    expect(record.candidate).toBeNull();
+    expect(record.identityLine).toBe("");
     expect(record.baseLine).toBe(baseLineFor("main", BASE_TIP, "1.2.3"));
     const base = record.base as Record<string, unknown>;
     expect(base.ref).toBe("main");
     expect(base.tip).toBe(BASE_TIP);
     expect(base.expectedVersion).toBe("1.2.3");
     expect(base.allowOutdated).toBe(false);
-    const candidate = record.candidate as Record<string, unknown>;
-    expect(candidate.commit).toBe(FIXTURE_HEAD);
-    expect(candidate.sha256).toBe(world.candidate.sha256);
-    expect(candidate.version).toBe("1.2.3");
   });
 
-  it("emits a single JSON document that carries both lines", async () => {
+  it("emits a single JSON document for the prepared phase", async () => {
     const world = new FakeBatchWorld();
     const result = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--json"]);
     expect(result.code).toBe(0);
     const json = expectOneJson(result);
     expect(json.action).toBe("open");
     expect(json.ok).toBe(true);
-    expect(json.identityLine).toBe(identityLineFor("batch-a", world));
+    expect(json.phase).toBe("prepared");
+    expect(json.candidate).toBeNull();
+    expect(json.identityLine).toBe("");
     expect(json.baseLine).toBe(baseLineFor("main", BASE_TIP, "1.2.3"));
     expect(json.batch?.name).toBe("batch-a");
-    expect(json.candidate?.commit).toBe(FIXTURE_HEAD);
-    expect(json.candidate?.manifestSha256).toBe(world.candidate.sha256);
     expect(json.base?.tip).toBe(BASE_TIP);
-    expect(result.err).toBe("");
   });
 
   it("records the explicit no-baseline state instead of skipping the check", async () => {
@@ -263,7 +300,7 @@ describe("dsh-verify batch open", () => {
     expect(human.out).toContain("无（本批次未记录基线");
   });
 
-  it("is idempotent for the same identity and leaves the record untouched", async () => {
+  it("is idempotent for the same baseline and leaves the record untouched", async () => {
     const world = new FakeBatchWorld();
     const first = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--json"]);
     expect(first.code).toBe(0);
@@ -277,17 +314,16 @@ describe("dsh-verify batch open", () => {
     expect(json.batch?.reused).toBe(true);
     expect(json.batch?.createdAt).toBe(createdAt);
     expect(recordOf(world, "batch-a")).toEqual(before);
-    expect(json.notes?.some((note) => note.includes("reused"))).toBe(true);
+    expect((json.notes ?? []).length).toBeGreaterThan(0);
   });
 
-  it("refuses to rewrite an existing batch with a different candidate", async () => {
+  it("refuses to rewrite a prepared batch with a different baseline flag", async () => {
     const world = new FakeBatchWorld();
     const first = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
     expect(first.code).toBe(0);
     const before = recordOf(world, "batch-a");
 
-    world.seedCandidate({ dirName: "cand-2", generatedAt: "2026-11-01T21:30:00.000Z" });
-    const second = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--json"]);
+    const second = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--allow-stale", "--json"]);
     expect(second.code).toBe(1);
     const json = expectOneJson(second);
     expect(json.error?.code).toBe("conflict");
@@ -295,52 +331,15 @@ describe("dsh-verify batch open", () => {
     expect(recordOf(world, "batch-a")).toEqual(before);
   });
 
-  it("uses the newest candidate under the work root by default", async () => {
+  it("blocks when the baseline package version cannot be read", async () => {
     const world = new FakeBatchWorld();
-    const newer = world.seedCandidate({ dirName: "cand-2", generatedAt: "2026-11-01T22:00:00.000Z" });
-    expect(newer.sha256).not.toBe(world.candidate.sha256);
-    const result = await runBatch(world, ["open", "--name", "batch-a", "--json"]);
-    expect(result.code).toBe(0);
-    const record = recordOf(world, "batch-a");
-    expect((record.candidate as Record<string, unknown>).sha256).toBe(newer.sha256);
-  });
-
-  it("honours an explicit --candidate directory", async () => {
-    const world = new FakeBatchWorld();
-    world.seedCandidate({ dirName: "cand-2", generatedAt: "2026-11-01T22:00:00.000Z" });
-    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", world.candidate.dir, "--json"]);
-    expect(result.code).toBe(0);
-    const record = recordOf(world, "batch-a");
-    expect((record.candidate as Record<string, unknown>).sha256).toBe(world.candidate.sha256);
-  });
-
-  it("rejects a candidate frozen from another commit", async () => {
-    const world = new FakeBatchWorld({ candidateCommit: OTHER_HEAD });
-    const result = await runBatch(world, ["open", "--name", "batch-a", "--json"]);
-    expect(result.code).toBe(1);
-    const json = expectOneJson(result);
-    expect(json.error?.code).toBe("identity-mismatch");
-    expect(json.error?.hint ?? "").toContain("freeze");
-    expect(await world.fs.exists(world.batchFile("batch-a"))).toBe(false);
-  });
-
-  it("rejects a candidate for another package version", async () => {
-    const world = new FakeBatchWorld({ candidateVersion: "9.9.9" });
-    const result = await runBatch(world, ["open", "--name", "batch-a", "--json"]);
-    expect(result.code).toBe(1);
-    const json = expectOneJson(result);
-    expect(json.error?.code).toBe("identity-mismatch");
-    expect(json.error?.message).toContain("9.9.9");
-  });
-
-  it("blocks when there is no candidate to open on", async () => {
-    const world = new FakeBatchWorld();
-    await world.fs.remove(joinFsPath(world.workRoot, "candidates"), { recursive: true });
-    const result = await runBatch(world, ["open", "--name", "batch-a", "--json"]);
+    world.baseVersion = null;
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--json"]);
     expect(result.code).toBe(2);
     const json = expectOneJson(result);
-    expect(json.error?.code).toBe("not-found");
-    expect(json.error?.hint ?? "").toContain("freeze");
+    expect(json.error?.code).toBe("prerequisite");
+    expect(json.error?.stage).toBe("baseline");
+    expect(await world.fs.exists(world.batchFile("batch-a"))).toBe(false);
   });
 
   it("blocks when git HEAD cannot be read", async () => {
@@ -381,22 +380,15 @@ describe("dsh-verify batch open", () => {
     const result = await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--dry-run", "--json"]);
     expect(result.code).toBe(0);
     const json = expectOneJson(result);
+    expect(json.phase).toBe("prepared");
     expect(json.batch?.dryRun).toBe(true);
     expect(await world.fs.exists(world.batchFile("batch-a"))).toBe(false);
-    expect(json.identityLine).toBe(identityLineFor("batch-a", world));
+    expect(json.identityLine).toBe("");
   });
 
   it("records an explicitly allowed outdated baseline without pretending it is active", async () => {
     const world = new FakeBatchWorld();
-    const result = await runBatch(world, [
-      "open",
-      "--name",
-      "batch-stale",
-      "--base-ref",
-      "main",
-      "--allow-stale",
-      "--json",
-    ]);
+    const result = await runBatch(world, ["open", "--name", "batch-stale", "--base-ref", "main", "--allow-stale", "--json"]);
     expect(result.code).toBe(0);
     const json = expectOneJson(result);
     expect(json.base?.allowOutdated).toBe(true);
@@ -405,12 +397,211 @@ describe("dsh-verify batch open", () => {
   });
 });
 
+describe("dsh-verify batch open (seal)", () => {
+  it("seals a candidate that lives in the batch directory and prints the identity line", async () => {
+    const world = new FakeBatchWorld();
+    const { prepared, sealed, candidate } = await openSealed(world, "batch-a");
+    expect(prepared.code).toBe(0);
+    expect(sealed.code).toBe(0);
+
+    const lines = sealed.out.trim().split("\n");
+    expect(lines[0]).toMatch(/^ok batch-open /);
+    expect(lines[1]).toBe(identityLineFor("batch-a", candidate));
+    expect(lines[2]).toBe(baseLineFor("main", BASE_TIP, "1.2.3"));
+
+    const record = recordOf(world, "batch-a");
+    expect(record.identityLine).toBe(identityLineFor("batch-a", candidate));
+    const sealedCandidate = record.candidate as Record<string, unknown>;
+    expect(sealedCandidate.commit).toBe(FIXTURE_HEAD);
+    expect(sealedCandidate.sha256).toBe(candidate.sha256);
+    expect(sealedCandidate.tgzSha256).toBe(candidate.tgzSha256);
+    expect(sealedCandidate.version).toBe("1.2.3");
+
+    const json = await runBatch(world, ["open", "--name", "batch-a", "--candidate", candidate.dir, "--json"]);
+    const doc = expectOneJson(json);
+    expect(doc.phase).toBe("reused");
+    expect(doc.batch?.reused).toBe(true);
+    expect(doc.identityLine).toBe(identityLineFor("batch-a", candidate));
+    expect(doc.candidate?.manifestSha256).toBe(candidate.sha256);
+  });
+
+  it("emits one JSON document for the sealed phase", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const candidate = world.seedCandidate({ batchName: "batch-a" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", candidate.dir, "--json"]);
+    const json = expectOneJson(result);
+    expect(result.code).toBe(0);
+    expect(json.phase).toBe("sealed");
+    expect(json.identityLine).toBe(identityLineFor("batch-a", candidate));
+    expect(json.candidate?.manifestSha256).toBe(candidate.sha256);
+    expect(json.candidate?.tgzSha256).toBe(candidate.tgzSha256);
+  });
+
+  it("uses the tarball sha256 on the identity line, not the manifest digest", async () => {
+    const world = new FakeBatchWorld();
+    const { sealed, candidate } = await openSealed(world, "batch-a");
+    expect(sealed.code).toBe(0);
+    expect(sealed.out).toContain(`候选包 sha256 ${candidate.tgzSha256}`);
+    expect(sealed.out).not.toContain(`候选包 sha256 ${candidate.sha256}`);
+  });
+
+  it("rejects a hand-made candidate whose tarball does not exist", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const ghost = world.seedCandidate({ batchName: "batch-a", tgzMissing: true });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", ghost.dir, "--json"]);
+    expect(result.code).toBe(1);
+    const json = expectOneJson(result);
+    expect(json.error?.code).toBe("identity-mismatch");
+    expect(JSON.stringify(json.error?.details)).toContain("tgz-missing");
+    const record = recordOf(world, "batch-a");
+    expect(record.candidate).toBeNull();
+    expect(record.identityLine).toBe("");
+  });
+
+  it("rejects a hand-made candidate with an invented tarball hash", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const ghost = world.seedCandidate({ batchName: "batch-a", tgzContent: "something else entirely" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", ghost.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("tgz-hash-mismatch");
+    expect(recordOf(world, "batch-a").candidate).toBeNull();
+  });
+
+  it("rejects a hand-made candidate whose file digest was edited", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const ghost = world.seedCandidate({ batchName: "batch-a", fileDigest: "f".repeat(64) });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", ghost.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("file-digest-mismatch");
+  });
+
+  it("rejects a candidate that is not inside the batch directory", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const outside = world.seedCandidate({ dirName: "outside" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", outside.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("not-in-batch-dir");
+  });
+
+  it("rejects a candidate frozen before the batch started", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    world.advanceClock(2 * 60 * 60 * 1000);
+    const old = world.seedCandidate({ batchName: "batch-a", generatedAt: "2026-11-01T12:00:00.000Z" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", old.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("older-than-batch");
+  });
+
+  it("rejects a candidate frozen from another commit", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const other = world.seedCandidate({ batchName: "batch-a", commit: OTHER_HEAD });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", other.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("head-mismatch");
+  });
+
+  it("rejects a package built from another commit", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const other = world.seedCandidate({ batchName: "batch-a", buildCommit: OTHER_HEAD });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", other.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("build-commit-mismatch");
+  });
+
+  it("rejects a development candidate whose sources were dirty", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const dirty = world.seedCandidate({ batchName: "batch-a", validity: "development" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", dirty.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("source-unstable");
+  });
+
+  it("rejects a candidate for another package version", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const other = world.seedCandidate({ batchName: "batch-a", version: "9.9.9" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", other.dir, "--json"]);
+    expect(result.code).toBe(1);
+    const json = expectOneJson(result);
+    expect(JSON.stringify(json.error?.details)).toContain("version-mismatch");
+    expect(json.error?.message).toContain("9.9.9");
+  });
+
+  it("rejects a candidate the baseline does not contain", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const candidate = world.seedCandidate({ batchName: "batch-a" });
+    world.baseContainsCommit = false;
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", candidate.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.stringify(expectOneJson(result).error?.details)).toContain("commit-not-contains-base");
+  });
+
+  it("blocks when the baseline containment cannot be decided", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const candidate = world.seedCandidate({ batchName: "batch-a" });
+    world.baseContainsCommit = "unknown";
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", candidate.dir, "--json"]);
+    expect(result.code).toBe(2);
+    const json = expectOneJson(result);
+    expect(json.error?.code).toBe("prerequisite");
+    expect(json.error?.stage).toBe("candidate");
+    expect(recordOf(world, "batch-a").candidate).toBeNull();
+  });
+
+  it("seals an allowed outdated baseline as a caveat, not as a pass", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--allow-stale"]);
+    const candidate = world.seedCandidate({ batchName: "batch-a" });
+    world.baseContainsCommit = false;
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", candidate.dir, "--json"]);
+    expect(result.code).toBe(0);
+    const json = expectOneJson(result);
+    expect(json.identityLine).toBe(identityLineFor("batch-a", candidate));
+    expect(json.notes?.some((note) => note.includes("allow-stale"))).toBe(true);
+    const base = recordOf(world, "batch-a").base as Record<string, unknown>;
+    expect(base.allowOutdated).toBe(true);
+  });
+
+  it("blocks sealing when HEAD moved after the batch opened", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const candidate = world.seedCandidate({ batchName: "batch-a", commit: OTHER_HEAD });
+    world.head = OTHER_HEAD;
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", candidate.dir, "--json"]);
+    expect(result.code).toBe(2);
+    expect(expectOneJson(result).error?.stage).toBe("candidate");
+  });
+
+  it("refuses to rewrite a sealed batch with a different candidate", async () => {
+    const world = new FakeBatchWorld();
+    const { sealed } = await openSealed(world, "batch-a");
+    expect(sealed.code).toBe(0);
+    const before = recordOf(world, "batch-a");
+    const second = world.seedCandidate({ dirName: "pkg2", batchName: "batch-a", validity: "release" });
+    const result = await runBatch(world, ["open", "--name", "batch-a", "--candidate", second.dir, "--json"]);
+    expect(result.code).toBe(1);
+    expect(expectOneJson(result).error?.code).toBe("conflict");
+    expect(recordOf(world, "batch-a")).toEqual(before);
+  });
+});
+
 /* ------------------------------------------------------------------ status */
 
 describe("dsh-verify batch status freshness", () => {
-  it("passes when HEAD and the baseline both still match", async () => {
+  it("passes when HEAD, the baseline and the sealed candidate all still match", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const { candidate } = await openSealed(world, "batch-a");
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(0);
     const json = expectOneJson(result);
@@ -418,15 +609,68 @@ describe("dsh-verify batch status freshness", () => {
     expect(json.exitCode).toBe(0);
     expect(checkById(json, "batch-head-fresh").status).toBe("pass");
     expect(checkById(json, "batch-baseline-fresh").status).toBe("pass");
+    expect(checkById(json, "candidate-identity").status).toBe("pass");
     expect(checkById(json, "batch-evidence-bound").status).toBe("skip");
-    expect(json.identityLine).toBe(identityLineFor("batch-a", world));
+    expect(json.identityLine).toBe(identityLineFor("batch-a", candidate));
     expect(json.baseLine).toBe(baseLineFor("main", BASE_TIP, "1.2.3"));
     expect(recordOf(world, "batch-a").status).toBe("active");
   });
 
-  it("fails and names both commits when HEAD moved", async () => {
+  it("blocks the candidate check before a candidate is sealed", async () => {
     const world = new FakeBatchWorld();
     await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
+    expect(result.code).toBe(2);
+    const json = expectOneJson(result);
+    const check = checkById(json, "candidate-identity");
+    expect(check.status).toBe("blocked");
+    expect(check.reason).toBe("candidate-missing");
+    expect(check.blockedReason?.code).toBe("prerequisite-missing");
+    expect(check.blockedReason?.message).toContain("no frozen candidate");
+    expect(json.identityLine).toBe("");
+  });
+
+  it("fails the candidate check when the sealed tarball was replaced", async () => {
+    const world = new FakeBatchWorld();
+    const { candidate, sealed } = await openSealed(world, "batch-a");
+    expect(sealed.code).toBe(0);
+    const manifest = JSON.parse(candidate.text) as { package: { tgzPath: string } };
+    world.fs.seedFile(manifest.package.tgzPath, "replaced after sealing\n");
+    const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
+    expect(result.code).toBe(1);
+    const check = checkById(expectOneJson(result), "candidate-identity");
+    expect(check.status).toBe("fail");
+    expect(check.reason).toBe("candidate-drift");
+    expect(check.detail).toContain("replaced");
+  });
+
+  it("fails the candidate check when the manifest bytes were edited", async () => {
+    const world = new FakeBatchWorld();
+    const { candidate, sealed } = await openSealed(world, "batch-a");
+    expect(sealed.code).toBe(0);
+    world.fs.seedFile(candidate.path, `${candidate.text.trimEnd()}\n `);
+    const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
+    expect(result.code).toBe(1);
+    const check = checkById(expectOneJson(result), "candidate-identity");
+    expect(check.reason).toBe("candidate-drift");
+    expect(check.detail).toContain("manifest was changed");
+  });
+
+  it("fails the candidate check when the tarball went missing", async () => {
+    const world = new FakeBatchWorld();
+    const { candidate, sealed } = await openSealed(world, "batch-a");
+    expect(sealed.code).toBe(0);
+    const manifest = JSON.parse(candidate.text) as { package: { tgzPath: string } };
+    await world.fs.remove(manifest.package.tgzPath);
+    const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
+    expect(result.code).toBe(1);
+    const check = checkById(expectOneJson(result), "candidate-identity");
+    expect(check.detail).toContain("missing");
+  });
+
+  it("fails and names both commits when HEAD moved", async () => {
+    const world = new FakeBatchWorld();
+    await openSealed(world, "batch-a");
     world.head = OTHER_HEAD;
     const result = await runBatch(world, ["status", "--name", "batch-a"]);
     expect(result.code).toBe(1);
@@ -448,7 +692,7 @@ describe("dsh-verify batch status freshness", () => {
 
   it("fails when the baseline ref advanced", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.baseTip = NEW_BASE_TIP;
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(1);
@@ -463,7 +707,7 @@ describe("dsh-verify batch status freshness", () => {
 
   it("treats a deleted baseline ref as unreadable, not as unchanged", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.baseTip = null;
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(1);
@@ -476,7 +720,7 @@ describe("dsh-verify batch status freshness", () => {
 
   it("does not let --allow-stale excuse an unreadable baseline", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.baseTip = null;
     const result = await runBatch(world, ["status", "--name", "batch-a", "--allow-stale", "--json"]);
     expect(result.code).toBe(1);
@@ -487,7 +731,7 @@ describe("dsh-verify batch status freshness", () => {
 
   it("reports a moved HEAD as skip, with the flag named, under --allow-stale", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.head = OTHER_HEAD;
     const result = await runBatch(world, ["status", "--name", "batch-a", "--allow-stale", "--json"]);
     expect(result.code).toBe(0);
@@ -502,7 +746,7 @@ describe("dsh-verify batch status freshness", () => {
 
   it("reports an outdated baseline that was allowed when the batch opened", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main", "--allow-stale"]);
+    await openSealed(world, "batch-a", { allowStale: true });
     world.baseTip = NEW_BASE_TIP;
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(0);
@@ -510,12 +754,12 @@ describe("dsh-verify batch status freshness", () => {
     const check = checkById(json, "batch-baseline-fresh");
     expect(check.status).toBe("skip");
     expect(check.reason).toBe("outdated-base-allowed");
-    expect(check.detail).toContain("outdated");
+    expect(check.detail).toContain("--allow-stale");
   });
 
   it("keeps the explicit no-baseline state blocked, never skipped", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-nb"]);
+    await openSealed(world, "batch-nb", { baseRef: null });
     const result = await runBatch(world, ["status", "--name", "batch-nb", "--json"]);
     expect(result.code).toBe(2);
     const json = expectOneJson(result);
@@ -524,14 +768,16 @@ describe("dsh-verify batch status freshness", () => {
     expect(check.status).toBe("blocked");
     expect(check.reason).toBe("no-baseline");
     expect(check.detail).toContain("explicit \"no baseline\"");
+    expect(check.blockedReason?.code).toBe("prerequisite-missing");
+    expect(checkById(json, "candidate-identity").status).toBe("pass");
     expect(recordOf(world, "batch-nb").status).toBe("stale");
   });
 
   it("judges the newest batch record when --name is omitted", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.advanceClock(60_000);
-    await runBatch(world, ["open", "--name", "batch-b", "--base-ref", "main"]);
+    await openSealed(world, "batch-b");
     const result = await runBatch(world, ["status", "--json"]);
     expect(result.code).toBe(0);
     expect(expectOneJson(result).batch?.name).toBe("batch-b");
@@ -556,7 +802,7 @@ describe("dsh-verify batch status freshness", () => {
 
   it("does not rewrite the record on --dry-run", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     const before = recordOf(world, "batch-a");
     world.advanceClock(60_000);
     world.head = OTHER_HEAD;
@@ -571,9 +817,9 @@ describe("dsh-verify batch status freshness", () => {
 describe("evidence binding", () => {
   it("counts evidence that carries this batch's candidate triple", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const { candidate } = await openSealed(world, "batch-a");
     world.seedEvidence("batch-a", "evidence", {
-      candidate: { commit: world.candidate.commit, packageSha256: world.candidate.sha256 },
+      candidate: { commit: candidate.commit, packageSha256: candidate.sha256 },
     });
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(0);
@@ -585,12 +831,12 @@ describe("evidence binding", () => {
 
   it("rejects a foreign evidence manifest and names the path and the mismatched item", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const { candidate } = await openSealed(world, "batch-a");
     world.seedEvidence("batch-a", "evidence", {
-      candidate: { commit: world.candidate.commit, packageSha256: world.candidate.sha256 },
+      candidate: { commit: candidate.commit, packageSha256: candidate.sha256 },
     });
     world.seedEvidence("batch-a", "evidence-foreign", {
-      candidate: { commit: OTHER_HEAD, packageSha256: world.candidate.sha256 },
+      candidate: { commit: OTHER_HEAD, packageSha256: candidate.sha256 },
     });
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(1);
@@ -604,16 +850,16 @@ describe("evidence binding", () => {
     const rejected = json.evidence?.rejected[0];
     expect(rejected?.relativePath).toBe("evidence-foreign/evidence.json");
     expect(rejected?.reason).toBe("candidate-commit");
-    expect(check.expected).toContain(world.candidate.commit);
+    expect(check.expected).toContain(candidate.commit);
     expect(check.actual).toContain(OTHER_HEAD);
   });
 
   it("rejects evidence whose candidate manifest sha256 does not match", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const { candidate } = await openSealed(world, "batch-a");
     const otherSha = "f".repeat(64);
     world.seedEvidence("batch-a", "evidence-sha", {
-      candidate: { commit: world.candidate.commit, packageSha256: otherSha },
+      candidate: { commit: candidate.commit, packageSha256: otherSha },
     });
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(1);
@@ -627,10 +873,10 @@ describe("evidence binding", () => {
 
   it("rejects evidence for another batch name", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const { candidate } = await openSealed(world, "batch-a");
     world.seedEvidence("batch-a", "evidence", {
       batchName: "batch-b",
-      candidate: { commit: world.candidate.commit, packageSha256: world.candidate.sha256 },
+      candidate: { commit: candidate.commit, packageSha256: candidate.sha256 },
     });
     const result = await runBatch(world, ["status", "--name", "batch-a"]);
     expect(result.code).toBe(1);
@@ -639,7 +885,7 @@ describe("evidence binding", () => {
 
   it("rejects evidence without a candidate object", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.seedEvidence("batch-a", "evidence");
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(1);
@@ -649,7 +895,7 @@ describe("evidence binding", () => {
 
   it("rejects a broken evidence manifest instead of counting it", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    await openSealed(world, "batch-a");
     world.fs.seedFile(joinFsPath(world.batchDir("batch-a"), "evidence", "evidence.json"), "{ not json");
     const result = await runBatch(world, ["status", "--name", "batch-a", "--json"]);
     expect(result.code).toBe(1);
@@ -701,18 +947,29 @@ describe("loadBatchContextForEvidence", () => {
     if (context.ok) expect(context.value).toBeNull();
   });
 
-  it("returns the identity triple of an opened batch", async () => {
+  it("returns the identity triple of a sealed batch", async () => {
     const world = new FakeBatchWorld();
-    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const { candidate } = await openSealed(world, "batch-a");
     const context = await loadBatchContextForEvidence({ batch: "batch-a" }, { ports: world.ports, cwd: world.cwd });
     expect(context.ok).toBe(true);
     if (!context.ok) return;
     expect(context.value).not.toBeNull();
     expect(context.value?.batchName).toBe("batch-a");
     expect(context.value?.batchDir).toBe(world.batchDir("batch-a"));
-    expect(context.value?.candidate.commit).toBe(world.candidate.commit);
-    expect(context.value?.candidate.packageSha256).toBe(world.candidate.sha256);
+    expect(context.value?.candidate.commit).toBe(candidate.commit);
+    expect(context.value?.candidate.packageSha256).toBe(candidate.sha256);
     expect(context.value?.candidate.version).toBe("1.2.3");
+  });
+
+  it("blocks for a prepared batch that has no candidate yet", async () => {
+    const world = new FakeBatchWorld();
+    await runBatch(world, ["open", "--name", "batch-a", "--base-ref", "main"]);
+    const context = await loadBatchContextForEvidence({ batch: "batch-a" }, { ports: world.ports, cwd: world.cwd });
+    expect(context.ok).toBe(false);
+    if (!context.ok) {
+      expect(context.error.blocked).toBe(true);
+      expect(context.error.message).toContain("no candidate");
+    }
   });
 
   it("blocks for a batch that has no record", async () => {

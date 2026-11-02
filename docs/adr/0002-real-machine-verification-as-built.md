@@ -90,8 +90,19 @@ spec.md:166 把票面协议的实现划给适配器层，Out of Scope 也写「�
 
 理由：门禁消费的是发布仓自己的票面协议（GitHub/GitLab 的清单票与评论格式）和候选清单，没有与插件无关的通用 CLI 形态；强行做成命令会把「读哪个仓的哪张票、用 gh 还是 glab」的接线塞进核心。实际形态是接入仓写一个组合根（matt 的 `scripts/lib/release-preflight-gate.mts` 是全仓唯一 `import { runReleaseGate }` 的地方）+ 自己的适配器（`verify/ticket-face.mts`），再把「缺适配器/缺环境」映射成 `PREFLIGHT-BLOCKED`。ticket 16 的验收（同一个组合根、两条发布路径同一份代码、无跳过开关）就是在这个形态下证明的。
 
+### 11. 技能重复在文件树路径下端到端不可达，只作为纯规则与 registry 路径能力保留
+
+spec.md:126 要求技能集检查能识别「重复」，`contracts/skills-rules.ts` 的 `compareSkillSets` 也确实统计重复；但在文件树路径上，`orchestration/checks/skills-set.ts` 先把各根观察 `mergeSkillObservations` 再比较，而每个根只枚举第一层目录、目录名天然唯一——因此端到端夹具造不出重复，重复检测只在 HTTP registry 数据路径上有意义（`tests/skills-observation.test.ts` 用合成 registry 条目覆盖了规则本身）。
+
+裁决：不为此在文件树路径硬造一条不可达的夹具，也不删规则；把限制写进本文。插件若真需要证明重复技能，用 `verify/profile.ts` 的 `checks` 注入一个读宿主 `skills/list` 的自定义检查（与决定 9 的 custom 根处理同一条路）。
+
+## 对抗审计复核补记（2026-11-02）
+
+交付前的对抗式审计提出「测试只断言纯函数、没有 CLI 级反例」「自定义技能根不可观察」等意见。复核结论：#9（custom 根）与 #2（反例内联）已经覆盖前两项的取舍，不重开决定；同时补了三条真正的缺口—— `tests/capability-description.test.ts` 新增「每个 advertised check id 必须在源码里被 emit / 每个字面 `checkId("…")` 必须 advertised」门禁；`tests/batch.test.ts` 新增进程内 CLI 级的 ghost 候选反例（不在批次目录、tgz 缺失/被换、文件摘要不符、HEAD/版本不符、基线不包含、包含关系 unknown）与两阶段 open 的 prepare/seal 流程；`tests/real-home-guard.test.ts` 补「真实 home 子目录」「junction」「DSH_REAL_HOME 不再生效」三条真实写盘反例。
+
 ## 影响
 
 - 这些决定都写进了代码、测试或本 ADR；回退其中任何一条都会改变对外行为或让门禁变红，需要新 ADR 覆盖本文件。
+- 已知限制（#9、#11）：custom 技能根与文件树路径下的技能重复都无法端到端观察，需要时用自定义检查补证。
 - DESIGN.md 在相应小节加了 as-built 注记并指向本文；`§3`/`§5`/`§16` 的**文件名清单**是开工计划，实际模块布局以 `src/real-machine-verification/` 的源码树为准。
 - 五仓接入形态与 base 发版节奏不属于设计偏离：开发期各仓用 `file:` 指向本地 base 验证，发布前需先发布含本能力的 base 版本（0.1.6+）再钉精确版本——这是 spec「依赖钉精确版本」的交付约束，不是对 DESIGN.md 的偏离。

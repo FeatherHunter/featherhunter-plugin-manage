@@ -11,7 +11,7 @@ import { parseArgs } from "../cli/args";
 import { runInstallCommand, type InstallCommandDeps } from "../cli/commands/install";
 import { ok } from "../contracts/result";
 import type { BinaryWriter } from "../runtime/platform/binary-writer";
-import { joinFsPath } from "../runtime/paths";
+import { joinFsPath, samePath } from "../runtime/paths";
 import { makeTgz } from "./support/fake-freeze";
 import { captureIo } from "./support/fake-capture";
 import {
@@ -311,5 +311,35 @@ describe("install: environment prerequisites", () => {
     expect(payload.error?.stage).toBe("prerequisite");
     expect(payload.error?.hint).toContain("DSH_HOME");
     expect(await fake.fs.exists(joinFsPath(realProfileDir, "node_modules"))).toBe(false);
+  });
+
+  it("refuses a DSH_HOME nested inside the real user home (the 2026-11-02 bypass)", async () => {
+    const fake = fixture();
+    fake.fs.seedFile(TGZ_PATH, tgzFor());
+    const nested = joinFsPath(fake.env.homeDir(), ".dsh", "batch-home");
+    fake.env.set("DSH_HOME", nested);
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--json"]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("refusing to install into the real DSH home");
+    expect(result.err).toContain(nested);
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.error?.code).toBe("prerequisite");
+    expect(await fake.fs.exists(joinFsPath(nested, "profiles", "web", "node_modules"))).toBe(false);
+  });
+
+  it("refuses a DSH_HOME that is a link into the real user home", async () => {
+    const fake = fixture();
+    fake.fs.seedFile(TGZ_PATH, tgzFor());
+    const realHome = joinFsPath(fake.env.homeDir(), ".dsh");
+    const junction = "C:\\fake\\junction-home";
+    const underlying = fake.fs.realPath.bind(fake.fs);
+    fake.fs.realPath = async (path: string) => (samePath(path, junction) ? ok(realHome) : underlying(path));
+    fake.env.set("DSH_HOME", junction);
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--json"]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain(`refusing to install into the real DSH home ${realHome}`);
+    expect(await fake.fs.exists(joinFsPath(realHome, "profiles", "web", "node_modules"))).toBe(false);
   });
 });

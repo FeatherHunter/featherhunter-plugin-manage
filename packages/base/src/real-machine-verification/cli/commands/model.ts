@@ -16,14 +16,19 @@
  * no provider entry, no credential value) or the invocation is invalid.
  */
 import { EXIT_CODES } from "../../capability-description";
+import type { BlockedReason } from "../../contracts/evidence-contract";
 import type { Ports } from "../../contracts/ports";
-import { planModelConfigEdit, type ModelConfigProblem, type ModelConfigState } from "../../contracts/profile-rules";
+import {
+  inspectModelConfig,
+  planModelConfigEdit,
+  type ModelConfigProblem,
+  type ModelConfigState,
+} from "../../contracts/profile-rules";
 import { formatFailure, type Failure } from "../../contracts/result";
 import type { ModelSelection, VerificationProfile } from "../../contracts/verification-profile";
 import type { DeclarationLoadResult, LoadDeclarationOptions } from "../../declaration/loader";
 import { loadDeclarationContext } from "../../orchestration/context";
-import { resolveRealHome } from "../../runtime/dsh/home";
-import { samePath } from "../../runtime/paths";
+import { findWriteUnderRealHome } from "../../runtime/dsh/home";
 import {
   fixModelConfig,
   modelPatchPath,
@@ -59,7 +64,7 @@ const MODEL_FLAGS: ReadonlySet<string> = new Set([
   "--fix",
 ]);
 
-type ModelCheckStatus = "ok" | "fail" | "skip" | "blocked";
+type ModelCheckStatus = "pass" | "fail" | "skip" | "blocked";
 
 /** One line of the human format and one element of the JSON `checks` array. */
 interface ModelCheck {
@@ -69,6 +74,8 @@ interface ModelCheck {
   readonly expected?: string;
   readonly actual?: string;
   readonly hint?: string;
+  /** Present on every blocked line, so a reader never parses the sentence for the cause. */
+  readonly blockedReason?: BlockedReason;
 }
 
 /** Every fail line carries all three fields; this is the hint when rules have none. */
@@ -116,6 +123,11 @@ function buildChecks(
       id: "model-default-entry",
       status: "blocked",
       detail: missingDefault.message,
+      blockedReason: {
+        code: "prerequisite-missing",
+        message: missingDefault.message,
+        ...(missingDefault.hint === undefined ? {} : { hint: missingDefault.hint }),
+      },
       expected: missingDefault.expected ?? "agent-default-model entry",
       actual: missingDefault.actual ?? "absent",
       ...(missingDefault.hint === undefined ? {} : { hint: missingDefault.hint }),
@@ -123,7 +135,7 @@ function buildChecks(
   } else {
     checks.push({
       id: "model-default-entry",
-      status: "ok",
+      status: "pass",
       detail: "agent-default-model entry exists",
     });
 
@@ -132,7 +144,7 @@ function buildChecks(
       provider === null
         ? {
             id: "model-default-provider",
-            status: "ok",
+            status: "pass",
             detail: `default provider is ${state.defaultProvider ?? "(missing)"}`,
           }
         : failFromProblem("model-default-provider", provider),
@@ -143,7 +155,7 @@ function buildChecks(
       model === null
         ? {
             id: "model-default-model",
-            status: "ok",
+            status: "pass",
             detail: `default model is ${state.defaultModel ?? "(missing)"}`,
           }
         : failFromProblem("model-default-model", model),
@@ -157,6 +169,11 @@ function buildChecks(
       id: "model-provider-entry",
       status: "blocked",
       detail: missingProvider.message,
+      blockedReason: {
+        code: "prerequisite-missing",
+        message: missingProvider.message,
+        ...(missingProvider.hint === undefined ? {} : { hint: missingProvider.hint }),
+      },
       expected: missingProvider.expected ?? "llm-pi-ai entry",
       actual: missingProvider.actual ?? "absent",
       ...(missingProvider.hint === undefined ? {} : { hint: missingProvider.hint }),
@@ -164,7 +181,7 @@ function buildChecks(
   } else {
     checks.push({
       id: "model-provider-entry",
-      status: "ok",
+      status: "pass",
       detail: "llm-pi-ai entry exists",
     });
   }
@@ -190,7 +207,7 @@ function buildChecks(
       providerBlock === null
         ? {
             id: "model-provider-block",
-            status: "ok",
+            status: "pass",
             detail: `llm-pi-ai declares provider ${selection.provider}`,
           }
         : failFromProblem("model-provider-block", providerBlock),
@@ -213,7 +230,7 @@ function buildChecks(
         keyEnv === null
           ? {
               id: "model-credential-ref",
-              status: "ok",
+              status: "pass",
               detail: `provider ${selection.provider} reads its key from ${selection.apiKeyEnv}`,
             }
           : failFromProblem("model-credential-ref", keyEnv),
@@ -224,7 +241,7 @@ function buildChecks(
         models === null
           ? {
               id: "model-declared-models",
-              status: "ok",
+              status: "pass",
               detail: `models list declares ${selection.model} (${state.declaredModels.length} id(s))`,
             }
           : failFromProblem("model-declared-models", models),
@@ -236,7 +253,7 @@ function buildChecks(
   if (mismatches.length === 0) {
     checks.push({
       id: "model-reference-model",
-      status: "ok",
+      status: "pass",
       detail:
         state.references.length === 0
           ? "no reference parties name a provider/model pair"
@@ -264,7 +281,7 @@ function buildChecks(
   } else if (credential.available) {
     checks.push({
       id: "model-credential-value",
-      status: "ok",
+      status: "pass",
       detail: `${credential.ref} is available from ${
         credential.source === "env" ? "the process environment" : "the DSH home credential store"
       }`,
@@ -277,6 +294,11 @@ function buildChecks(
       expected: `a value for ${credential.ref}`,
       actual: "not found",
       hint: `add ${credential.ref} to ${credential.storePath} or set it in the environment; this command never invents credential values`,
+      blockedReason: {
+        code: "prerequisite-missing",
+        message: `no value for ${credential.ref}: ${credential.note ?? "not found"}`,
+        hint: `add ${credential.ref} to ${credential.storePath} or set it in the environment`,
+      },
     });
   }
 
@@ -365,6 +387,11 @@ function fixRefusalCheck(error: Failure): ModelCheck {
     expected: "an existing patch entry that can be repaired in place",
     actual: error.message,
     hint: error.hint ?? "repair or install the profile first; this command never invents a plugin entry",
+    blockedReason: {
+      code: "prerequisite-missing",
+      message: `refused to edit the patch layer: ${error.message}`,
+      ...(error.hint === undefined ? {} : { hint: error.hint }),
+    },
   };
 }
 
@@ -490,6 +517,8 @@ function modelPlanJson(
   edit: { readonly changed: boolean; readonly notes: readonly string[] } | { readonly error: Failure },
   checks: readonly ModelCheck[],
   fixRequested: boolean,
+  exitCode: number,
+  predictedChecks: readonly ModelCheck[],
 ): string {
   const editJson =
     "error" in edit
@@ -498,7 +527,8 @@ function modelPlanJson(
   return `${JSON.stringify({
     schemaVersion: 1,
     command: "model",
-    ok: true,
+    ok: exitCode === EXIT_CODES.ok,
+    exitCode,
     dryRun: true,
     plan: {
       profile: context.profileName,
@@ -520,6 +550,9 @@ function modelPlanJson(
         storeRefPresent: credential.storeRefPresent,
       },
       checks,
+      // What the run would report: with --fix the checks of the planned text,
+      // without it the current checks. ok/exitCode above follow this block.
+      predicted: { exitCode, checks: predictedChecks },
     },
   })}\n`;
 }
@@ -597,6 +630,11 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
       expected: `a readable ${patchPath}`,
       actual: "missing or unreadable",
       ...(observed.error.hint === undefined ? {} : { hint: observed.error.hint }),
+      blockedReason: {
+        code: "prerequisite-missing",
+        message: observed.error.message,
+        ...(observed.error.hint === undefined ? {} : { hint: observed.error.hint }),
+      },
     };
     const report: ModelReport = {
       schemaVersion: 1,
@@ -623,10 +661,53 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
     selection.apiKeyEnv,
   );
 
+  // --fix is the only writer in this command. The real user home is read-only
+  // for this tool: an edit to the patch layer there is an edit to the developer's
+  // actual install, so refuse before planning it. The check covers containment
+  // and links as well as an exact match (see findWriteUnderRealHome): a DSH_HOME
+  // below the real home, or a link that lands in it, is still the real home.
+  // A dry run writes nothing, so it plans and warns instead of refusing.
+  const realHomeHit = args.fix
+    ? await findWriteUnderRealHome({
+        fs: ports.fs,
+        env: ports.env,
+        cwd: ports.env.cwd(),
+        dshHome: context.value.dshHome,
+      })
+    : null;
+  if (realHomeHit !== null && !args.dryRun) {
+    return reject(args, io, "fix", {
+      code: "prerequisite",
+      message: `refusing to edit the real DSH home ${realHomeHit.realHome}: DSH_HOME ${realHomeHit.value}`,
+      hint: "copy the profile into a batch home and set DSH_HOME to that copy, then rerun with --fix",
+      details: { dshHome: context.value.dshHome, patchPath, realHome: realHomeHit.realHome },
+    });
+  }
+  if (realHomeHit !== null) {
+    io.stderr(
+      `dsh-verify model: warning: the target DSH home ${context.value.dshHome} belongs to the real user home ${realHomeHit.realHome}; ` +
+        "a real --fix would be refused (the dry run writes nothing)\n",
+    );
+  }
+
   if (args.dryRun) {
     const edit = planModelConfigEdit(before.text, selection);
     const editPlan = edit.ok ? { changed: edit.value.changed, notes: edit.value.notes } : { error: edit.error };
     const checks = buildChecks(before.state, selection, credential);
+    // A dry run must reach the same conclusion as the real run, and never a fixed
+    // 0: without `--fix` that is the rule over the current checks; with `--fix` it
+    // is the rule over the checks the planned text would produce (the plan is a
+    // pure edit, so the prediction needs no write), including the same refusal or
+    // planning-failure check the real path would append.
+    let predictedChecks: ModelCheck[] = [...checks];
+    if (args.fix) {
+      if (!edit.ok) {
+        predictedChecks.push(edit.error.code === "prerequisite" ? fixRefusalCheck(edit.error) : fixPlanFailureCheck(edit.error));
+      } else {
+        predictedChecks = buildChecks(inspectModelConfig(edit.value.text, selection), selection, credential);
+      }
+    }
+    const dryRunExit = exitCodeFor(predictedChecks);
     if (args.json) {
       io.stdout(
         modelPlanJson(
@@ -638,6 +719,8 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
           editPlan,
           checks,
           args.fix,
+          dryRunExit,
+          predictedChecks,
         ),
       );
     } else {
@@ -653,20 +736,7 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
         ),
       );
     }
-    return EXIT_CODES.ok;
-  }
-
-  // --fix is the only writer in this command. The real user home is read-only
-  // for this tool: an edit to the patch layer there is an edit to the developer's
-  // actual install, so refuse before planning it (a dry run writes nothing and
-  // may still plan).
-  if (args.fix && samePath(context.value.dshHome, resolveRealHome(ports.env))) {
-    return reject(args, io, "fix", {
-      code: "prerequisite",
-      message: `refusing to edit the real DSH home ${context.value.dshHome}`,
-      hint: "copy the profile into a batch home and set DSH_HOME to that copy, then rerun with --fix",
-      details: { dshHome: context.value.dshHome, patchPath },
-    });
+    return dryRunExit;
   }
 
   let checks = buildChecks(before.state, selection, credential);
@@ -710,13 +780,13 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
         ...checks,
         {
           id: "model-fix",
-          status: "ok",
+          status: "pass",
           detail: changeNote,
         },
         stateAfter.configured
           ? {
               id: "model-recheck",
-              status: "ok",
+              status: "pass",
               detail: "re-read the written patch layer: every model rule passes",
             }
           : {
@@ -742,7 +812,7 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
         ...checks,
         {
           id: "model-fix",
-          status: "ok",
+          status: "pass",
           detail: `wrote ${outcome.notes.length} change(s); the result could not be read back`,
         },
         {
@@ -767,7 +837,7 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
       ...checks,
       {
         id: "model-fix",
-        status: "ok",
+        status: "pass",
         detail: "already conforming; nothing written",
       },
     ];

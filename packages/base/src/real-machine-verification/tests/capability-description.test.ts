@@ -4,10 +4,19 @@
  * Three readers consume it: an agent calling `describe --json`, a human reading
  * `--help`, and the generated markdown that later becomes README/AGENTS-USAGE.
  * These tests pin the parts a caller can rely on — the fifteen command names, the
- * layer each one lives in, the twenty check ids and the exit codes — and prove
+ * layer each one lives in, the built-in check ids and the exit codes — and prove
  * each of those three outputs is derived from the one description object rather
  * than from a second hand-written list.
+ *
+ * The check-id list is cross-checked against the source tree in both directions:
+ * every advertised id must appear somewhere under this directory, and every
+ * literal `checkId("…")` in the orchestration must be advertised. A list that
+ * drifts from the code is how a ghost id reached `describe` once already.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { parseCheckId } from "../contracts/branding";
@@ -127,13 +136,59 @@ describe("commands", () => {
   });
 });
 
+const SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+interface SourceFile {
+  readonly path: string;
+  readonly source: string;
+}
+
+/** Every .ts file under the capability, minus its own tests. */
+function sourceFiles(dir: string = SRC_ROOT): SourceFile[] {
+  const out: SourceFile[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (path === resolve(SRC_ROOT, "tests")) continue;
+      out.push(...sourceFiles(path));
+      continue;
+    }
+    if (entry.name.endsWith(".ts")) out.push({ path, source: readFileSync(path, "utf8") });
+  }
+  return out;
+}
+
 describe("built-in checks", () => {
-  it("declares twenty unique ids that all satisfy the check-id contract", () => {
-    expect(BUILT_IN_CHECK_IDS).toHaveLength(20);
-    expect(new Set(BUILT_IN_CHECK_IDS).size).toBe(20);
+  it("declares unique ids that all satisfy the check-id contract", () => {
+    expect(BUILT_IN_CHECK_IDS).toHaveLength(22);
+    expect(new Set(BUILT_IN_CHECK_IDS).size).toBe(BUILT_IN_CHECK_IDS.length);
     for (const id of BUILT_IN_CHECK_IDS) {
       const parsed = parseCheckId(id);
       expect(parsed.ok, id).toBe(true);
+    }
+  });
+
+  it("advertises only ids the orchestration actually emits", () => {
+    const files = sourceFiles().filter((file) => !file.path.endsWith("capability-description.ts"));
+    expect(files.length).toBeGreaterThan(20);
+    for (const id of BUILT_IN_CHECK_IDS) {
+      const emitted = files.some((file) => file.source.includes(`"${id}"`));
+      expect(emitted, `describe advertises ${id} but no source file emits it`).toBe(true);
+    }
+  });
+
+  it("advertises every literal checkId() the orchestration constructs", () => {
+    const files = sourceFiles().filter((file) => !file.path.endsWith("capability-description.ts"));
+    const emitted = new Set<string>();
+    for (const file of files) {
+      for (const match of file.source.matchAll(/checkId\("([a-z0-9-]+)"\)/g)) {
+        const id = match[1];
+        if (id !== undefined) emitted.add(id);
+      }
+    }
+    expect(emitted.size).toBeGreaterThan(10);
+    for (const id of emitted) {
+      expect(BUILT_IN_CHECK_IDS, `${id} is emitted but not advertised`).toContain(id);
     }
   });
 });

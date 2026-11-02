@@ -16,7 +16,7 @@ import type { CheckObservation, CustomCheck, VerificationProfile } from "../cont
 import type { DeclarationKind } from "../declaration/loader";
 import type { EvidenceStore } from "../evidence/store";
 import type { ReadFileSlice } from "../runtime/types";
-import { failed, passed, type CheckModule, type CheckPlan } from "./types";
+import { blocked, failed, passed, skipped, type CheckModule, type CheckPlan } from "./types";
 import { createDshRuntimeCheck } from "./checks/dsh-runtime";
 import { createModelConfiguredCheck } from "./checks/model-configured";
 import { createModelCredentialCheck } from "./checks/model-credential";
@@ -83,7 +83,20 @@ function toCustomCheck(custom: CustomCheck<unknown>): CheckModule<SelfCheckConte
               "inspect the plugin's custom check implementation",
             );
       }
-      if (observed.ok) return passed(observed.detail);
+      // A plugin check reports the same four states as a built-in one. Old
+      // profiles still return bare `ok` (or a boolean), so the status is
+      // derived from whichever field the check supplied.
+      const status = observed.status ?? (observed.ok === undefined ? "fail" : observed.ok ? "pass" : "fail");
+      if (status === "pass") return passed(observed.detail);
+      if (status === "skip") return skipped(observed.detail, observed.hint, undefined);
+      if (status === "blocked") {
+        return blocked(
+          observed.detail,
+          observed.hint ?? "the plugin check could not observe the product; resolve the blocker and rerun",
+          undefined,
+          observed.blockedReason,
+        );
+      }
       return failed(
         observed.detail,
         observed.expected ?? "the custom check's claim holds",

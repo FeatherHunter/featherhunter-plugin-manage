@@ -17,6 +17,7 @@ import { declarationFixture, declarationLoader, buildProfile } from "./fake-mach
 import { makePorts } from "./fake-ports";
 
 export const MODEL_CWD = "C:\\fake\\repo";
+export const MODEL_USER_PROFILE = "C:\\Users\\fixture";
 export const MODEL_DSH_HOME = "C:\\fake-dsh-home";
 export const MODEL_PROFILE = "desktop";
 export const MODEL_PROFILE_DIR = `${MODEL_DSH_HOME}\\profiles\\${MODEL_PROFILE}`;
@@ -195,6 +196,10 @@ export interface ModelFixtureOptions {
   /** Patch text; `null` leaves the file absent so the read itself is blocked. */
   readonly patch?: string | null;
   readonly profileName?: string;
+  /** DSH home to install into; defaults to a fake home far from the real one. */
+  readonly dshHome?: string;
+  /** USERPROFILE the real-home guard derives the real DSH home from. */
+  readonly userProfile?: string;
   readonly model?: ModelSelection | false;
   /** Environment overrides on top of the default credential canary. */
   readonly envValues?: Readonly<Record<string, string>>;
@@ -226,7 +231,8 @@ export interface ModelFixture {
 export function createModelFixture(options: ModelFixtureOptions = {}): ModelFixture {
   const profileName = options.profileName ?? MODEL_PROFILE;
   const cwd = MODEL_CWD;
-  const dshHome = MODEL_DSH_HOME;
+  const dshHome = options.dshHome ?? MODEL_DSH_HOME;
+  const userProfile = options.userProfile ?? MODEL_USER_PROFILE;
   const profileDir = `${dshHome}\\profiles\\${profileName}`;
   const patchPath = `${profileDir}\\cordis.patch.yml`;
 
@@ -239,11 +245,12 @@ export function createModelFixture(options: ModelFixtureOptions = {}): ModelFixt
   const env = new FakeEnv({
     values: {
       DSH_HOME: dshHome,
+      USERPROFILE: userProfile,
       [MODEL_KEY_ENV]: MODEL_SECRET_CANARY,
       ...(options.envValues ?? {}),
     },
     cwd,
-    home: "C:\\Users\\fixture",
+    home: userProfile,
   });
   const clock = new FakeClock();
   const ports = makePorts({ fs, clock, env });

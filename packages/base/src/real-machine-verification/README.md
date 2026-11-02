@@ -132,6 +132,16 @@ dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>]
 
 全部命令都支持 `--json`；写操作类命令都支持 `--dry-run`，且 dry-run 打印的计划与真实执行是同一份结论。冻结与批次身份还要求插件仓是 git 工作树：`freeze` 用 `HEAD`、工作区状态与文件摘要定位候选。命令的完整 usage、写入物与退出码见文末参考段。
 
+### 批次：先开、再冻、再封
+
+批次身份要在候选存在之前开始，否则「候选早于批次」这条判据永远失败；候选也必须冻在批次目录里。`batch open` 因此分两段：
+
+1. `batch open --name <批次名> --base-ref <ref>`：只写 `batch.json`（`candidate: null`），打印基线行与下一步提示；
+2. `freeze --out <批次目录>/pkg`：把候选冻进批次目录；
+3. `batch open --name <批次名>`（或 `--candidate <批次目录内路径>`）：按固定顺序实测候选——不在批次目录 → 早于批次 → HEAD 不一致 → 产物构建提交不一致 → 源码不稳定 → 基线包含关系未判定/不成立 → 版本与基线不等 → 包缺失/哈希不符 → 文件摘要重算不符——通过才写候选身份并打印身份行。拒收时不写 candidate（exit 1）；前置无法测量（git 读不到、哈希算不出）时 exit 2。
+
+`batch status` 的 `candidate-identity` 每次重算清单与 tgz 的 sha256 与文件摘要，候选被替换会 fail；新鲜度仍按 HEAD 与基线 tip 双判据。
+
 ## 第五步：读报告
 
 人话模式每个检查一行，`ok|fail|skip|blocked <检查id> <说明>`；fail 行带缩进的 expected / actual / hint，blocked 至少带 hint：
@@ -179,7 +189,9 @@ $after = $files | ForEach-Object { (Get-FileHash $_ -Algorithm SHA256).Hash }
 Compare-Object $before $after   # 无输出 = 未变
 ```
 
-`install`（和 `model --fix`）的默认目标是 `DSH_HOME` 指向的 profile。命令按**解析后的目标 DSH home** 判断隔离：只要它等于真实 home（`~/.dsh`，含 `DSH_HOME` 被显式指到真实 home 的情况），真实安装/写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向复制成批次 home 再装）；`--dry-run` 仍会出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。
+`install`（和 `model --fix`）的默认目标是 `DSH_HOME` 指向的 profile。命令按**解析后的目标 DSH home** 判断隔离：只要它等于或**落在**真实 home（`~/.dsh`）里面（含 `DSH_HOME` 被指到真实 home、其子目录或指向它的 junction 的情况），真实安装/写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向复制成批次 home 再装）；`--dry-run` 仍会出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。
+
+显式写目标同样受这条纪律约束：`--work-root`、`--out`、`--archive-root` 解析后落在真实 home 里面时，非 dry-run 在命令开始前就**拒绝**（exit 2、`[prerequisite]`，错误里点名是哪个 flag），dry-run 只警告——`--dry-run` 不写盘，所以允许先看计划。
 
 ## self-check 检查了什么
 
@@ -247,12 +259,12 @@ Run a plugin build inside a provably isolated DSH instance, check falsifiable cl
 | L1 | dsh-verify single-instance [--profile <p>] [--declaration <file>] [--work-root <dir>] [--keep] [--dry-run] [--json] | a run directory under the work root: report, evidence, logs |
 | L1 | dsh-verify concurrent --count <N> [--profiles a,b,c] [--dry-run] [--json] | the batch directory: evidence, summary, logs (nothing with --dry-run) |
 | L1 | dsh-verify freeze [--out <dir>] [--allow-dirty] [--json] [--dry-run] | candidate.json and the tgz under the given output directory (nothing with --dry-run) |
-| L1 | dsh-verify batch open\|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run] | batch.json under the work root, plus the identity and baseline lines |
+| L1 | dsh-verify batch open\|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run] | batch.json under the work root, the baseline line at open and the identity line once sealed |
 | L1 | dsh-verify evidence add\|archive\|verify [--file <p>]... [--check <id>=pass\|fail] [--archive-root <dir>] [--dir <batch-or-archive-dir>] [--name <batch-name>] [--work-root <dir>] [--json] [--dry-run] | evidence/files, evidence.json, the archive directory (nothing with --dry-run) |
 | L1 | dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast\|--collect-all] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json] [--dry-run] | a run directory under the work root: report, evidence, logs (nothing with --dry-run) |
 | L1 | dsh-verify cleanup [--yes] [--keep-batches <n>] [--keep-homes <n>] [--include-pkg] [--json] [--dry-run] | the work root, only with --yes (nothing with --dry-run) |
 
-### Built-in check ids (20)
+### Built-in check ids (22)
 
 These ids are a stable contract: reports, comments and gates cite them.
 
@@ -273,8 +285,10 @@ These ids are a stable contract: reports, comments and gates cite them.
 - `logs-readable`
 - `teardown-clean`
 - `candidate-identity`
-- `batch-freshness`
-- `evidence-bound`
+- `batch-head-fresh`
+- `batch-baseline-fresh`
+- `batch-evidence-bound`
+- `batch-record`
 - `screen-present`
 
 ### Profile fields (15)

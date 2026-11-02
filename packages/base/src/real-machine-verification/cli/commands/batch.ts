@@ -93,7 +93,12 @@ function renderCheck(check: BatchCheck): string {
 
 /** The two wire-format lines, verbatim; the no-baseline note is not a base line. */
 function renderIdentityLines(outcome: { readonly identityLine: string; readonly baseLine: string | null }): string {
-  const lines = [outcome.identityLine];
+  const lines: string[] = [];
+  lines.push(
+    outcome.identityLine.length > 0
+      ? outcome.identityLine
+      : "（本批次尚未冻结候选，因此还没有身份行；freeze 到批次目录后 batch open --candidate 才会生成）",
+  );
   lines.push(
     outcome.baseLine ?? "- 验证基线：无（本批次未记录基线，新鲜度判为 blocked，不是「不需要检查」）",
   );
@@ -117,14 +122,19 @@ function openJson(outcome: OpenBatchOutcome): string {
     },
     profile: outcome.raw.profile ?? null,
     profileName: outcome.raw.profileName ?? null,
-    candidate: {
-      path: outcome.candidate.path,
-      manifest: outcome.candidatePath,
-      commit: outcome.candidate.commit,
-      version: outcome.candidate.version,
-      manifestSha256: outcome.candidate.sha256,
-      tgzSha256: outcome.candidate.tgzSha256,
-    },
+    phase: outcome.phase,
+    candidate:
+      outcome.candidate === null
+        ? null
+        : {
+            path: outcome.candidate.path,
+            manifest: outcome.candidatePath,
+            commit: outcome.candidate.commit,
+            version: outcome.candidate.version,
+            manifestSha256: outcome.candidate.sha256,
+            tgzSha256: outcome.candidate.tgzSha256,
+          },
+    candidateProblems: outcome.candidateProblems,
     base: outcome.raw.base ?? null,
     identityLine: outcome.identityLine,
     baseLine: outcome.baseLine,
@@ -178,6 +188,7 @@ function statusJson(outcome: CheckBatchOutcome): string {
       ...(check.expected === undefined ? {} : { expected: check.expected }),
       ...(check.actual === undefined ? {} : { actual: check.actual }),
       ...(check.hint === undefined ? {} : { hint: check.hint }),
+      ...(check.blockedReason === undefined ? {} : { blockedReason: check.blockedReason }),
       reason: check.reason,
     })),
     notes: outcome.notes,
@@ -289,11 +300,18 @@ async function runOpen(
     io.stdout(openJson(outcome));
     return EXIT_CODES.ok;
   }
-  const verb = outcome.reused
-    ? `批次 ${outcome.record.batchName} 已存在且身份一致（未改写 ${BATCH_RECORD_FILENAME}）`
-    : args.dryRun
-      ? `批次 ${outcome.record.batchName} dry-run（未写 ${BATCH_RECORD_FILENAME}）`
-      : `批次 ${outcome.record.batchName} 已记录到 ${outcome.batchFile}`;
+  const verb =
+    outcome.phase === "prepared"
+      ? outcome.reused
+        ? `批次 ${outcome.record.batchName} 已经准备好，等待候选（未改写 ${BATCH_RECORD_FILENAME}）`
+        : args.dryRun
+          ? `批次 ${outcome.record.batchName} dry-run 准备（未写 ${BATCH_RECORD_FILENAME}）`
+          : `批次 ${outcome.record.batchName} 已准备到 ${outcome.batchFile}`
+      : outcome.reused
+        ? `批次 ${outcome.record.batchName} 已存在且身份一致（未改写 ${BATCH_RECORD_FILENAME}）`
+        : args.dryRun
+          ? `批次 ${outcome.record.batchName} dry-run 封存（未写 ${BATCH_RECORD_FILENAME}）`
+          : `批次 ${outcome.record.batchName} 已封存候选并记录到 ${outcome.batchFile}`;
   io.stdout(`ok batch-open ${verb}\n`);
   io.stdout(renderIdentityLines(outcome));
   return EXIT_CODES.ok;

@@ -342,6 +342,7 @@ describe("self-check: optional capabilities", () => {
     const screen = checkOf(result.report, "screen-present");
     expect(screen?.status).toBe("blocked");
     expect(screen?.hint).toContain("ScreenPort");
+    expect(screen?.blockedReason?.code).toBe("prerequisite-missing");
     expect(result.report.checks.some((check) => check.status === "fail")).toBe(false);
     expect(result.code).toBe(2);
   });
@@ -363,6 +364,49 @@ describe("self-check: profile custom checks", () => {
 
     expect(result.report.checks.map((check) => check.id)).toContain("fixture-extra");
     expect(statusOf(result.report, "fixture-extra")).toBe("pass");
+    expect(result.code).toBe(0);
+  });
+
+  it("maps a blocked custom check to blocked and keeps its structured reason", async () => {
+    const fixture = createFixture({
+      profileOverrides: {
+        checks: [
+          customCheckFixture(
+            () => ({
+              status: "blocked" as const,
+              detail: "the fixture adapter is not installed",
+              hint: "install the fixture adapter, then rerun",
+              blockedReason: { code: "adapter-missing" as const, message: "the fixture adapter is not installed" },
+            }),
+            { id: "fixture-blocked" as never, title: "blocked" },
+          ),
+        ],
+      },
+    });
+    const result = await runSelfCheck(fixture);
+
+    const check = checkOf(result.report, "fixture-blocked");
+    expect(check?.status).toBe("blocked");
+    expect(check?.blockedReason?.code).toBe("adapter-missing");
+    expect(check?.hint).toContain("rerun");
+    expect(result.code).toBe(2);
+  });
+
+  it("maps a skipped custom check to skip without failing the run", async () => {
+    const fixture = createFixture({
+      profileOverrides: {
+        checks: [
+          customCheckFixture(() => ({ status: "skip" as const, detail: "the feature is not requested", hint: "enable it" }), {
+            id: "fixture-skipped" as never,
+            title: "skipped",
+          }),
+        ],
+      },
+    });
+    const result = await runSelfCheck(fixture);
+
+    const check = checkOf(result.report, "fixture-skipped");
+    expect(check?.status).toBe("skip");
     expect(result.code).toBe(0);
   });
 });

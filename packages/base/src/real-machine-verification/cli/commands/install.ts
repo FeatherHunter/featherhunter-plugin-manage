@@ -24,8 +24,8 @@ import {
   type InstallPlan,
 } from "../../orchestration/install-package";
 import { renderCheckLines } from "../../orchestration/report";
-import { resolveRealHome } from "../../runtime/dsh/home";
-import { resolveAgainst, samePath } from "../../runtime/paths";
+import { findWriteUnderRealHome } from "../../runtime/dsh/home";
+import { resolveAgainst } from "../../runtime/paths";
 import { createBinaryWriter, type BinaryWriter } from "../../runtime/platform/binary-writer";
 import type { RuntimeFacts } from "../../runtime/types";
 import { flagProblems, type ParsedArgs } from "../args";
@@ -144,22 +144,28 @@ export async function runInstallCommand(args: ParsedArgs, deps: InstallCommandDe
   };
   // Installing mutates the profile's node_modules. The isolation rule is about
   // the resolved target, not about whether DSH_HOME happens to be set: a host
-  // can export DSH_HOME pointing at the real user home, and writing there is
-  // still writing the real home. Refuse before the first byte is written; a
-  // dry run writes nothing, so it may still plan and warn.
-  const realHome = resolveRealHome(ports.env);
-  const targetsRealHome = samePath(context.dshHome, realHome);
-  if (targetsRealHome && !args.dryRun) {
+  // can export DSH_HOME pointing at the real user home — or at a subdirectory of
+  // it, or at a link that lands there — and writing that is still writing the
+  // real home. `findWriteUnderRealHome` canonicalises both sides and refuses the
+  // whole subtree. Refuse before the first byte is written; a dry run writes
+  // nothing, so it may still plan and warn.
+  const realHomeHit = await findWriteUnderRealHome({
+    fs: ports.fs,
+    env: ports.env,
+    cwd,
+    dshHome: context.dshHome,
+  });
+  if (realHomeHit !== null && !args.dryRun) {
     return emitFailure(io, args.json, "install", "prerequisite", {
       code: "prerequisite",
-      message: `refusing to install into the real DSH home ${context.dshHome}`,
+      message: `refusing to install into the real DSH home ${realHomeHit.realHome}: DSH_HOME ${realHomeHit.value}`,
       hint: "copy the profile into a batch home and set DSH_HOME to that copy; this tool never writes the real user home",
-      details: { dshHome: context.dshHome, profileDir: context.profileDir, realHome },
+      details: { dshHome: context.dshHome, profileDir: context.profileDir, realHome: realHomeHit.realHome },
     });
   }
-  if (targetsRealHome) {
+  if (realHomeHit !== null) {
     note(
-      `warning: the target DSH home ${context.dshHome} is the real user home, so ${context.profileDir} belongs to it; ` +
+      `warning: the target DSH home ${context.dshHome} belongs to the real user home ${realHomeHit.realHome}, so ${context.profileDir} belongs to it; ` +
         "a real install would be refused; copy the profile into a batch home and set DSH_HOME to that copy",
     );
   }

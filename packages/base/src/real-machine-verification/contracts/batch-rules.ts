@@ -227,7 +227,7 @@ export function judgeFreshness(facts: FreshnessFacts, checkedAt: string): Freshn
   } else if (record.base.allowOutdated) {
     problems.push({
       code: "outdated-base-allowed",
-      message: `batch was opened with --allow-outdated-base against ${record.base.ref} ${record.base.tip}`,
+      message: `batch was opened with --allow-stale against ${record.base.ref} ${record.base.tip}`,
       hint: "this batch verifies code that does not contain the current baseline; note it in the batch comment",
     });
   } else if (facts.baseReadError !== undefined) {

@@ -69,8 +69,10 @@ export const BUILT_IN_CHECK_IDS: readonly CheckId[] = [
   "logs-readable",
   "teardown-clean",
   "candidate-identity",
-  "batch-freshness",
-  "evidence-bound",
+  "batch-head-fresh",
+  "batch-baseline-fresh",
+  "batch-evidence-bound",
+  "batch-record",
   "screen-present",
 ].map((id) => id as CheckId);
 
@@ -244,10 +246,11 @@ const COMMANDS: readonly CommandDescription[] = [
   {
     name: "batch",
     layer: 1,
-    summary: "Open, inspect or finish a verification batch; writes the identity line and checks freshness.",
+    summary:
+      "Open (prepare) or seal a verification batch, then inspect it: open writes the baseline, freeze drops the candidate inside, seal verifies it in spec order and writes the identity line; status checks freshness and candidate drift.",
     usage:
       "dsh-verify batch open|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run]",
-    writes: "batch.json under the work root, plus the identity and baseline lines",
+    writes: "batch.json under the work root, the baseline line at open and the identity line once sealed",
     flags: [
       "--name <n>",
       "--base-ref <r>",

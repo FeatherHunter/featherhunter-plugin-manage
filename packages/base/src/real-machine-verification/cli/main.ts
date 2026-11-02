@@ -27,6 +27,8 @@ import {
 import type { Ports } from "../contracts/ports";
 import type { DeclarationLoadResult, LoadDeclarationOptions } from "../declaration/loader";
 import { loadBatchContextForEvidence } from "../orchestration/batch";
+import { findWriteUnderRealHome, type WriteTarget } from "../runtime/dsh/home";
+import { resolveAgainst } from "../runtime/paths";
 import { createNodePorts, createRuntimeFacts } from "../runtime/platform/defaults";
 import type { RuntimeFacts } from "../runtime/types";
 import { parseArgs } from "./args";
@@ -267,6 +269,38 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
     runtime: runtimeFacts(deps),
     ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
   };
+
+  // The real DSH home is read-only for this tool: writes may land in a work root,
+  // a system temp directory or another explicit target. Callers pick those targets
+  // by flag, so the check belongs here, before any command creates a directory;
+  // install and model additionally refuse their default target when it resolves to
+  // the real profile. `findWriteUnderRealHome` canonicalises both sides, so a
+  // subdirectory or a link into the real home is refused too. A dry run writes
+  // nothing, so it warns instead of refusing.
+  const writeTargets: WriteTarget[] = [];
+  if (parsed.workRoot !== undefined) {
+    writeTargets.push({ flag: "--work-root", value: resolveAgainst(ports.env.cwd(), parsed.workRoot) });
+  }
+  if (parsed.out !== undefined) {
+    writeTargets.push({ flag: "--out", value: resolveAgainst(ports.env.cwd(), parsed.out) });
+  }
+  if (parsed.archiveRoot !== undefined) {
+    writeTargets.push({ flag: "--archive-root", value: resolveAgainst(ports.env.cwd(), parsed.archiveRoot) });
+  }
+  const realHomeHit = await findWriteUnderRealHome({ fs: ports.fs, env: ports.env, cwd: ports.env.cwd(), writeTargets });
+  if (realHomeHit !== null) {
+    const message = `refusing to write under the real DSH home ${realHomeHit.realHome}: ${realHomeHit.flag} ${realHomeHit.value}`;
+    const hint = `point ${realHomeHit.flag} at a batch home or a system temp directory; this tool never writes the real user home`;
+    if (parsed.dryRun) {
+      io.stderr(`${CLI_NAME} ${parsed.command}: warning: ${message} (the dry run writes nothing)\n`);
+    } else {
+      io.stderr(`${CLI_NAME} ${parsed.command}: ${message}\n  hint: ${hint}\n`);
+      if (parsed.json) {
+        io.stdout(`${JSON.stringify(failureJson(parsed.command, "prerequisite", { code: "prerequisite", message, hint }))}\n`);
+      }
+      return EXIT_CODES.blocked;
+    }
+  }
 
   if (parsed.command === "self-check") {
     return runSelfCheckCommand(parsed, common);

@@ -126,6 +126,7 @@ export type CandidateProblemCode =
   | "file-digest-mismatch"
   | "file-list-mismatch"
   | "commit-not-contains-base"
+  | "base-version-unreadable"
   | "version-mismatch";
 
 export interface CandidateProblem {
@@ -361,6 +362,12 @@ export interface CandidateFacts {
   readonly currentHead: CommitSha;
   /** Baseline the batch was opened against; `null` means the batch recorded none. */
   readonly base: VerificationBase | null;
+  /**
+   * True when the operator explicitly allowed verifying an outdated base.
+   * The ancestor problem then becomes a published caveat instead of a refusal;
+   * the version agreement is never relaxed.
+   */
+  readonly allowOutdatedBase: boolean;
   /** True when `commit` is an ancestor of (or equal to) the baseline tip. */
   readonly commitContainsBase: boolean | null;
   /** Version currently declared by the baseline ref, when readable. */
@@ -429,24 +436,37 @@ export function judgeCandidate(facts: CandidateFacts): CandidateVerdict {
     );
   }
   if (facts.base !== null) {
-    if (facts.commitContainsBase === null) {
-      problems.push(
-        problem(
-          "commit-not-contains-base",
-          "could not determine whether the candidate descends from the baseline",
-          "fetch the baseline ref locally first",
-        ),
-      );
-    } else if (!facts.commitContainsBase) {
-      problems.push(
-        problem(
-          "commit-not-contains-base",
-          `candidate commit ${manifest.git.commit} does not contain baseline ${facts.base.ref} (${facts.base.tip})`,
-          "rebase or merge the baseline, then freeze again; an outdated base silently verifies old code",
-        ),
-      );
+    // An explicitly allowed outdated base is a caveat, not a refusal: the batch
+    // record already says so and the status report repeats it. The version still
+    // has to agree, otherwise "allowed" would silently mean "anything goes".
+    if (!facts.allowOutdatedBase) {
+      if (facts.commitContainsBase === null) {
+        problems.push(
+          problem(
+            "commit-not-contains-base",
+            "could not determine whether the candidate descends from the baseline",
+            "fetch the baseline ref locally first",
+          ),
+        );
+      } else if (!facts.commitContainsBase) {
+        problems.push(
+          problem(
+            "commit-not-contains-base",
+            `candidate commit ${manifest.git.commit} does not contain baseline ${facts.base.ref} (${facts.base.tip})`,
+            "rebase or merge the baseline, then freeze again; an outdated base silently verifies old code",
+          ),
+        );
+      }
     }
-    if (facts.expectedVersion !== null && manifest.version !== facts.expectedVersion) {
+    if (facts.expectedVersion === null) {
+      problems.push(
+        problem(
+          "base-version-unreadable",
+          `could not read the version baseline ${facts.base.ref} (${facts.base.tip}) declares`,
+          "check that the baseline ref still resolves and contains a valid package.json",
+        ),
+      );
+    } else if (manifest.version !== facts.expectedVersion) {
       problems.push(
         problem(
           "version-mismatch",
@@ -464,7 +484,7 @@ export function judgeCandidate(facts: CandidateFacts): CandidateVerdict {
     problems.push(
       problem(
         "tgz-hash-mismatch",
-        `tarball sha256 ${String(facts.tgzOnDisk.sha256)} does not match the manifest ${manifest.package.tgzSha256}`,
+        `tarball sha256 ${facts.tgzOnDisk.sha256 ?? "(unreadable)"} does not match the manifest ${manifest.package.tgzSha256}`,
         "the tarball was replaced after freezing; re-freeze",
       ),
     );

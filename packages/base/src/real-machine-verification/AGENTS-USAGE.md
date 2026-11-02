@@ -56,7 +56,7 @@ run.json 里每一条 blocked 检查还带结构化原因 `blockedReason: { code
 真机结论要能被别人复核，靠的是三层绑定而不是「我跑过了」：
 
 1. **候选**：`freeze` 产出 `candidate.json`，含候选提交、包名/版本、tgz sha256、文件摘要（`fileDigest`）与稳定性判定（`validity` / `sourceStable`）。工作区 dirty 时默认拒绝冻结；只有明确接受「这是开发候选」时才用 `--allow-dirty`，并如实标注 `validity=development`。
-2. **批次**：`batch open` 把批次名 + 候选 + 基线（`--base-ref` 的 tip 与目标版本）写成 `batch.json`，并给出批次的身份行。之后的证据都挂在这个批次的目录下。
+2. **批次**：批次先「开」再「封」。`batch open --name <n> --base-ref <r>` 只写 `batch.json`（`startHead` + 基线 tip 与目标版本，`candidate: null`）并打印基线行——批次必须在候选生成之前开始；接着 `freeze --out <批次目录>` 把候选冻进批次目录；再 `batch open --name <n> --candidate <批次目录内路径>` 按固定顺序实测并拒收（不在批次目录 → 早于批次 → HEAD → 构建提交 → 源码稳定 → 基线包含关系 → 版本 → 包缺失/哈希 → 文件摘要重算），通过才写候选身份并打印身份行。批次目录外的 `candidate.json` 会被 `not-in-batch-dir` 拒掉。之后的证据都挂在这个批次的目录下。
 3. **证据**：`evidence add` 登记、`evidence archive` 归档（`SHA256SUMS`，最后一行也带换行）、`evidence verify` 复核；同名证据加序号而不覆盖，更正只写旁注（notes）不改原件。
 
 身份行是逐字契约，出现在批次记录与票面里：
@@ -71,7 +71,7 @@ run.json 里每一条 blocked 检查还带结构化原因 `blockedReason: { code
 - 验证基线：本地 <ref> <tip>；目标版本 <version>
 ```
 
-Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的 sha256（`candidate.json` 的 `package.tgzSha256`），发布前检查拿它和候选清单逐字比对；**证据绑定用的是另一个值**——`evidence.json` 的 candidate 块记录 `candidate.json` 文件本身的摘要，防的是清单被改写，两者不要混用。没有基线时 batch 不会假装通过（新鲜度判 blocked），`--allow-stale` 只降级「HEAD 已移动」这一项，不豁免「没有基线」。
+Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的 sha256（`candidate.json` 的 `package.tgzSha256`），发布前检查拿它和候选清单逐字比对；**证据绑定用的是另一个值**——`evidence.json` 的 candidate 块记录 `candidate.json` 文件本身的摘要，防的是清单被改写，两者不要混用。没有基线时 batch 不会假装通过（新鲜度判 blocked），`--allow-stale` 只降级「HEAD 已移动」/「基线不是候选祖先」这两项，不豁免「没有基线」，也不放过版本不等。`batch status` 的 `candidate-identity` 每次重算清单与 tgz 的 sha256、文件摘要：候选被替换或清单被改写就 fail，不会沿用开批时的旧结论。
 
 文件摘要算法（跨语言可复核）：拒绝反斜杠与坏 sha；路径按 UTF-16 排序；每行 `<sha256>  <path>`；行间 join 后再整体 sha256；无尾换行；路径不做归一化。
 
@@ -82,7 +82,7 @@ Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的
 - 一切跑实例的命令都要用 `DSH_HOME=<批次 home>` 指到**复制出来的 profile**；真实 `~/.dsh` 只读，报告里的 `dshHome` 指向批次 home 是正确语义。
 - 批次 home 的标准做法：复制真实 `profiles/<name>` 到批次目录，再把候选包装进副本；证据里记录真实 home 关键文件运行前后的 sha256 不变。
 - 真实 home 的证据按**固定文件清单**取（整目录哈希会假阳性：宿主常驻时 `~/.dsh/storages` 空闲也会变）：`<DSH_HOME>/.credentials.yaml`、`profiles/<p>/package.json`、`profiles/<p>/cordis.patch.yml`、`profiles/<p>/node_modules/<packageName>/package.json`。Windows 用 `Get-FileHash <file> -Algorithm SHA256` 与运行前值比对（没有 `sha256sum`）。
-- `install`（以及 `model --fix`）的默认目标是 `DSH_HOME` 的 profile；它们按**解析后的目标 home**判断隔离——只要等于真实 home（包括 `DSH_HOME` 被显式指到真实 home），真实写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向「复制成批次 home 再装」）；`--dry-run` 仍出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。先复制 profile、把 `DSH_HOME` 指到副本再装。
+- `install`（以及 `model --fix`）的默认目标是 `DSH_HOME` 的 profile；它们按**解析后的目标 home**判断隔离——只要等于真实 home（包括 `DSH_HOME` 被显式指到真实 home），真实写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向「复制成批次 home 再装」）；`--dry-run` 仍出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。先复制 profile、把 `DSH_HOME` 指到副本再装。同一判定也覆盖显式写目标：`--work-root` / `--out` / `--archive-root` 指到真实 home 里面时，非 dry-run 直接拒绝（exit 2、`[prerequisite]`，hint 点名该 flag），dry-run 只警告（它不写盘）。
 - `isolation` 探针同理：它证明子进程的 userprofile / 插件设置目录落在 work root 下，而不是真实 home。声明没写 `pluginSettingsDir` 时它会 blocked 并给出补字段的 hint——这是声明缺口，不是 bug。
 - `cleanup` / `stop` 收尾；`--keep` 保留现场时要在结论里注明「teardown 记 skip，不是通过」。
 
@@ -95,7 +95,7 @@ Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的
 边界（判断标准：需要改核心就记为扩展性缺陷，不要私改核心）：
 
 - 需要**有头**浏览器（真全屏、多窗口预设）时，`run` 的场景原语固定 headless；这类检查应留成仓内有头脚本，不要塞进场景硬跑。
-- 自定义检查无法表达 `blocked`（只能 pass/fail）：环境类检查放进场景，用 `ScenarioObservation.status` 表达 blocked。
+- 自定义检查与内建检查同一套四态：返回 `{ status: "blocked", blockedReason: { code: "adapter-missing" | "prerequisite-missing" | "platform-unsupported", message, hint? } }` 就能在报告里记 blocked（不是 fail）；`{ status: "skip" }` 表示不适用。旧的 `ok: true/false` 仍兼容。
 - 插件特有的状态目录、技能目录、模型要求都应通过声明字段表达；声明表达不了才提契约扩展。
 
 ## 6. 给 agent 的硬规矩
@@ -141,12 +141,12 @@ Run a plugin build inside a provably isolated DSH instance, check falsifiable cl
 | L1 | dsh-verify single-instance [--profile <p>] [--declaration <file>] [--work-root <dir>] [--keep] [--dry-run] [--json] | a run directory under the work root: report, evidence, logs |
 | L1 | dsh-verify concurrent --count <N> [--profiles a,b,c] [--dry-run] [--json] | the batch directory: evidence, summary, logs (nothing with --dry-run) |
 | L1 | dsh-verify freeze [--out <dir>] [--allow-dirty] [--json] [--dry-run] | candidate.json and the tgz under the given output directory (nothing with --dry-run) |
-| L1 | dsh-verify batch open\|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run] | batch.json under the work root, plus the identity and baseline lines |
+| L1 | dsh-verify batch open\|status [--name <n>] [--base-ref <r>] [--candidate <dir>] [--allow-stale] [--work-root <dir>] [--json] [--dry-run] | batch.json under the work root, the baseline line at open and the identity line once sealed |
 | L1 | dsh-verify evidence add\|archive\|verify [--file <p>]... [--check <id>=pass\|fail] [--archive-root <dir>] [--dir <batch-or-archive-dir>] [--name <batch-name>] [--work-root <dir>] [--json] [--dry-run] | evidence/files, evidence.json, the archive directory (nothing with --dry-run) |
 | L1 | dsh-verify run <scenario.ts> [--concurrency <n>] [--fail-fast\|--collect-all] [--profile <p>] [--declaration <file>] [--work-root <dir>] [--json] [--dry-run] | a run directory under the work root: report, evidence, logs (nothing with --dry-run) |
 | L1 | dsh-verify cleanup [--yes] [--keep-batches <n>] [--keep-homes <n>] [--include-pkg] [--json] [--dry-run] | the work root, only with --yes (nothing with --dry-run) |
 
-### Built-in check ids (20)
+### Built-in check ids (22)
 
 These ids are a stable contract: reports, comments and gates cite them.
 
@@ -167,8 +167,10 @@ These ids are a stable contract: reports, comments and gates cite them.
 - `logs-readable`
 - `teardown-clean`
 - `candidate-identity`
-- `batch-freshness`
-- `evidence-bound`
+- `batch-head-fresh`
+- `batch-baseline-fresh`
+- `batch-evidence-bound`
+- `batch-record`
 - `screen-present`
 
 ### Profile fields (15)

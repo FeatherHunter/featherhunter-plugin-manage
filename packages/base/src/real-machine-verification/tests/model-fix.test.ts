@@ -12,7 +12,6 @@ import { parseArgs } from "../cli/args";
 import { runModelCommand } from "../cli/commands/model";
 import { ok } from "../contracts/result";
 import {
-  MODEL_DSH_HOME,
   MODEL_ID,
   MODEL_KEY_ENV,
   MODEL_PATCH_PATH,
@@ -27,6 +26,10 @@ import {
   type ModelFixture,
 } from "./support/fake-model";
 import { captureIo } from "./support/fake-capture";
+
+/** The real DSH home this suite derives from USERPROFILE: C:\Users\fixture\.dsh. */
+const REAL_DSH_HOME = "C:\\Users\\fixture\\.dsh";
+const NESTED_DSH_HOME = "C:\\Users\\fixture\\.dsh\\batch-home";
 
 interface Run {
   readonly code: number;
@@ -64,7 +67,7 @@ interface StateJson {
 
 interface CheckJson {
   readonly id: string;
-  readonly status: "ok" | "fail" | "skip" | "blocked";
+  readonly status: "pass" | "fail" | "skip" | "blocked";
   readonly detail: string;
   readonly expected?: string;
   readonly actual?: string;
@@ -135,10 +138,10 @@ describe("model command, read-only", () => {
       beforeStat.ok ? beforeStat.value.mtimeMs : -2,
     );
 
-    expect(result.out).toContain("ok model-default-provider");
+    expect(result.out).toContain("pass model-default-provider");
     expect(result.out).toContain("fail model-default-model");
     expect(result.out).toContain("fail model-credential-ref");
-    expect(result.out).toContain("ok model-declared-models");
+    expect(result.out).toContain("pass model-declared-models");
     expect(result.out).toContain("fail model-reference-model");
     expect(result.out).toContain("expected " + MODEL_ID);
     expect(result.out).toContain("actual M3.1-Flash");
@@ -176,7 +179,7 @@ describe("model command, read-only", () => {
 
     // Exactly one JSON document on stdout; the ok/fail lines are stderr-only here.
     expect(result.err).toContain("fail model-default-model");
-    expect(result.err).toContain("ok model-default-provider");
+    expect(result.err).toContain("pass model-default-provider");
     expect(result.out).not.toContain("fail model-default-model");
     expect(result.out).not.toContain(MODEL_SECRET_CANARY);
     expect(result.err).not.toContain(MODEL_SECRET_CANARY);
@@ -220,19 +223,19 @@ describe("model command, --fix", () => {
     expect(doc.fix.changed).toBe(false);
     expect(doc.fix.written).toBe(false);
     expect(doc.fix.notes).toEqual(["already conforming; nothing written"]);
-    expect(check(doc, "model-fix")?.status).toBe("ok");
-    expect(result.err).toContain("ok model-fix already conforming; nothing written");
+    expect(check(doc, "model-fix")?.status).toBe("pass");
+    expect(result.err).toContain("pass model-fix already conforming; nothing written");
   });
 
   it("refuses --fix when DSH_HOME is the real user home", async () => {
     const patch = mismatchedPatch();
-    const fixture = createModelFixture({ patch, envValues: { DSH_REAL_HOME: MODEL_DSH_HOME } });
+    const fixture = createModelFixture({ patch, dshHome: REAL_DSH_HOME });
 
     const result = await runModel(fixture, ["--fix", "--json"]);
 
     expect(result.code).toBe(2);
     expect(fixture.fs.writes).toEqual([]);
-    expect(fixture.fs.readFileSync(MODEL_PATCH_PATH)).toBe(patch);
+    expect(fixture.fs.readFileSync(fixture.paths.patchPath)).toBe(patch);
     const doc = JSON.parse(result.out) as {
       ok: boolean;
       error?: { code: string; stage: string; message: string; hint?: string };
@@ -245,17 +248,46 @@ describe("model command, --fix", () => {
     expect(result.err).toContain("refusing to edit the real DSH home");
   });
 
-  it("still plans --fix for the real home under --dry-run, which writes nothing", async () => {
+  it("refuses --fix when DSH_HOME sits below the real user home (the 2026-11-02 bypass)", async () => {
     const patch = mismatchedPatch();
-    const fixture = createModelFixture({ patch, envValues: { DSH_REAL_HOME: MODEL_DSH_HOME } });
+    const fixture = createModelFixture({ patch, dshHome: NESTED_DSH_HOME });
+
+    const result = await runModel(fixture, ["--fix", "--json"]);
+
+    expect(result.code).toBe(2);
+    expect(fixture.fs.writes).toEqual([]);
+    expect(result.err).toContain(`refusing to edit the real DSH home ${REAL_DSH_HOME}`);
+  });
+
+  it("plans --fix for the real home under --dry-run but never claims a success the real run would not have", async () => {
+    const patch = mismatchedPatch();
+    const fixture = createModelFixture({ patch, dshHome: REAL_DSH_HOME });
 
     const result = await runModel(fixture, ["--fix", "--dry-run", "--json"]);
 
+    // The dry run writes nothing, so it may plan; the exit code predicts what the
+    // real --fix run would report (mismatchedPatch is repairable, so 0), not a
+    // meaningless fixed 0 and not the pre-fix failure either.
     expect(result.code).toBe(0);
     expect(fixture.fs.writes).toEqual([]);
-    const doc = JSON.parse(result.out) as { dryRun: boolean; plan: { wouldWrite: boolean } };
+    expect(result.err).toContain("warning: the target DSH home");
+    const doc = JSON.parse(result.out) as {
+      dryRun: boolean;
+      ok: boolean;
+      exitCode: number;
+      plan: {
+        wouldWrite: boolean;
+        checks: readonly { readonly status: string }[];
+        predicted: { readonly exitCode: number; readonly checks: readonly { readonly status: string }[] };
+      };
+    };
     expect(doc.dryRun).toBe(true);
+    expect(doc.ok).toBe(true);
+    expect(doc.exitCode).toBe(0);
     expect(doc.plan.wouldWrite).toBe(true);
+    // Current state still fails; the prediction is what the fix would produce.
+    expect(doc.plan.checks.some((check) => check.status === "fail")).toBe(true);
+    expect(doc.plan.predicted.checks.every((check) => check.status === "pass")).toBe(true);
   });
 
   it("adds a missing apiKeyEnv and leaves every other line byte-identical", async () => {
@@ -290,8 +322,8 @@ describe("model command, --fix", () => {
     expect(doc.fix.written).toBe(true);
     expect(doc.fix.notes.join(" ")).toContain("added apiKeyEnv");
     expect(doc.after?.configured).toBe(true);
-    expect(check(doc, "model-credential-ref")?.status).toBe("ok");
-    expect(check(doc, "model-recheck")?.status).toBe("ok");
+    expect(check(doc, "model-credential-ref")?.status).toBe("pass");
+    expect(check(doc, "model-recheck")?.status).toBe("pass");
   });
 
   it("aligns the default model id and the reference party, keeping comments", async () => {
@@ -318,7 +350,7 @@ describe("model command, --fix", () => {
     expect(doc.after?.configured).toBe(true);
     expect(doc.after?.problems).toEqual([]);
     expect(doc.fix.notes.join("; ")).toContain("aligned vision-router reference model id");
-    expect(check(doc, "model-reference-model")?.status).toBe("ok");
+    expect(check(doc, "model-reference-model")?.status).toBe("pass");
   });
 
   it("refuses to invent a missing llm-pi-ai entry", async () => {

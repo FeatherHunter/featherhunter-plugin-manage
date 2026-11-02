@@ -15,18 +15,81 @@
  *    would create a new "workspace" and the UI would fill with duplicates.
  */
 import { sha256Text } from "../../contracts/identity";
-import type { FsPort } from "../../contracts/ports";
+import type { EnvPort, FsPort } from "../../contracts/ports";
 import { err, ok, type Result } from "../../contracts/result";
 import { measureTree, removeTree } from "../fs-utils";
-import { baseName, joinFsPath, toPosixPath } from "../paths";
-import type { EnvPort } from "../../contracts/ports";
+import { baseName, isInsidePath, joinFsPath, resolveAgainst, toPosixPath } from "../paths";
 
-/** The developer's real DSH home. Never written to by this tool. */
+/**
+ * The developer's real DSH home. Never written to by this tool.
+ *
+ * Derived only from the OS account (USERPROFILE, or the environment port's own
+ * home), never from an environment variable the caller can point elsewhere. An
+ * earlier version honoured DSH_REAL_HOME, which meant a run could move the real
+ * home out of the guard's view and then write into it; the audit of 2026-11-02
+ * reproduced exactly that. Tests that need another real home set USERPROFILE on
+ * the FakeEnv, which is what the isolation probe already does.
+ */
 export function resolveRealHome(env: EnvPort): string {
-  const explicit = env.get("DSH_REAL_HOME");
-  if (explicit !== undefined && explicit.length > 0) return explicit;
   const userProfile = env.get("USERPROFILE") ?? env.homeDir();
   return joinFsPath(userProfile, ".dsh");
+}
+
+export interface WriteTarget {
+  /** The flag (or DSH_HOME) the caller used to name this target. */
+  readonly flag: string;
+  readonly value: string;
+}
+
+export interface RealHomeWriteHit {
+  readonly realHome: string;
+  readonly flag: string;
+  readonly value: string;
+}
+
+/** fs.realPath when it answers, the textual path otherwise (it may not exist yet). */
+async function canonicalPath(fs: FsPort, path: string): Promise<string> {
+  const resolved = await fs.realPath(path);
+  return resolved.ok ? resolved.value : path;
+}
+
+/**
+ * The one real-home guard: a write target is refused when it is the real DSH
+ * home or anything below it.
+ *
+ * Two things make the naive samePath(dshHome, realHome) check insufficient, and
+ * both were reproduced by the 2026-11-02 audit:
+ *
+ * 1. containment: DSH_HOME pointed at a subdirectory of the real home is a
+ *    different path but still a write inside it, so this compares with
+ *    isInsidePath;
+ * 2. links: a junction or symlink can name the real home while looking
+ *    unrelated, so both sides are canonicalised with fs.realPath first and
+ *    compared again (paths that do not exist yet fall back to their text).
+ */
+export async function findWriteUnderRealHome(options: {
+  readonly fs: FsPort;
+  readonly env: EnvPort;
+  readonly cwd: string;
+  /** The home the command is about to write into, when it has one. */
+  readonly dshHome?: string | undefined;
+  readonly writeTargets?: readonly WriteTarget[] | undefined;
+}): Promise<RealHomeWriteHit | null> {
+  const realHome = resolveRealHome(options.env);
+  const realHomeCanonical = await canonicalPath(options.fs, realHome);
+  const candidates: WriteTarget[] = [];
+  if (options.dshHome !== undefined) candidates.push({ flag: "DSH_HOME", value: options.dshHome });
+  for (const target of options.writeTargets ?? []) candidates.push(target);
+
+  for (const candidate of candidates) {
+    const absolute = resolveAgainst(options.cwd, candidate.value);
+    if (isInsidePath(absolute, realHome)) return { realHome, flag: candidate.flag, value: absolute };
+    const canonical = await canonicalPath(options.fs, absolute);
+    if (isInsidePath(canonical, realHomeCanonical) || isInsidePath(canonical, realHome)) {
+      return { realHome, flag: candidate.flag, value: absolute };
+    }
+  }
+  return null;
 }
 
 export interface CopyProfileOptions {

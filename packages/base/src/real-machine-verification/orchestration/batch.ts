@@ -33,19 +33,23 @@ import {
 } from "../contracts/batch-rules";
 import {
   candidateIdentityOf,
+  describeCandidateVerdict,
+  judgeCandidate,
   parseCandidateManifest,
+  type CandidateFacts,
   type CandidateIdentity,
   type CandidateManifest,
+  type CandidateProblem,
 } from "../contracts/candidate-rules";
 import { decideExitCode, type CheckResult, type CheckStatus } from "../contracts/check";
 import type { EvidenceManifest } from "../contracts/evidence-contract";
-import { formatBaseLine, formatIdentityLine, sha256Text, type IdentityBinding } from "../contracts/identity";
+import { digestOfFiles, formatBaseLine, formatIdentityLine, sha256Text, type IdentityBinding } from "../contracts/identity";
 import type { Ports } from "../contracts/ports";
 import { err, ok, type Failure, type FailureCode, type Result } from "../contracts/result";
 import type { VerificationDeclaration } from "../declaration/loader";
 import { EVIDENCE_MANIFEST_FILENAME, validateEvidenceManifest } from "../evidence/manifest";
 import { readGitState } from "../runtime/dsh/git-state";
-import { joinFsPath, parentPath, toPosixPath } from "../runtime/paths";
+import { isPosixAbsolute, isWindowsAbsolute, joinFsPath, parentPath, toPosixPath } from "../runtime/paths";
 import { resolveWorkRoot } from "./context";
 
 /* ------------------------------------------------------------------ layout */
@@ -521,17 +525,32 @@ export interface OpenBatchOptions {
   readonly declaration: VerificationDeclaration;
 }
 
+/**
+ * How far `batch open` got.
+ *
+ * `batch open` is deliberately two-phase. Spec order says a candidate must be
+ * frozen *after* the batch opened and *inside* the batch directory, so the flow
+ * is: prepare the batch, `freeze --out <batchDir>/...`, then seal it with
+ * `--candidate`. A sealed batch can be re-opened idempotently to print its two
+ * wire-format lines again.
+ */
+export type BatchOpenPhase = "prepared" | "sealed" | "reused";
+
 export interface OpenBatchOutcome {
   readonly record: BatchRecord;
   readonly raw: Readonly<Record<string, unknown>>;
   readonly batchDir: string;
   readonly batchFile: string;
-  readonly identity: IdentityBinding;
+  readonly phase: BatchOpenPhase;
+  /** Null on a prepared batch: no identity line exists before a candidate is sealed. */
+  readonly identity: IdentityBinding | null;
   readonly identityLine: string;
   readonly baseLine: string | null;
   readonly base: BatchBase | null;
-  readonly candidate: CandidateIdentity;
-  readonly candidatePath: string;
+  readonly candidate: CandidateIdentity | null;
+  readonly candidatePath: string | null;
+  /** Problems found when a candidate was measured; empty on prepare and on success. */
+  readonly candidateProblems: readonly CandidateProblem[];
   readonly reused: boolean;
   readonly dryRun: boolean;
   readonly createdAt: string;
@@ -557,34 +576,12 @@ interface BatchAnnotations {
   readonly baseLine: string | null;
 }
 
-function sameBase(left: BatchBase | null, right: BatchBase | null): boolean {
-  if (left === null || right === null) return left === right;
+function sameCandidateIdentity(left: CandidateIdentity, right: CandidateIdentity): boolean {
   return (
-    left.ref === right.ref &&
-    left.tip === right.tip &&
-    left.expectedVersion === right.expectedVersion &&
-    left.allowOutdated === right.allowOutdated
-  );
-}
-
-function sameBatchIdentity(
-  existing: BatchRecord,
-  name: BatchName,
-  startHead: CommitSha,
-  base: BatchBase | null,
-  candidate: CandidateIdentity,
-  allowStale: boolean,
-): boolean {
-  if (existing.batchName !== name) return false;
-  if (existing.startHead !== startHead) return false;
-  if (!sameBase(existing.base, base)) return false;
-  if (existing.base !== null && existing.base.allowOutdated !== allowStale) return false;
-  const existingCandidate = existing.candidate ?? null;
-  if (existingCandidate === null) return false;
-  return (
-    existingCandidate.commit === candidate.commit &&
-    existingCandidate.sha256 === candidate.sha256 &&
-    existingCandidate.version === candidate.version
+    left.commit === right.commit &&
+    left.sha256 === right.sha256 &&
+    left.tgzSha256 === right.tgzSha256 &&
+    left.version === right.version
   );
 }
 
@@ -598,12 +595,211 @@ function describeRecordIdentity(record: BatchRecord): string {
   return `HEAD ${short(record.startHead)}, ${base}, ${candidate}`;
 }
 
+/* ------------------------------------------------------------- preparing */
+
 /**
- * Open (or idempotently re-open) one batch.
+ * The version the baseline ref declares, read without checking anything out.
  *
- * Validation order matters for the exit code: a missing candidate or an
- * unreadable baseline is a blocked prerequisite (2), while a candidate that was
- * frozen from a different commit is a provable mismatch (1).
+ * The old open path used the candidate's own version as "the baseline version",
+ * which made the version rule compare a value to itself. Reading it from the
+ * baseline is the only way the rule can fail for the reason it exists.
+ */
+export async function readRefPackageVersion(
+  ports: Ports,
+  cwd: string,
+  ref: string,
+): Promise<Result<string, BatchFailure>> {
+  const argv = ["git", "show", `${ref}:package.json`];
+  const run = await ports.command.run({ argv, cwd, timeoutMs: 15_000 });
+  if (!run.ok) {
+    return err(
+      batchFailure("baseline", "prerequisite", `git could not run while reading ${ref}:package.json: ${run.error.message}`, {
+        hint: "install git and run inside the plugin repository",
+        blocked: true,
+        details: { ref, argv },
+      }),
+    );
+  }
+  const outcome = run.value;
+  if (outcome.exitCode !== 0) {
+    const stderr = outcome.stderr.trim().split(/\r?\n/)[0] ?? "";
+    return err(
+      batchFailure(
+        "baseline",
+        "prerequisite",
+        `could not read package.json at baseline ${describeRef(ref)} (git exit code ${String(outcome.exitCode)}${stderr.length === 0 ? "" : `: ${stderr}`})`,
+        {
+          hint: "the baseline must contain a valid package.json; check that the ref resolves to a commit of this repository",
+          blocked: true,
+          details: { ref, exitCode: outcome.exitCode },
+        },
+      ),
+    );
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(outcome.stdout);
+  } catch (error) {
+    return err(
+      batchFailure("baseline", "prerequisite", `package.json at baseline ${describeRef(ref)} is not valid JSON: ${(error as Error).message}`, {
+        blocked: true,
+        details: { ref },
+      }),
+    );
+  }
+  const version = isRecord(value) && typeof value.version === "string" ? value.version : null;
+  if (version === null || version.length === 0) {
+    return err(
+      batchFailure("baseline", "prerequisite", `package.json at baseline ${describeRef(ref)} declares no version`, {
+        hint: "a batch cannot judge the version rule without the baseline's version",
+        blocked: true,
+        details: { ref },
+      }),
+    );
+  }
+  return ok(version);
+}
+
+/* -------------------------------------------------------------- measuring */
+
+interface MeasuredCandidate {
+  readonly tgzOnDisk: { readonly exists: boolean; readonly sha256: Sha256Hex | null };
+  readonly recomputedFileDigest: Sha256Hex | null;
+  /** Null when there is no baseline, or when the ancestor question cannot be answered. */
+  readonly commitContainsBase: boolean | null;
+}
+
+/** The tarball path a manifest names, resolved against the manifest directory. */
+function resolveTgzPath(manifest: CandidateManifest, manifestDir: string): string {
+  const raw = manifest.package.tgzPath;
+  if (isWindowsAbsolute(raw) || isPosixAbsolute(raw)) return raw;
+  return joinFsPath(manifestDir, ...raw.split("/"));
+}
+
+/** Everything the candidate rules may not read for themselves. */
+async function measureCandidate(
+  ports: Ports,
+  candidate: ResolvedCandidate,
+  base: BatchBase | null,
+  cwd: string,
+): Promise<MeasuredCandidate> {
+  const manifest = candidate.manifest;
+  const tgzPath = resolveTgzPath(manifest, candidate.dir);
+  const exists = await ports.fs.exists(tgzPath);
+  let tgzSha256: Sha256Hex | null = null;
+  if (exists) {
+    const hashed = await ports.fs.hashFile(tgzPath);
+    if (hashed.ok) tgzSha256 = hashed.value;
+  }
+  const digest = digestOfFiles(
+    manifest.package.files.map((file) => ({ path: file.path, size: file.bytes, sha256: file.sha256 })),
+  );
+  let commitContainsBase: boolean | null = null;
+  if (base !== null) {
+    const argv = ["git", "merge-base", "--is-ancestor", base.tip, manifest.git.commit];
+    const run = await ports.command.run({ argv, cwd, timeoutMs: 15_000 });
+    if (run.ok && run.value.exitCode === 0) commitContainsBase = true;
+    else if (run.ok && run.value.exitCode === 1) commitContainsBase = false;
+  }
+  return {
+    tgzOnDisk: { exists, sha256: tgzSha256 },
+    recomputedFileDigest: digest.ok ? digest.value : null,
+    commitContainsBase,
+  };
+}
+
+/* ------------------------------------------------------------------ open */
+
+async function writeBatchRecord(
+  ports: Ports,
+  batchDir: string,
+  batchFile: string,
+  raw: Record<string, unknown>,
+  dryRun: boolean,
+  notes: string[],
+): Promise<Result<BatchRecord, BatchFailure>> {
+  const parsed = parseBatchRecord(raw);
+  if (!parsed.ok) {
+    return err(
+      batchFailure("record", "internal", `the batch record this tool built is not valid: ${parsed.error.message}`, {
+        hint: "this is a bug; please report the batch open output",
+        blocked: true,
+      }),
+    );
+  }
+  if (dryRun) {
+    notes.push("dry run: batch.json was not written");
+    return ok(parsed.value);
+  }
+  const made = await ports.fs.makeDir(batchDir);
+  if (!made.ok) {
+    return err(
+      batchFailure("io", "io", `could not create the batch directory ${batchDir}: ${made.error.message}`, {
+        blocked: true,
+        details: { path: batchDir },
+      }),
+    );
+  }
+  const written = await ports.fs.writeText(batchFile, `${JSON.stringify(raw, null, 2)}\n`);
+  if (!written.ok) {
+    return err(
+      batchFailure("io", "io", `could not write ${batchFile}: ${written.error.message}`, {
+        blocked: true,
+        details: { path: batchFile },
+      }),
+    );
+  }
+  return ok(parsed.value);
+}
+
+function formatLinesOrFail(
+  name: BatchName,
+  candidate: CandidateIdentity,
+  base: BatchBase | null,
+): Result<{ readonly identity: IdentityBinding; readonly identityLine: string; readonly baseLine: string | null }, BatchFailure> {
+  const identity: IdentityBinding = {
+    batchName: name,
+    commit: candidate.commit,
+    // The identity line names the candidate *package* digest (the tarball), which
+    // is what a release check can recompute from candidate.json on another
+    // machine. The manifest file digest is a different value: it binds evidence.
+    packageSha256: candidate.tgzSha256,
+  };
+  const identityLine = formatIdentityLine(identity);
+  if (!identityLine.ok) {
+    return err(
+      batchFailure("context", "invalid-input", `could not render the identity line: ${identityLine.error.message}`, {
+        blocked: true,
+      }),
+    );
+  }
+  if (base === null) return ok({ identity, identityLine: identityLine.value, baseLine: null });
+  const baseLine = formatBaseLine({ ref: base.ref, tip: base.tip, expectedVersion: base.expectedVersion });
+  if (!baseLine.ok) {
+    return err(
+      batchFailure("baseline", "invalid-input", `could not render the base line: ${baseLine.error.message}`, {
+        hint: "the ref and the version must be non-empty and space-free",
+        blocked: true,
+      }),
+    );
+  }
+  return ok({ identity, identityLine: identityLine.value, baseLine: baseLine.value });
+}
+
+/**
+ * Open (or re-open) one batch, in two phases.
+ *
+ * - Without `--candidate` it *prepares* a batch record: it snapshots HEAD and the
+ *   baseline tip, reads the baseline's declared version, and writes `batch.json`
+ *   with `candidate: null`. Re-running it is idempotent.
+ * - With `--candidate` it *seals* a prepared batch: it measures the candidate
+ *   (location inside the batch directory, age against the batch, HEAD, build
+ *   commit, source stability, baseline ancestry, version, tarball digest and
+ *   file digest) with the candidate rules and only then records the identity.
+ *
+ * Validation order matters for the exit code: a missing candidate, an unreadable
+ * baseline or an ancestry question git cannot answer is a blocked prerequisite
+ * (2), while a candidate that is provably wrong is a mismatch (1).
  */
 export async function openBatch(options: OpenBatchOptions): Promise<Result<OpenBatchOutcome, BatchFailure>> {
   const { ports, cwd, workRoot } = options;
@@ -618,6 +814,9 @@ export async function openBatch(options: OpenBatchOptions): Promise<Result<OpenB
     );
   }
   const name = nameResult.value;
+  const batchDir = batchDirFor(workRoot, name);
+  const batchFile = joinFsPath(batchDir, BATCH_RECORD_FILENAME);
+  const notes: string[] = [];
 
   const git = await readGitState({ ports, cwd });
   if (!git.ok) {
@@ -632,126 +831,254 @@ export async function openBatch(options: OpenBatchOptions): Promise<Result<OpenB
   const pkg = await readTargetPackage(ports.fs, cwd);
   if (!pkg.ok) return err(pkg.error);
 
-  const resolved = await resolveCandidate(ports.fs, workRoot, options.candidate);
-  if (!resolved.ok) return err(resolved.error);
-  const candidate = resolved.value;
-  const notes: string[] = [];
-
-  if (candidate.manifest.git.commit !== git.value.commit) {
-    return err(
-      batchFailure(
-        "candidate",
-        "identity-mismatch",
-        `candidate ${candidate.manifestSha256.slice(0, 12)} was frozen from commit ${candidate.manifest.git.commit}, but HEAD is ${git.value.commit}`,
-        {
-          hint: "open the batch on the commit the candidate was frozen from, or freeze the current HEAD first",
-          details: {
-            expected: git.value.commit,
-            actual: candidate.manifest.git.commit,
-            candidate: candidate.manifestPath,
-          },
-        },
-      ),
-    );
-  }
-  if (candidate.manifest.version !== pkg.value.version) {
-    return err(
-      batchFailure(
-        "candidate",
-        "identity-mismatch",
-        `candidate version ${candidate.manifest.version} does not match the working tree version ${pkg.value.version}`,
-        {
-          hint: "the candidate was frozen from another package version; freeze the current tree and open a new batch",
-          details: { expected: pkg.value.version, actual: candidate.manifest.version },
-        },
-      ),
-    );
-  }
-  if (candidate.manifest.validity === "development") {
-    notes.push("candidate is a development build (dirty tree); it must not be published");
-  }
-
-  let base: BatchBase | null = null;
-  if (options.baseRef !== undefined) {
-    const tip = await readRefTip(ports, cwd, options.baseRef);
-    if (!tip.ok) return err(tip.error);
-    base = {
-      ref: options.baseRef,
-      tip: tip.value,
-      expectedVersion: candidate.manifest.version,
-      allowOutdated: options.allowStale,
-    };
-  }
-
-  const identity: IdentityBinding = {
-    batchName: name,
-    commit: candidate.manifest.git.commit,
-    // The identity line names the candidate *package* digest (the tarball), which
-    // is what a release check can recompute from candidate.json on another
-    // machine. The manifest file digest is a different value: it binds evidence.
-    packageSha256: candidate.identity.tgzSha256,
-  };
-  const identityLine = formatIdentityLine(identity);
-  if (!identityLine.ok) {
-    return err(
-      batchFailure("context", "invalid-input", `could not render the identity line: ${identityLine.error.message}`, {
-        blocked: true,
-      }),
-    );
-  }
-  const baseLine =
-    base === null
-      ? null
-      : formatBaseLine({ ref: base.ref, tip: base.tip, expectedVersion: base.expectedVersion });
-  if (baseLine !== null && !baseLine.ok) {
-    return err(
-      batchFailure("baseline", "invalid-input", `could not render the base line: ${baseLine.error.message}`, {
-        hint: "the ref and the version must be non-empty and space-free",
-        blocked: true,
-      }),
-    );
-  }
-
-  const batchDir = batchDirFor(workRoot, name);
-  const batchFile = joinFsPath(batchDir, BATCH_RECORD_FILENAME);
   const existing = await loadBatchRecord(ports.fs, batchDir);
+  if (!existing.ok && existing.error.code !== "not-found") return err(existing.error);
+
+  /* ------------------------------------------------------------ sealed/reuse */
+
   if (existing.ok) {
-    if (
-      !sameBatchIdentity(existing.value.record, name, candidate.manifest.git.commit, base, candidate.identity, options.allowStale)
-    ) {
+    const record = existing.value.record;
+    const recordedCandidate = record.candidate ?? null;
+    if (recordedCandidate !== null) {
+      if (options.candidate === undefined) {
+        const lines = formatLinesOrFail(name, recordedCandidate, record.base);
+        if (!lines.ok) return err(lines.error);
+        notes.push(`reused the existing batch record at ${batchFile}`);
+        return ok({
+          record,
+          raw: existing.value.raw,
+          batchDir,
+          batchFile,
+          phase: "reused",
+          identity: lines.value.identity,
+          identityLine: lines.value.identityLine,
+          baseLine: lines.value.baseLine,
+          base: record.base,
+          candidate: recordedCandidate,
+          candidatePath: recordedCandidate.path,
+          candidateProblems: [],
+          reused: true,
+          dryRun: options.dryRun,
+          createdAt: record.createdAt,
+          allowStale: options.allowStale,
+          notes,
+        });
+      }
+      const resolved = await resolveCandidate(ports.fs, workRoot, options.candidate);
+      if (!resolved.ok) return err(resolved.error);
+      if (!sameCandidateIdentity(recordedCandidate, resolved.value.identity)) {
+        return err(
+          batchFailure("conflict", "conflict", `batch ${name} already has a different candidate`, {
+            hint: "pick another --name, or delete the stale batch directory if it is no longer needed",
+            details: {
+              path: existing.value.path,
+              existing: describeRecordIdentity(record),
+              requested: `${short(resolved.value.identity.commit)} manifest ${short(resolved.value.identity.sha256)}`,
+            },
+          }),
+        );
+      }
+      const lines = formatLinesOrFail(name, recordedCandidate, record.base);
+      if (!lines.ok) return err(lines.error);
+      notes.push(`reused the existing batch record at ${batchFile}`);
+      return ok({
+        record,
+        raw: existing.value.raw,
+        batchDir,
+        batchFile,
+        phase: "reused",
+        identity: lines.value.identity,
+        identityLine: lines.value.identityLine,
+        baseLine: lines.value.baseLine,
+        base: record.base,
+        candidate: recordedCandidate,
+        candidatePath: recordedCandidate.path,
+        candidateProblems: [],
+        reused: true,
+        dryRun: options.dryRun,
+        createdAt: record.createdAt,
+        allowStale: options.allowStale,
+        notes,
+      });
+    }
+
+    // Prepared batch: wait for the candidate unless this invocation seals it.
+    if (options.candidate === undefined) {
+      if (options.baseRef !== undefined) {
+        if (record.base === null || record.base.ref !== options.baseRef || record.base.allowOutdated !== options.allowStale) {
+          return err(
+            batchFailure("conflict", "conflict", `batch ${name} was prepared with a different baseline`, {
+              hint: "re-open with the recorded baseline, or pick another --name",
+              details: {
+                path: existing.value.path,
+                existing: describeRecordIdentity(record),
+                requested: `${options.baseRef}${options.allowStale ? " (allow-stale)" : ""}`,
+              },
+            }),
+          );
+        }
+      }
+      const baseLine = record.base === null ? null : formatBaseLine({
+        ref: record.base.ref,
+        tip: record.base.tip,
+        expectedVersion: record.base.expectedVersion,
+      });
+      if (baseLine !== null && !baseLine.ok) {
+        return err(
+          batchFailure("baseline", "invalid-input", `could not render the base line: ${baseLine.error.message}`, {
+            blocked: true,
+          }),
+        );
+      }
+      notes.push(
+        `batch ${name} is prepared and waiting for a candidate: dsh-verify freeze --out ${batchDir}, then dsh-verify batch open --name ${name} --candidate <the directory freeze printed>`,
+      );
+      return ok({
+        record,
+        raw: existing.value.raw,
+        batchDir,
+        batchFile,
+        phase: "prepared",
+        identity: null,
+        identityLine: "",
+        baseLine: baseLine === null ? null : baseLine.value,
+        base: record.base,
+        candidate: null,
+        candidatePath: null,
+        candidateProblems: [],
+        reused: true,
+        dryRun: options.dryRun,
+        createdAt: record.createdAt,
+        allowStale: options.allowStale,
+        notes,
+      });
+    }
+
+    /* -------------------------------------------------------------- sealing */
+
+    const resolved = await resolveCandidate(ports.fs, workRoot, options.candidate);
+    if (!resolved.ok) return err(resolved.error);
+    const frozen = resolved.value;
+
+    if (git.value.commit !== record.startHead) {
       return err(
-        batchFailure("conflict", "conflict", `batch ${name} already exists with a different identity`, {
-          hint: "pick another --name, or delete the stale batch directory if it is no longer needed",
-          details: {
-            path: existing.value.path,
-            existing: describeRecordIdentity(existing.value.record),
-            requested: `HEAD ${short(candidate.manifest.git.commit)}, ${
-              base === null ? "no baseline" : `${base.ref}@${short(base.tip)} (target ${base.expectedVersion})`
-            }, ${short(candidate.identity.commit)} manifest ${short(candidate.identity.sha256)}`,
+        batchFailure(
+          "candidate",
+          "prerequisite",
+          `HEAD moved since batch ${name} was prepared: ${record.startHead} → ${git.value.commit}`,
+          {
+            hint: "a candidate must be frozen on the commit the batch started at; re-open the batch on the current HEAD",
+            blocked: true,
+            details: { startHead: record.startHead, currentHead: git.value.commit },
           },
-        }),
+        ),
       );
     }
-    notes.push(`reused the existing batch record at ${batchFile}`);
+
+    const measured = await measureCandidate(ports, frozen, record.base, cwd);
+    const expectedVersion = record.base === null ? pkg.value.version : record.base.expectedVersion;
+    const facts: CandidateFacts = {
+      manifest: frozen.manifest,
+      identity: frozen.identity,
+      manifestPath: frozen.manifestPath,
+      batchDir,
+      generatedAtMs: Date.parse(frozen.manifest.generatedAt),
+      batchStartedAtMs: Date.parse(record.createdAt),
+      currentHead: git.value.commit,
+      base: record.base,
+      allowOutdatedBase: record.base?.allowOutdated ?? false,
+      commitContainsBase: measured.commitContainsBase,
+      expectedVersion,
+      tgzOnDisk: measured.tgzOnDisk,
+      recomputedFileDigest: measured.recomputedFileDigest,
+    };
+    const verdict = judgeCandidate(facts);
+    if (!verdict.ok) {
+      const unverifiable = verdict.problems.some(
+        (item) =>
+          item.code === "base-version-unreadable" ||
+          (item.code === "commit-not-contains-base" && measured.commitContainsBase === null),
+      );
+      return err(
+        batchFailure(
+          "candidate",
+          unverifiable ? "prerequisite" : "identity-mismatch",
+          describeCandidateVerdict(verdict),
+          {
+            ...(unverifiable ? { blocked: true } : {}),
+            hint: "the candidate must be frozen after the batch opened, inside the batch directory, from the same HEAD and version; re-freeze and seal again",
+            details: { batchDir, candidate: frozen.manifestPath, problems: verdict.problems },
+          },
+        ),
+      );
+    }
+
+    const lines = formatLinesOrFail(name, frozen.identity, record.base);
+    if (!lines.ok) return err(lines.error);
+    if (record.base !== null && record.base.allowOutdated && measured.commitContainsBase === false) {
+      notes.push(
+        `baseline ${record.base.ref}@${short(record.base.tip)} is not an ancestor of the candidate; this was explicitly allowed when the batch opened (--allow-stale) and the status report repeats it`,
+      );
+    }
+    if (frozen.manifest.validity === "development") {
+      notes.push("candidate is a development build (dirty tree); it must not be published");
+    }
+    const sealedAt = ports.clock.iso();
+    const nextRaw: Record<string, unknown> = {
+      ...existing.value.raw,
+      candidate: frozen.identity,
+      updatedAt: sealedAt,
+      identityLine: lines.value.identityLine,
+    };
+    const written = await writeBatchRecord(ports, batchDir, batchFile, nextRaw, options.dryRun, notes);
+    if (!written.ok) return err(written.error);
     return ok({
-      record: existing.value.record,
-      raw: existing.value.raw,
+      record: written.value,
+      raw: nextRaw,
       batchDir,
       batchFile,
-      identity,
-      identityLine: identityLine.value,
-      baseLine: baseLine === null ? null : baseLine.value,
-      base,
-      candidate: candidate.identity,
-      candidatePath: candidate.manifestPath,
-      reused: true,
+      phase: "sealed",
+      identity: lines.value.identity,
+      identityLine: lines.value.identityLine,
+      baseLine: lines.value.baseLine,
+      base: record.base,
+      candidate: frozen.identity,
+      candidatePath: frozen.manifestPath,
+      candidateProblems: [],
+      reused: false,
       dryRun: options.dryRun,
-      createdAt: existing.value.record.createdAt,
+      createdAt: record.createdAt,
       allowStale: options.allowStale,
       notes,
     });
   }
-  if (existing.error.code !== "not-found") return err(existing.error);
+
+  /* ------------------------------------------------------------ preparing */
+
+  let base: BatchBase | null = null;
+  let baseLine: string | null = null;
+  if (options.baseRef !== undefined) {
+    const tip = await readRefTip(ports, cwd, options.baseRef);
+    if (!tip.ok) return err(tip.error);
+    const version = await readRefPackageVersion(ports, cwd, options.baseRef);
+    if (!version.ok) return err(version.error);
+    base = {
+      ref: options.baseRef,
+      tip: tip.value,
+      expectedVersion: version.value,
+      allowOutdated: options.allowStale,
+    };
+    const rendered = formatBaseLine({ ref: base.ref, tip: base.tip, expectedVersion: base.expectedVersion });
+    if (!rendered.ok) {
+      return err(
+        batchFailure("baseline", "invalid-input", `could not render the base line: ${rendered.error.message}`, {
+          hint: "the ref and the version must be non-empty and space-free",
+          blocked: true,
+        }),
+      );
+    }
+    baseLine = rendered.value;
+  }
 
   const createdAt = ports.clock.iso();
   const annotations: BatchAnnotations = {
@@ -768,8 +1095,8 @@ export async function openBatch(options: OpenBatchOptions): Promise<Result<OpenB
       requiredNode: options.declaration.requiredNode,
     },
     profileName: options.profileName,
-    identityLine: identityLine.value,
-    baseLine: baseLine === null ? null : baseLine.value,
+    identityLine: "",
+    baseLine,
   };
   const recordValue: Record<string, unknown> = {
     schemaVersion: BATCH_SCHEMA_VERSION,
@@ -781,55 +1108,28 @@ export async function openBatch(options: OpenBatchOptions): Promise<Result<OpenB
     startHead: git.value.commit,
     startBranch: git.value.branch,
     base,
-    candidate: candidate.identity,
+    candidate: null,
     preflightOk: true,
     ...annotations,
   };
-
-  const parsed = parseBatchRecord(recordValue);
-  if (!parsed.ok) {
-    return err(
-      batchFailure("record", "internal", `the batch record this tool built is not valid: ${parsed.error.message}`, {
-        hint: "this is a bug; please report the batch open output",
-        blocked: true,
-      }),
-    );
-  }
-
-  if (!options.dryRun) {
-    const made = await ports.fs.makeDir(batchDir);
-    if (!made.ok) {
-      return err(
-        batchFailure("io", "io", `could not create the batch directory ${batchDir}: ${made.error.message}`, {
-          blocked: true,
-          details: { path: batchDir },
-        }),
-      );
-    }
-    const written = await ports.fs.writeText(batchFile, `${JSON.stringify(recordValue, null, 2)}\n`);
-    if (!written.ok) {
-      return err(
-        batchFailure("io", "io", `could not write ${batchFile}: ${written.error.message}`, {
-          blocked: true,
-          details: { path: batchFile },
-        }),
-      );
-    }
-  } else {
-    notes.push("dry run: batch.json was not written");
-  }
-
+  const written = await writeBatchRecord(ports, batchDir, batchFile, recordValue, options.dryRun, notes);
+  if (!written.ok) return err(written.error);
+  notes.push(
+    `batch ${name} is prepared: next freeze a candidate into the batch directory (dsh-verify freeze --out ${batchDir}) and seal it with dsh-verify batch open --name ${name} --candidate <dir>`,
+  );
   return ok({
-    record: parsed.value,
+    record: written.value,
     raw: recordValue,
     batchDir,
     batchFile,
-    identity,
-    identityLine: identityLine.value,
-    baseLine: baseLine === null ? null : baseLine.value,
+    phase: "prepared",
+    identity: null,
+    identityLine: "",
+    baseLine,
     base,
-    candidate: candidate.identity,
-    candidatePath: candidate.manifestPath,
+    candidate: null,
+    candidatePath: null,
+    candidateProblems: [],
     reused: false,
     dryRun: options.dryRun,
     createdAt,
@@ -1067,6 +1367,9 @@ export type BatchCheckReason =
   | "evidence-binding"
   | "evidence-scan"
   | "no-evidence"
+  | "candidate-missing"
+  | "candidate-unreadable"
+  | "candidate-drift"
   | "record-invalid"
   | "record-write";
 
@@ -1077,11 +1380,13 @@ export interface BatchCheck extends CheckResult {
 
 export const CHECK_HEAD_FRESH = checkId("batch-head-fresh");
 export const CHECK_BASELINE_FRESH = checkId("batch-baseline-fresh");
+export const CHECK_CANDIDATE = checkId("candidate-identity");
 export const CHECK_EVIDENCE_BOUND = checkId("batch-evidence-bound");
 export const CHECK_BATCH_RECORD = checkId("batch-record");
 
 const TITLE_HEAD = "the batch still starts at the current HEAD";
 const TITLE_BASELINE = "the baseline ref still points where the batch opened";
+const TITLE_CANDIDATE = "the sealed candidate still matches its manifest and tarball";
 const TITLE_EVIDENCE = "every evidence manifest belongs to this batch's candidate";
 const TITLE_RECORD = "the batch record could be read and updated";
 
@@ -1106,6 +1411,18 @@ function toCheck(draft: BatchCheckDraft): BatchCheck {
     ...(draft.expected === undefined ? {} : { expected: draft.expected }),
     ...(draft.actual === undefined ? {} : { actual: draft.actual }),
     ...(draft.hint === undefined ? {} : { hint: draft.hint }),
+    // A blocked check always carries the structured reason the run.json contract
+    // promises; the specific code stays in `reason` for filtering and the
+    // human-readable detail stays in the message.
+    ...(draft.status === "blocked"
+      ? {
+          blockedReason: {
+            code: "prerequisite-missing" as const,
+            message: draft.detail,
+            ...(draft.hint === undefined ? {} : { hint: draft.hint }),
+          },
+        }
+      : {}),
     evidence: [],
     durationMs: 0,
     reason: draft.reason,
@@ -1170,6 +1487,162 @@ function evidenceCheck(scan: EvidenceScan, record: BatchRecord): BatchCheck {
     expected,
     actual: details,
     hint: "only evidence collected with --batch of this batch and this candidate is counted; re-collect it or move the foreign manifest out of the batch directory",
+  });
+}
+
+/**
+ * Re-derive the sealed candidate from disk: the manifest bytes, its digest, the
+ * tarball digest and the file digest. This is what makes a stored identity line
+ * re-checkable later instead of merely quoted.
+ */
+async function candidateIdentityCheck(
+  ports: Ports,
+  record: BatchRecord,
+  batchDir: string,
+): Promise<BatchCheck> {
+  const candidate = record.candidate ?? null;
+  if (candidate === null) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "blocked",
+      detail: `batch ${record.batchName} has no frozen candidate, so there is no identity to re-check`,
+      reason: "candidate-missing",
+      expected: "a candidate sealed with batch open --candidate",
+      actual: "batch.json candidate is null",
+      hint: `freeze a candidate into ${batchDir} and seal it: dsh-verify batch open --name ${record.batchName} --candidate <dir>`,
+    });
+  }
+  const expected = `manifest ${candidate.sha256} / tarball ${candidate.tgzSha256}`;
+  const text = await ports.fs.readText(candidate.path);
+  if (!text.ok) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "blocked",
+      detail: `could not read the sealed candidate manifest ${candidate.path}: ${text.error.message}`,
+      reason: "candidate-unreadable",
+      expected,
+      actual: "the manifest file is unreadable",
+      hint: "restore the batch directory; an unreadable candidate cannot be re-verified",
+    });
+  }
+  const manifestSha256 = sha256Text(text.value);
+  if (manifestSha256 !== candidate.sha256) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the candidate manifest was changed after it was sealed: sha256 is ${manifestSha256}`,
+      reason: "candidate-drift",
+      expected: candidate.sha256,
+      actual: manifestSha256,
+      hint: "re-freeze and seal a new batch; do not edit candidate.json by hand",
+    });
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text.value);
+  } catch (error) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the sealed candidate manifest is not valid JSON: ${(error as Error).message}`,
+      reason: "candidate-drift",
+      expected,
+      actual: "candidate.json does not parse",
+      hint: "re-freeze and seal a new batch",
+    });
+  }
+  const parsed = parseCandidateManifest(value);
+  if (!parsed.ok) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the sealed candidate manifest no longer parses: ${parsed.error.message}`,
+      reason: "candidate-drift",
+      expected,
+      actual: "candidate.json is not a usable manifest",
+      hint: "re-freeze and seal a new batch",
+    });
+  }
+  const manifest = parsed.value;
+  const manifestDir = parentPath(candidate.path) ?? batchDir;
+  const tgzPath = resolveTgzPath(manifest, manifestDir);
+  if (!(await ports.fs.exists(tgzPath))) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the candidate tarball is missing: ${tgzPath}`,
+      reason: "candidate-drift",
+      expected: candidate.tgzSha256,
+      actual: "the tarball file does not exist",
+      hint: "re-freeze and seal a new batch; a candidate without its tarball cannot be published or verified",
+    });
+  }
+  const hashed = await ports.fs.hashFile(tgzPath);
+  if (!hashed.ok) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "blocked",
+      detail: `could not hash the candidate tarball ${tgzPath}: ${hashed.error.message}`,
+      reason: "candidate-unreadable",
+      expected: candidate.tgzSha256,
+      actual: "the tarball could not be read",
+      hint: "check permissions on the batch directory",
+    });
+  }
+  if (hashed.value !== candidate.tgzSha256 || manifest.package.tgzSha256 !== candidate.tgzSha256) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the candidate tarball was replaced after it was sealed: sha256 is ${hashed.value}`,
+      reason: "candidate-drift",
+      expected: candidate.tgzSha256,
+      actual: hashed.value,
+      hint: "re-freeze and seal a new batch; a replaced tarball is not the one the observations describe",
+    });
+  }
+  const digest = digestOfFiles(
+    manifest.package.files.map((file) => ({ path: file.path, size: file.bytes, sha256: file.sha256 })),
+  );
+  if (!digest.ok) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the sealed candidate file list is not usable: ${digest.error.message}`,
+      reason: "candidate-drift",
+      expected,
+      actual: "package.files could not be digested",
+      hint: "re-freeze and seal a new batch",
+    });
+  }
+  if (digest.value !== candidate.fileDigest) {
+    return toCheck({
+      id: CHECK_CANDIDATE,
+      title: TITLE_CANDIDATE,
+      status: "fail",
+      detail: `the candidate file digest drifted: recomputed ${digest.value}, sealed ${candidate.fileDigest}`,
+      reason: "candidate-drift",
+      expected: candidate.fileDigest,
+      actual: digest.value,
+      hint: "re-freeze and seal a new batch; the file list was edited after sealing",
+    });
+  }
+  return toCheck({
+    id: CHECK_CANDIDATE,
+    title: TITLE_CANDIDATE,
+    status: "pass",
+    detail: `candidate ${short(candidate.commit)} is intact (manifest ${short(candidate.sha256)}, tarball ${short(candidate.tgzSha256)})`,
+    reason: null,
+    expected,
+    actual: `manifest ${short(manifestSha256)} / tarball ${short(hashed.value)} / ${manifest.package.fileCount} file(s)`,
   });
 }
 
@@ -1369,6 +1842,8 @@ export async function checkBatch(options: CheckBatchOptions): Promise<Result<Che
       );
     }
   }
+
+  checks.push(await candidateIdentityCheck(ports, record, loaded.value.batchDir));
 
   const evidence = await scanBatchEvidence(ports.fs, loaded.value.batchDir, record);
   checks.push(evidenceCheck(evidence, record));

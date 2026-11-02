@@ -12,6 +12,7 @@
  * mysterious empty report an hour later.
  */
 import type { CheckId, ProfileName } from "./branding";
+import type { BlockedReason } from "./evidence-contract";
 import { parseCheckId, parseProfileName } from "./branding";
 import { err, ok, type Failure, type Result } from "./result";
 import type { TicketFaceDeclaration } from "./ticket-face";
@@ -48,13 +49,33 @@ export interface BundledSkillsDeclaration {
   readonly expected: number;
 }
 
-/** The observation a custom check returns. */
+/** The four states a custom check may report. */
+export type CheckObservationStatus = "pass" | "fail" | "skip" | "blocked";
+
+/**
+ * The observation a custom check returns.
+ *
+ * A custom check has exactly the same reporting surface as a built-in one: it may
+ * pass, fail, skip (the claim does not apply) or block (it could not observe the
+ * product). A blocked observation is not a failure — the report says the run
+ * proved nothing — so it must name a structured `blockedReason`.
+ */
 export interface CheckObservation {
-  readonly ok: boolean;
+  /** Legacy shorthand: `true` means pass and `false` means fail. Ignored when `status` is set. */
+  readonly ok?: boolean;
+  /** Explicit state. Takes precedence over `ok`. */
+  readonly status?: CheckObservationStatus;
   readonly detail: string;
   readonly expected?: string;
   readonly actual?: string;
   readonly hint?: string;
+  /**
+   * Why the check could not observe the product. Required by convention when
+   * `status` is `blocked`; the runner fills a `prerequisite-missing` fallback
+   * rather than inventing a reason. `"platform-unsupported"` is preferred when
+   * the host lacks the facility entirely (no display, no browser engine).
+   */
+  readonly blockedReason?: BlockedReason;
 }
 
 /**
