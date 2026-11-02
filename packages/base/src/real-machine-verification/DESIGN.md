@@ -384,7 +384,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 验收做法：
 1. 由人（不在写代码的会话里）先写下一个具体场景，不给技术方案：
    > 「起 3 个实例：一个绑 GitHub 工作区、一个绑 markdown 工作区、一个冷启动（无工作区）。确认三路菜单各自正确、互不串台；然后强杀第 2 路的进程树，断言第 1/3 路仍可操作、第 2 路回收干净（无残留进程/端口/记录）、证据里能看出发生了什么。」
-2. AI 只允许新增 `verify/scenarios/three-backends.ts`（调 `createHarness` 的 L2 原语 + `defineScenario`），**不许改 base 源码、不许新增 CLI 命令**。
+2. AI 只允许新增 `verify/scenarios/three-backends.ts`（用 `defineScenario` 写步骤，调场景上下文里的 L2 原语 `context.primitives` / `context.instances`；as-built 没有 `createHarness`，见 ADR-0002 §1），**不许改 base 源码、不许新增 CLI 命令**。
 3. 跑通并产出证据包；若跑不通，判定为**扩展性缺陷**（去修 base 的扩展点），不是「AI 不行」。
 
 这条验收的真正作用：证明我们的封装没有把路堵死。类比：Excel 的价值不是提供了几个预设表格，而是用户能自己写公式——我们交付的是「公式引擎 + 函数」，场景是用户写的「表格」。

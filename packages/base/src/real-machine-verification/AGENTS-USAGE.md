@@ -82,7 +82,7 @@ Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的
 - 一切跑实例的命令都要用 `DSH_HOME=<批次 home>` 指到**复制出来的 profile**；真实 `~/.dsh` 只读，报告里的 `dshHome` 指向批次 home 是正确语义。
 - 批次 home 的标准做法：复制真实 `profiles/<name>` 到批次目录，再把候选包装进副本；证据里记录真实 home 关键文件运行前后的 sha256 不变。
 - 真实 home 的证据按**固定文件清单**取（整目录哈希会假阳性：宿主常驻时 `~/.dsh/storages` 空闲也会变）：`<DSH_HOME>/.credentials.yaml`、`profiles/<p>/package.json`、`profiles/<p>/cordis.patch.yml`、`profiles/<p>/node_modules/<packageName>/package.json`。Windows 用 `Get-FileHash <file> -Algorithm SHA256` 与运行前值比对（没有 `sha256sum`）。
-- `install` 默认目标是 `DSH_HOME` 的 profile；它会按**解析后的目标 home**判断隔离——只要等于真实 home（包括 `DSH_HOME` 被显式指到真实 home），就在 stderr 打印警告。先复制 profile、把 `DSH_HOME` 指到副本再装。
+- `install`（以及 `model --fix`）的默认目标是 `DSH_HOME` 的 profile；它们按**解析后的目标 home**判断隔离——只要等于真实 home（包括 `DSH_HOME` 被显式指到真实 home），真实写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向「复制成批次 home 再装」）；`--dry-run` 仍出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。先复制 profile、把 `DSH_HOME` 指到副本再装。
 - `isolation` 探针同理：它证明子进程的 userprofile / 插件设置目录落在 work root 下，而不是真实 home。声明没写 `pluginSettingsDir` 时它会 blocked 并给出补字段的 hint——这是声明缺口，不是 bug。
 - `cleanup` / `stop` 收尾；`--keep` 保留现场时要在结论里注明「teardown 记 skip，不是通过」。
 
