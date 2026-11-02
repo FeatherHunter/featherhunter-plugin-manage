@@ -16,10 +16,12 @@ import {
   type CandidateManifest,
 } from "../contracts/candidate-rules";
 import { digestOfFiles, sha256Bytes } from "../contracts/identity";
-import { ok } from "../contracts/result";
+import type { Ports } from "../contracts/ports";
+import { err, failure, ok } from "../contracts/result";
 import { joinFsPath, parentPath, toPosixPath } from "../runtime/paths";
 import { captureIo } from "./support/fake-capture";
 import { FIXTURE_HEAD, FakeFreezeWorld, type FakeFreezeOptions } from "./support/fake-freeze";
+import { FakeCommand } from "./support/fake-ports";
 
 const SECOND_HEAD = "fedcba9876543210fedcba9876543210fedcba98";
 
@@ -388,5 +390,43 @@ describe("freeze --dry-run", () => {
     expect(json.ok).toBe(false);
     expect(json.error?.stage).toBe("git");
     expect(world.fs.writes).toEqual([]);
+  });
+});
+
+describe("freeze: git state is a prerequisite, not a candidate defect", () => {
+  function brokenGitPorts(world: FakeFreezeWorld): Ports {
+    return {
+      ...world.ports,
+      command: new FakeCommand(() => err(failure("prerequisite", "git is not installed"))),
+    };
+  }
+
+  async function runWithPorts(
+    world: FakeFreezeWorld,
+    ports: Ports,
+    argv: readonly string[],
+  ): Promise<{ readonly code: number; readonly out: string; readonly err: string }> {
+    const capture = captureIo();
+    const code = await runFreezeCommand(parseArgs(["freeze", ...argv]), {
+      ports,
+      io: capture.io,
+      runtime: { nodeVersion: "22.6.0" },
+      loadDeclaration: async () => ok(world.declaration),
+    });
+    return { code, out: capture.stdout(), err: capture.stderr() };
+  }
+
+  it("exits 2 (blocked) when git state cannot be read, in a real run and in a dry run", async () => {
+    const runs = [["--json"], ["--dry-run", "--json"]] as const;
+    for (const argv of runs) {
+      const world = worldWith();
+      const result = await runWithPorts(world, brokenGitPorts(world), argv);
+      expect(result.code).toBe(2);
+      const json = JSON.parse(result.out) as FreezeJson;
+      expect(json.ok).toBe(false);
+      expect(json.error?.code).toBe("prerequisite");
+      expect(json.error?.stage).toBe("git");
+      expect(world.fs.writes).toEqual([]);
+    }
   });
 });

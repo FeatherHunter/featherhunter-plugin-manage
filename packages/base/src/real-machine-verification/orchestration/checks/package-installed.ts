@@ -15,7 +15,7 @@
  */
 import type { SelfCheckContext } from "../self-check";
 import type { CheckModule } from "../types";
-import { checkId, failed, passed } from "../types";
+import { blocked, checkId, failed, passed } from "../types";
 import { asRecord, readJsonRecord, recordEvidence, stringField } from "./shared";
 import { joinFsPath } from "../../runtime/paths";
 
@@ -47,6 +47,19 @@ export function createPackageInstalledCheck(): CheckModule<SelfCheckContext> {
       const { fs } = context.ports;
       const { profile, profileName, profileDir, cwd } = context;
       const packageName = profile.packageName;
+      // A missing profile is an environment prerequisite, not a plugin defect:
+      // saying "package-installed failed" here would blame the package for a
+      // profile that was never there. profile-present already reports the
+      // profile state, so this check only repeats the reason as blocked.
+      const directory = await fs.stat(profileDir);
+      if (!directory.ok || directory.value.kind !== "directory") {
+        const actual = directory.ok ? `found a ${directory.value.kind}` : directory.error.message;
+        return blocked(
+          `profile "${profileName}" has no directory at ${profileDir} (${actual}), so ${packageName} cannot be installed there`,
+          `pass --profile with an existing profile under the DSH home (or create the isolated copy first); ` +
+            "profile-present reports whether the profile exists",
+        );
+      }
       const manifestPath = joinFsPath(profileDir, "package.json");
       const profileManifest = await readJsonRecord(fs, manifestPath);
       if (!profileManifest.ok) {

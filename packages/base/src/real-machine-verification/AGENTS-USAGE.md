@@ -5,12 +5,13 @@
 ## 0. 先取权威表面，不要背文档
 
 ```bash
+node_modules/.bin/dsh-verify --version      # 第二行必须是 capability real-machine-verification (schema 1)
 node_modules/.bin/dsh-verify describe --json
 ```
 
-用 `node_modules/.bin/` 或 `npx --no-install dsh-verify`：npm 上有一个同名无关包 `dsh-verify@0.9.6`，bin 没装好时裸 `npx` 会静默下载它并以 exit 0 打印别的工具的 usage。
+**先核对 `--version` 的 capability 行，再信任何短命令**：npm 上有一个同名无关包 `dsh-verify@0.9.6`。裸 `npx dsh-verify` 在 bin 没装好时会静默下载它；`npx --no-install` 也不是保险——实测 npx 会复用缓存里同名的包，同样以 exit 0 打印别的工具的 usage。最稳的调用形式是 `node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js <命令>`（不依赖 PATH、不经过 npx）。
 
-返回的命令表、`profileFields`、`builtInCheckIds`、`exitCodes`、`globalFlags` 就是全部契约；本文件末尾的参考段是它生成的。命令 usage 不认识的旗标会在解析期报错（exit 2），不会静默忽略。
+返回的命令表、`profileFields`、`builtInCheckIds`、`exitCodes`、`globalFlags` 就是全部契约；本文件末尾的参考段是它生成的。Flag 问题在解析期统一拦下：未知旗标、缺值、该命令不接受的旗标都会 exit 2，并打印具体原因与该命令的 `usage:` 行，不会静默忽略。
 
 ## 1. 命令选择：从只读到动真实进程
 
@@ -38,7 +39,7 @@ node_modules/.bin/dsh-verify describe --json
 
 - `0`：全过（skip 不影响）；
 - `1`：有硬失败（fail）——插件或仓的问题；
-- `2`：有 blocked——**前置缺失，本次运行什么都没证明**。不要把 2 当失败写进报告，也不要用 1 的重试逻辑处理它。
+- `2`：有 blocked——**前置缺失，本次运行什么都没证明**。不要把 2 当失败写进报告，也不要用 1 的重试逻辑处理它。profile 不存在、没装 DSH、没注入浏览器适配器都属于这一类（包括 `package-installed` 在 profile 目录缺失时返回 blocked）。
 
 用 `--json` 时的三种结果词：`pass` / `fail` / `skip` / `blocked`。人话行格式固定为 `ok|fail|skip|blocked <id> <detail>`，fail 行追加缩进的 `expected:` / `actual:` / `hint:`，blocked 至少带 `hint:`（有的 blocked 没有 expected/actual）；解析日志时按行首词判定，别按位置。
 
@@ -46,7 +47,7 @@ node_modules/.bin/dsh-verify describe --json
 
 `invalid-input` / `prerequisite` / `identity-mismatch` / `not-found` / `io` / `timeout` / `conflict` / `unsupported` / `internal`，渲染为 `[code] message — hint`。给用户复述失败时保留 code 与 hint 原文。
 
-参数解析错误（未知旗标、缺值、多余位置参数）**不走** `FailureCode`：输出 `dsh-verify: unknown option(s): ...` 加 usage 后 exit 2；把这类退出码当参数错误处理，不要去找 `[code]` 前缀。
+参数解析错误（未知旗标、缺值、多余位置参数）**不走** `FailureCode`，也不要去找 `[code]` 前缀：有命令时输出 `dsh-verify <command>: unknown option(s): ...` 再跟一行 `  usage: <usage>`；没有命令时（例如 `dsh-verify --bogus`）输出 `dsh-verify: unknown option(s): ...` 加整页 help；两种情况都 exit 2。`--json` 时 stdout 仍是那一段失败 JSON（`stage: "usage"`）。
 
 ## 3. 证据与身份：先冻结，再绑定，再归档
 
@@ -79,7 +80,7 @@ Cookie-cutter 规则：身份行里的「候选包 sha256」绑定候选 manifes
 - 一切跑实例的命令都要用 `DSH_HOME=<批次 home>` 指到**复制出来的 profile**；真实 `~/.dsh` 只读，报告里的 `dshHome` 指向批次 home 是正确语义。
 - 批次 home 的标准做法：复制真实 `profiles/<name>` 到批次目录，再把候选包装进副本；证据里记录真实 home 关键文件运行前后的 sha256 不变。
 - 真实 home 的证据按**固定文件清单**取（整目录哈希会假阳性：宿主常驻时 `~/.dsh/storages` 空闲也会变）：`<DSH_HOME>/.credentials.yaml`、`profiles/<p>/package.json`、`profiles/<p>/cordis.patch.yml`、`profiles/<p>/node_modules/<packageName>/package.json`。Windows 用 `Get-FileHash <file> -Algorithm SHA256` 与运行前值比对（没有 `sha256sum`）。
-- `install` 默认目标是 `DSH_HOME` 的 profile；`DSH_HOME` 未设置时会在 stderr 打印警告（目标属于真实 home）。先复制 profile、设好 `DSH_HOME` 再装。
+- `install` 默认目标是 `DSH_HOME` 的 profile；它会按**解析后的目标 home**判断隔离——只要等于真实 home（包括 `DSH_HOME` 被显式指到真实 home），就在 stderr 打印警告。先复制 profile、把 `DSH_HOME` 指到副本再装。
 - `isolation` 探针同理：它证明子进程的 userprofile / 插件设置目录落在 work root 下，而不是真实 home。声明没写 `pluginSettingsDir` 时它会 blocked 并给出补字段的 hint——这是声明缺口，不是 bug。
 - `cleanup` / `stop` 收尾；`--keep` 保留现场时要在结论里注明「teardown 记 skip，不是通过」。
 

@@ -24,7 +24,8 @@ import {
   type InstallPlan,
 } from "../../orchestration/install-package";
 import { renderCheckLines } from "../../orchestration/report";
-import { resolveAgainst } from "../../runtime/paths";
+import { resolveRealHome } from "../../runtime/dsh/home";
+import { resolveAgainst, samePath } from "../../runtime/paths";
 import { createBinaryWriter, type BinaryWriter } from "../../runtime/platform/binary-writer";
 import type { RuntimeFacts } from "../../runtime/types";
 import { flagProblems, type ParsedArgs } from "../args";
@@ -141,14 +142,15 @@ export async function runInstallCommand(args: ParsedArgs, deps: InstallCommandDe
   const note = (message: string): void => {
     io.stderr(`dsh-verify install: ${message}\n`);
   };
-  // Installing mutates the profile's node_modules. When DSH_HOME is not set the
-  // target is the real user home, which the documentation forbids writing; say
-  // so before the first byte is written instead of leaving it to the operator.
-  const dshHomeOverride = ports.env.snapshot()["DSH_HOME"];
-  if (dshHomeOverride === undefined || dshHomeOverride.trim() === "") {
+  // Installing mutates the profile's node_modules. The isolation rule is about
+  // the resolved target, not about whether DSH_HOME happens to be set: a host
+  // can export DSH_HOME pointing at the real user home, and writing there is
+  // still writing the real home. Warn before the first byte is written.
+  const realHome = resolveRealHome(ports.env);
+  if (samePath(context.dshHome, realHome)) {
     note(
-      `warning: DSH_HOME is not set, so the target profile ${context.profileDir} belongs to the real user home; ` +
-        "copy it into a batch home and set DSH_HOME to keep the real home untouched",
+      `warning: the target DSH home ${context.dshHome} is the real user home, so ${context.profileDir} belongs to it; ` +
+        "copy the profile into a batch home and set DSH_HOME to that copy to keep the real home untouched",
     );
   }
 

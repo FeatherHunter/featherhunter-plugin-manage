@@ -339,7 +339,7 @@ export async function planInstall(options: InstallPlanOptions): Promise<Result<I
       installFailure(
         "input",
         failure(
-          "prerequisite",
+          "not-found",
           `could not read tarball ${tgzPath}: ${bytes.error.message}`,
           "pass the .tgz produced by npm pack or dsh-verify freeze",
         ),

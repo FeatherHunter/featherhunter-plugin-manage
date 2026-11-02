@@ -415,3 +415,76 @@ describe("self-check --dry-run", () => {
     expect(await fixture.fs.exists(fixture.paths.workRoot)).toBe(false);
   });
 });
+
+describe("argument errors", () => {
+  async function runMain(
+    fixture: Fixture,
+    argv: readonly string[],
+  ): Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }> {
+    const capture = captureIo();
+    const code = await main(argv, {
+      ports: fixture.ports,
+      io: capture.io,
+      runtime: fixture.runtime,
+      loadDeclaration: declarationLoader(ok(fixtureDeclaration(fixture))),
+    });
+    return { code, stdout: capture.stdout(), stderr: capture.stderr() };
+  }
+
+  it("prints the command usage and exits 2 for an unknown flag", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["self-check", "--bogus"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("unknown option(s): --bogus");
+    expect(result.stderr).toMatch(/usage:/i);
+    expect(result.stderr).not.toContain("fail self-check");
+  });
+
+  it("prints the command usage and exits 2 for a flag without a value", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["self-check", "--profile"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("--profile needs a value");
+    expect(result.stderr).toMatch(/usage:/i);
+    expect(result.stderr).not.toContain("fail self-check");
+  });
+
+  it("prints the command usage and exits 2 for an unexpected argument", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["self-check", "extra"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("unexpected argument(s): extra");
+    expect(result.stderr).toMatch(/usage:/i);
+    expect(result.stderr).not.toContain("fail self-check");
+  });
+
+  it("names an unknown global flag instead of pretending no command was given", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["--bogus"]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("unknown option(s): --bogus");
+    expect(result.stderr).not.toContain("no command given");
+    expect(result.stderr).toMatch(/usage:/i);
+  });
+
+  it("emits a usage failure document on stdout with --json", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["self-check", "--bogus", "--json"]);
+
+    expect(result.code).toBe(2);
+    const doc = JSON.parse(result.stdout) as {
+      readonly ok: boolean;
+      readonly command: string;
+      readonly error?: { readonly code: string; readonly stage?: string; readonly hint?: string };
+    };
+    expect(doc.ok).toBe(false);
+    expect(doc.command).toBe("self-check");
+    expect(doc.error?.code).toBe("invalid-input");
+    expect(doc.error?.stage).toBe("usage");
+    expect(doc.error?.hint).toContain("usage:");
+  });
+});

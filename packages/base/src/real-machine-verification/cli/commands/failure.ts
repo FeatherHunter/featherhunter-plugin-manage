@@ -4,12 +4,18 @@
  * A command failure is not a check failure: there is no check id to attach it
  * to, because the command never got far enough to run one. The envelope keeps
  * the same shape the existing commands use so a caller can parse every
- * `dsh-verify` failure with one branch, and the human line keeps the four-state
- * vocabulary (`fail`) rather than inventing a fifth word.
+ * `dsh-verify` failure with one branch.
+ *
+ * The human line never borrows a check-status word: a command that could not
+ * run is blocked (exit 2), so it prints `dsh-verify <command>: [code] message`
+ * and the failure-code vocabulary, exactly like every other blocked command.
+ * Usage errors print the specific problem first and the usage line second.
  */
 import { EXIT_CODES } from "../../capability-description";
-import type { Failure } from "../../contracts/result";
+import { formatFailure, type Failure } from "../../contracts/result";
 import type { CliIo } from "../io";
+
+const CLI_NAME = "dsh-verify";
 
 /** The JSON error envelope, exactly one line when printed. */
 export function failureJson(command: string, stage: string, error: Failure): Record<string, unknown> {
@@ -35,8 +41,7 @@ export function emitFailure(
   stage: string,
   error: Failure,
 ): number {
-  io.stderr(`fail ${command} ${error.message}\n`);
-  if (error.hint !== undefined) io.stderr(`  hint: ${error.hint}\n`);
+  io.stderr(`${CLI_NAME} ${command}: ${formatFailure(error)}\n`);
   if (json) io.stdout(`${JSON.stringify(failureJson(command, stage, error))}\n`);
   return EXIT_CODES.blocked;
 }
@@ -50,8 +55,8 @@ export function emitUsageFailure(
   usage: string,
 ): number {
   const message = problems.length === 0 ? "invalid arguments" : problems.join("; ");
-  io.stderr(`fail ${command} ${message}\n`);
-  io.stderr(`  hint: usage: ${usage}\n`);
+  io.stderr(`${CLI_NAME} ${command}: ${message}\n`);
+  io.stderr(`  usage: ${usage}\n`);
   if (json) {
     io.stdout(
       `${JSON.stringify(failureJson(command, "usage", { code: "invalid-input", message, hint: `usage: ${usage}` }))}\n`,

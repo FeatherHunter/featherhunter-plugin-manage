@@ -296,12 +296,43 @@ function classifyImportFailure(
       "fix the syntax error, then rerun self-check",
     );
   }
+  // `defineVerificationProfile` throws a prefixed error when a field is
+  // missing or malformed. That is a declaration-content defect, not a throw
+  // from top-level code, so it earns a field-level hint instead of the
+  // "move side effects out" advice.
+  const invalidProfile = /^verification profile is invalid: (.+)$/.exec(message);
+  if (invalidProfile !== null) {
+    const detail = invalidProfile[1].split(" — ")[0] ?? invalidProfile[1];
+    return declarationFailure(
+      "failed",
+      "invalid-input",
+      `the declaration ${path} defines an invalid profile: ${detail}`,
+      profileFieldHint(detail),
+    );
+  }
   return declarationFailure(
     "failed",
     "invalid-input",
     `the declaration ${path} threw while loading: ${describeThrown(error)}`,
     "the declaration must only define the profile; move side effects out of it",
   );
+}
+
+/** The fix for a profile field the validator rejected, named exactly. */
+function profileFieldHint(message: string): string {
+  if (message.includes("defaultProfile")) {
+    return (
+      'add defaultProfile: "<name>" to defineVerificationProfile({ ... }); ' +
+      "the name is a profile under <DSH_HOME>/profiles that DSH creates when you open it"
+    );
+  }
+  if (message.includes("clientEntry")) {
+    return (
+      "add clientEntry to defineVerificationProfile({ ... }); " +
+      'it is the package-relative path of the built client entry, for example "lib/client.js"'
+    );
+  }
+  return "fix the field named in the message; the declaration in the README shows a valid minimal profile";
 }
 
 /** Candidate exports in priority order: the documented default, then named aliases. */

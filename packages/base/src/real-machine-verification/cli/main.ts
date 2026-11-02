@@ -32,6 +32,7 @@ import type { RuntimeFacts } from "../runtime/types";
 import { parseArgs } from "./args";
 import { runBatchCommand } from "./commands/batch";
 import { runCleanupCommand } from "./commands/cleanup";
+import { failureJson } from "./commands/failure";
 import { runConcurrentCommand } from "./commands/concurrent";
 import { runEvidenceCommand } from "./commands/evidence";
 import { runFreezeCommand } from "./commands/freeze";
@@ -114,7 +115,9 @@ export function renderHelp(description: CapabilityDescription = describeCapabili
   lines.push("");
   lines.push("Layers:");
   for (const layer of description.layers) {
-    lines.push(`  L${layer.layer}  ${layer.audience.padEnd(32)}${layer.use}`);
+    // The explicit space keeps the column readable when the audience text is
+    // exactly the padded width (padEnd would otherwise glue two words together).
+    lines.push(`  L${layer.layer}  ${layer.audience.padEnd(32)} ${layer.use}`);
   }
   lines.push("");
   lines.push("Global options:");
@@ -172,6 +175,14 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   const io = deps.io ?? createNodeIo();
   const description = describeCapability();
   const parsed = parseArgs(argv);
+  // Flag-level problems are the CLI's own concern, so they are reported here
+  // before any command runs: every command otherwise has to repeat the same
+  // three checks and the wording drifts. A command with a subcommand still owns
+  // its extra positionals; only unknown flags and missing values land here.
+  const invocationProblems: string[] =
+    parsed.unknown.length > 0
+      ? [`unknown option(s): ${parsed.unknown.join(", ")}`, ...parsed.problems]
+      : [...parsed.problems];
 
   if (argv.length === 0 || parsed.help || parsed.command === "help") {
     io.stdout(renderHelp(description));
@@ -188,7 +199,30 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   }
 
   if (parsed.command === null) {
+    if (invocationProblems.length > 0) {
+      io.stderr(`${CLI_NAME}: ${invocationProblems.join("; ")}\n\n${renderHelp(description)}`);
+      return EXIT_CODES.blocked;
+    }
     io.stderr(`${CLI_NAME}: no command given\n\n${renderHelp(description)}`);
+    return EXIT_CODES.blocked;
+  }
+
+  if (invocationProblems.length > 0) {
+    const message = invocationProblems.join("; ");
+    io.stderr(`${CLI_NAME} ${parsed.command}: ${message}\n`);
+    const usage = description.commands.find((entry) => entry.name === parsed.command)?.usage;
+    if (usage !== undefined) io.stderr(`  usage: ${usage}\n`);
+    if (parsed.json) {
+      io.stdout(
+        `${JSON.stringify(
+          failureJson(parsed.command, "usage", {
+            code: "invalid-input",
+            message,
+            ...(usage === undefined ? {} : { hint: `usage: ${usage}` }),
+          }),
+        )}\n`,
+      );
+    }
     return EXIT_CODES.blocked;
   }
 
@@ -212,14 +246,6 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   }
 
   if (parsed.command === "self-check") {
-    if (parsed.unknown.length > 0) {
-      io.stderr(`${CLI_NAME}: unknown option(s): ${parsed.unknown.join(", ")}\n`);
-      return EXIT_CODES.blocked;
-    }
-    if (parsed.problems.length > 0) {
-      io.stderr(`${CLI_NAME}: ${parsed.problems.join("; ")}\n`);
-      return EXIT_CODES.blocked;
-    }
     return runSelfCheckCommand(parsed, {
       ports: deps.ports ?? createNodePorts(),
       io,

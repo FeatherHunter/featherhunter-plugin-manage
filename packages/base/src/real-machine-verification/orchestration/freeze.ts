@@ -97,15 +97,24 @@ function freezeFailure(
   };
 }
 
+/**
+ * Re-stage a failure from a helper.
+ *
+ * `blockedFor` marks the codes that mean "the run could not start" rather than
+ * "this candidate is wrong": a missing git work tree proves nothing about the
+ * package, so it must exit 2 (blocked) like `batch open` does, not exit 1.
+ */
 function wrapFailure<T>(
   result: Result<T>,
   stage: FreezeStage,
   prefix: string,
+  blockedFor: readonly FailureCode[] = [],
 ): Result<T, FreezeFailure> {
   if (result.ok) return ok(result.value);
   const { code, message, hint, details } = result.error;
   return err(
     freezeFailure(stage, code, `${prefix}: ${message}`, {
+      ...(blockedFor.includes(code) ? { blocked: true } : {}),
       ...(hint === undefined ? {} : { hint }),
       ...(details === undefined ? {} : { details }),
     }),
@@ -285,7 +294,9 @@ export async function planFreeze(options: FreezeOptions): Promise<Result<FreezeP
   }
 
   const beforeResult = await readGitState({ ports, cwd: context.cwd });
-  if (!beforeResult.ok) return wrapFailure(beforeResult, "git", "could not read git state");
+  if (!beforeResult.ok) {
+    return wrapFailure(beforeResult, "git", "could not read git state", ["prerequisite", "unsupported", "timeout"]);
+  }
   const before: GitState = beforeResult.value;
   if (before.dirty && !allowDirty) {
     return err(

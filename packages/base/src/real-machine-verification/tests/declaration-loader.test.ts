@@ -293,3 +293,25 @@ describe("import and validation", () => {
     expect(result.error.message).toContain("did not load as a module");
   });
 });
+
+describe("invalid profile fields", () => {
+  it("points at the missing field instead of blaming top-level side effects", async () => {
+    const fs = new FakeFs("C:\\fixture-repo");
+    fs.seedFile("C:\\fixture-repo\\verify\\profile.ts", "export default {};\n");
+
+    const result = await loaderFor(fs, {
+      importModule: async () => {
+        throw new Error(
+          "verification profile is invalid: profile defaultProfile is required — no implicit default is applied",
+        );
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("failed");
+    expect(result.error.code).toBe("invalid-input");
+    expect(result.error.message).toContain("defaultProfile is required");
+    expect(result.error.hint).toContain("defaultProfile");
+    expect(result.error.hint).not.toContain("side effects");
+  });
+});

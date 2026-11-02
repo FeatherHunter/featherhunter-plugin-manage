@@ -272,3 +272,26 @@ describe("install --dry-run", () => {
     expect(await fake.fs.exists(joinFsPath(fake.paths.profileDir, "node_modules"))).toBe(false);
   });
 });
+
+describe("install: environment prerequisites", () => {
+  it("reports an unreadable tarball as [not-found] and exits 2", async () => {
+    const fake = fixture();
+    const missing = "C:\\fake\\repo\\missing-plugin-0.1.0.tgz";
+    const result = await run(fake, ["install", "--tgz", missing]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("[not-found]");
+    expect(result.err).toContain("could not read tarball");
+    expect(result.err).not.toContain("fail install");
+  });
+
+  it("warns when DSH_HOME is explicitly pointed at the real user home", async () => {
+    const fake = fixture();
+    fake.fs.seedFile(TGZ_PATH, tgzFor());
+    fake.env.set("DSH_HOME", joinFsPath(fake.env.homeDir(), ".dsh"));
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--dry-run", "--json"]);
+
+    expect(result.code).toBe(0);
+    expect(result.err).toContain("real user home");
+  });
+});
