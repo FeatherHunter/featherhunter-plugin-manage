@@ -4,12 +4,21 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export const IS_WIN = process.platform === "win32";
 
-// The five plugin repositories that pin dsh-featherhunter-plugin-base, plus the publisher.
+// This toolkit lives at <repo>/scripts/ops/lib, so the owning repo is three levels
+// up from this file. Deriving it from import.meta.url keeps every clone location
+// (and CI) working at any cwd; no machine-specific absolute path is involved.
+export const OPS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const REPO_ROOT = path.resolve(OPS_DIR, "..", "..");
+
+// The publisher repo is derived from the toolkit location above. The five plugin
+// repositories keep their machine-local paths: this spec does not delete the
+// cross-repo tools, and no new capability depends on them.
 export const DEFAULT_REPOS = {
-  base: "D:/dsh-plugin/featherhunter-plugin-manage",
+  base: REPO_ROOT,
   prompt: "D:/dsh-plugin/dsh-prompt",
   palette: "D:/dsh-plugin/dsh-opencode-palette",
   im: "D:/dsh-plugin/dsh-im-companion",
