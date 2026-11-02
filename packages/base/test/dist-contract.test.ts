@@ -7,6 +7,17 @@ import { describe, expect, it } from "vitest";
 const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distFile = (relativePath: string): string => resolve(pkgRoot, "dist", relativePath);
 
+// This suite asserts on the built artifacts, and dist/ is gitignored: a clean
+// checkout (CI, a fresh worktree) has no dist until something builds it. Build
+// on demand so "one gate command" works from a clean clone; a local dev tree
+// with dist already present skips the extra work.
+if (!existsSync(distFile("core/index.js"))) {
+  execFileSync(process.execPath, [resolve(pkgRoot, "scripts/run-ts.mjs"), "build"], {
+    cwd: pkgRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
 function readDist(relativePath: string): string {
   return readFileSync(distFile(relativePath), "utf8");
 }

@@ -112,6 +112,8 @@ curl.exe -sS -I  "https://cdn.jsdelivr.net/npm/dsh-featherhunter-plugin-base@$v/
 
 **顺序建议**：先 `deprecate`（立刻减少新装用户受影响）→ 再发修复版本 → 最后视情况 `unpublish`。
 
+**发布后自动校验失败**：publish workflow 在 `npm publish` 之后调用 `scripts/ops/base-release.mjs --skip-publish`（与本地完全相同的入口）下载 tarball 全验。registry 传播期最多轮询 15 分钟，仍未出现才按前置错误失败；校验 JSON 以 artifact 留存、下载物保留在 runner 临时目录，用于区分传播延迟与坏包。若确认是坏包（integrity 不符、dist 标记缺失、CLI 版本行不符），包已经发布、无法回滚：按本节先 `npm deprecate` 该版本，再修版本号重发，**不要对同一版本重试 publish**。
+
 ## 6. 凭据管理（不落库）
 
 - 交互式 `npm login`：token 存在用户目录的 `~/.npmrc`，不在仓库内。

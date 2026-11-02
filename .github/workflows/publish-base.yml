@@ -46,3 +46,32 @@ jobs:
         run: npm publish --tag "${{ inputs.tag }}"
         env:
           NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}"
+      # The published tarball is the only artifact consumers see, so it is verified
+      # from the registry with the same entry point a maintainer runs locally
+      # (--skip-publish). Deliberately no skip input / condition here, and no token:
+      # the check only reads the public registry. A failure fails this job.
+      - name: Verify published tarball from the registry
+        working-directory: .
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("packages/base/package.json","utf8")).version')"
+          echo "verifying published tarball for $version"
+          node scripts/ops/base-release.mjs \
+            --skip-publish \
+            --version "$version" \
+            --commit HEAD \
+            --registry https://registry.npmjs.org \
+            --timeout-min 15 \
+            --download "$RUNNER_TEMP/base-verify" \
+            --json > "$RUNNER_TEMP/base-release-verify.json"
+      # Keep the evidence even when the verification failed (that is when it matters).
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: base-release-verify
+          path: |
+            ${{ runner.temp }}/base-release-verify.json
+            ${{ runner.temp }}/base-verify/
+          if-no-files-found: warn
