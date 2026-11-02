@@ -240,7 +240,7 @@
 | 420×1000 | 1 | 3 行（弹窗 386 宽） | 同上 0 |
 
 - 截图：`.tmp/hg-018-c4-1200.png`（117563B）、`hg-018-c4-600.png`（66586B）、`hg-018-c4-420.png`（56471B）。
-- 徽标实测：3 枚 `.dsh-base-modal__card-badge` 均 18×18、各含 1 个 SVG、`aria-hidden=true`；底色 feishu `rgb(51,112,255)` / qq `rgb(18,183,245)` / wechat `rgb(7,193,96)`；卡标题为「飞书群 / QQ群 / 微信群」+ `DSH 插件交流群`，旧「三卡同名」已消除。
+- 徽标实测：3 枚 `.dsh-base-modal__card-badge` 均 18×18、各含 1 个 SVG、`aria-hidden=true`；底色 feishu `rgb(51,112,255)` / qq `rgb(18,183,245)` / wechat `rgb(7,193,96)`；卡标题 = 18px 徽标 + visually-hidden 渠道名（飞书群 / QQ群 / 微信群）+ 群名 `DSH 插件交流群`（视觉上靠徽标区分渠道，读屏文本仍带平台名），旧「三卡同名」观感问题已消除。
 - Esc 关闭 dialog 成立；关闭后焦点落 `BODY`（本轮为程序化点击触发，属预期）。
 
 **C6 中英切换（PASS）**
