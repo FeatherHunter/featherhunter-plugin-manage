@@ -32,6 +32,16 @@
 ### local — 2026-11-02T15:42:50.857Z
 发布后取证接线完成、契约用例绿；传播窗口风险按票面记为遗留。
 
+### local — 2026-11-02T16:49:25.995Z
+收口复核：本票关闭时记录的唯一遗留（--skip-publish 传播窗口问题）已修复并合入 main。
+
+- 修复提交：a251531（`fix(release): poll the registry in verify-only mode so propagation lag is not a failure`，经 800556d 合入 main）。
+- 行为：verify 模式预检改为轮询 registry（`scripts/ops/base-release.mjs`），版本在传播窗口内尚未可见时等待 --timeout-min，而不是第一次 404 就退 2；超时仍未出现才按前置错误退出 2，文案仍含 `is not on the registry`。
+- 测试：`packages/base/test/ops/publish-verify.test.ts` 新增「waits through registry propagation lag instead of failing the publish (exit 0)」（本地假 registry 前 2 次 manifest 404，期望 exit 0 且 manifest 请求 >= 3）；原 404 用例改为短超时（--timeout-min 0.02）避免退 2 用例真等 10 分钟。5/5 绿。
+- 文档：`docs/base包-发布与回滚.md` §5 增加「发布后自动校验失败」处置（deprecate 旧版本 + 修版本重发，不对同一版本重试 publish）。
+
+本票无需重开；此评论为该遗留的关闭记录。
+
 
 
 
