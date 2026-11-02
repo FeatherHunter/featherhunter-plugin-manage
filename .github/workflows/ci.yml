@@ -1,0 +1,45 @@
+name: ci
+
+# Gate for every push and pull request.
+#
+# This workflow deliberately runs ONE command: the ops gate entry that
+# maintainers also run locally (node scripts/ops/base-verify.mjs --json).
+# The ordered gate steps live inside that script, so local and CI cannot
+# drift by editing two command lists. Do not restate the gates here as
+# individual npm commands.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  base-gates:
+    name: base gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/base/package-lock.json
+
+      - name: Install dependencies
+        working-directory: packages/base
+        run: npm ci
+
+      # The gate resolves the repository root from its own location, so it must
+      # be invoked from the checkout root, not from the package directory.
+      - name: Run base gates
+        run: node scripts/ops/base-verify.mjs --json
