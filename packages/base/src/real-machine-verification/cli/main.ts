@@ -199,11 +199,24 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   }
 
   if (parsed.command === null) {
-    if (invocationProblems.length > 0) {
-      io.stderr(`${CLI_NAME}: ${invocationProblems.join("; ")}\n\n${renderHelp(description)}`);
-      return EXIT_CODES.blocked;
+    // A parse failure without a command is still a parse failure, so it must
+    // honour the same --json contract as the with-command branch below: exactly
+    // one failure document on stdout. The command field is empty because there
+    // is no command to name; the message names the problem instead.
+    const message =
+      invocationProblems.length > 0 ? invocationProblems.join("; ") : "no command given";
+    io.stderr(`${CLI_NAME}: ${message}\n\n${renderHelp(description)}`);
+    if (parsed.json) {
+      io.stdout(
+        `${JSON.stringify(
+          failureJson("", "usage", {
+            code: "invalid-input",
+            message,
+            hint: `usage: ${CLI_NAME} <command> [flags]; run "${CLI_NAME} --help" for the command list`,
+          }),
+        )}\n`,
+      );
     }
-    io.stderr(`${CLI_NAME}: no command given\n\n${renderHelp(description)}`);
     return EXIT_CODES.blocked;
   }
 

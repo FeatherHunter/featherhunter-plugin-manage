@@ -47,7 +47,7 @@ node_modules/.bin/dsh-verify describe --json
 
 `invalid-input` / `prerequisite` / `identity-mismatch` / `not-found` / `io` / `timeout` / `conflict` / `unsupported` / `internal`，渲染为 `[code] message — hint`。给用户复述失败时保留 code 与 hint 原文。
 
-参数解析错误（未知旗标、缺值、多余位置参数）**不走** `FailureCode`，也不要去找 `[code]` 前缀：有命令时输出 `dsh-verify <command>: unknown option(s): ...` 再跟一行 `  usage: <usage>`；没有命令时（例如 `dsh-verify --bogus`）输出 `dsh-verify: unknown option(s): ...` 加整页 help；两种情况都 exit 2。`--json` 时 stdout 仍是那一段失败 JSON（`stage: "usage"`）。
+参数解析错误（未知旗标、缺值、多余位置参数）**不走** `FailureCode`，也不要去找 `[code]` 前缀：有命令时输出 `dsh-verify <command>: unknown option(s): ...` 再跟一行 `  usage: <usage>`；没有命令时（例如 `dsh-verify --bogus`）输出 `dsh-verify: unknown option(s): ...` 加整页 help；两种情况都 exit 2。`--json` 时 stdout 仍是那一段失败 JSON（`stage: "usage"`）；没有命令时该文档的 `command` 是空字符串，问题写在 `error.message`。
 
 ## 3. 证据与身份：先冻结，再绑定，再归档
 

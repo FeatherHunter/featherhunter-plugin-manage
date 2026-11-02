@@ -487,4 +487,40 @@ describe("argument errors", () => {
     expect(doc.error?.stage).toBe("usage");
     expect(doc.error?.hint).toContain("usage:");
   });
+
+  it("emits the same usage failure document when the bad flag comes before any command", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["--bogus", "--json"]);
+
+    expect(result.code).toBe(2);
+    const doc = JSON.parse(result.stdout) as {
+      readonly ok: boolean;
+      readonly command: string;
+      readonly error?: { readonly code: string; readonly stage?: string; readonly hint?: string };
+    };
+    expect(doc.ok).toBe(false);
+    // No command was parsed, so the document names none; the message carries the defect.
+    expect(doc.command).toBe("");
+    expect(doc.error?.code).toBe("invalid-input");
+    expect(doc.error?.stage).toBe("usage");
+    expect(doc.error?.hint).toContain("usage:");
+    expect(result.stderr).toContain("unknown option(s): --bogus");
+  });
+
+  it("keeps the --json contract for a bare --json with no command", async () => {
+    const fixture = createFixture();
+    const result = await runMain(fixture, ["--json"]);
+
+    expect(result.code).toBe(2);
+    const doc = JSON.parse(result.stdout) as {
+      readonly ok: boolean;
+      readonly command: string;
+      readonly error?: { readonly code: string; readonly stage?: string };
+    };
+    expect(doc.ok).toBe(false);
+    expect(doc.command).toBe("");
+    expect(doc.error?.code).toBe("invalid-input");
+    expect(doc.error?.stage).toBe("usage");
+    expect(result.stderr).toContain("no command given");
+  });
 });
