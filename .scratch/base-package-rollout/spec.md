@@ -26,7 +26,8 @@
 
 ## 当前状态
 - 票 08–13 已全部关闭；base 已从 0.0.2 一路发到 **0.1.5**（0.0.2 时期「未发布」阻塞已解除）；五仓均已发 npm 正式版并钉 `dsh-featherhunter-plugin-base: "0.1.5"`：prompt `0.4.40`、deck `1.9.0-beta.33`、palette `2.1.11`、im-companion `0.2.26`、ilife `0.3.86`。web profile 已从 file: tarball 切到 npm 精确版本并真机复验通过（见票 09 与 `docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md` §7.5）。
-- 票 14 HUMAN-GATE 仍 open（进度 92%）：B 组 owner 2026-11-01 已确认通过；C4/C6/E1/E2/E3 已由代理自动化实测 PASS（证据见核对清单 §7.6）；剩 owner 对 C4/C6 的主观观感一眼、D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）。
+- 票 14 HUMAN-GATE 仍 open（进度 90%）：B 组 owner 2026-11-01 已确认通过；D 组 desktop profile 安装形态已由 owner 2026-11-01 15:27 装五仓 npm 正式版并重启桌面应用、反馈无问题，代理核验通过（核对清单 §7.7）；E1/E2/E3 断网降级代理实测 PASS（§7.6）。
+- **C4/C6 状态更新（2026-11-01 16:14）**：原 C4/C6 自动化实测 PASS 证据因 base 仓 `94bbace` 渠道徽标改动作废，需按新弹窗重做；新版弹窗尚未发版（base 仍 0.1.5、五仓仍钉 0.1.5），重验载体待定。详见文末「状态修订」。
 - 票 14 关闭后，由用户在规格详情页点「完成」按钮做收口核对（不是自动关闭）。
 
 ## 票号说明
@@ -62,3 +63,17 @@
   - E3 恢复回源 PASS：unpkg 清单 200（992ms）+ jsdelivr 远程图 3 张全 200（1575–1657ms），弹窗 img 320×320/true。
 - 证据（结论、截图、plan/日志路径、复跑命令）写入 `docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md` §7.6，§7.2 中 C4/C6/E 已标为代理自动化覆盖；票 14 回填评论 + 进度 92%。
 - 仍待 owner：C4/C6 主观观感、D 组 desktop profile 安装形态（授权 + 重启桌面应用）；票 14 保持 open。
+
+## 验收记录（票 14 D 组回填，2026-11-01 16:5x +08:00）
+- owner 2026-11-01 15:27 前后在 DSH Desktop 把五仓装/更到 npm 正式版并重启桌面应用；16:42 反馈「现在都重启了，暂时没看到什么问题」。
+- 代理核验 desktop profile：dsh-prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im-companion 0.2.26 / life-pack 0.3.86，declared=actual、node_modules 全部真实目录无 Junction；市场日志 deck 按 registry latest 重装并 hot=true 激活；im-companion 官方包运行日志活跃。
+- 附带修复：desktop 的 dsh-im-companion 原为 Junction 指向本地仓导致 pnpm ERR_PNPM_EPERM，15:18 改为 registry 0.2.26（真实目录，integrity 与 npm 一致，备份 .tmp-backup-im-official-20261101-1518）。
+- 证据：docs/HUMAN-GATE-五仓接入-base-0.0.2-核对清单.md §7.7；票 14 评论 + 进度 95%。
+
+## 状态修订（2026-11-01 16:14 渠道徽标改动后）
+
+- **改动来源**：2026-11-01 16:14 base 仓提交 `94bbace`（来源 `.scratch/contact-channel-badges/issues/01`，已 resolved）：联系弹窗群卡改为「18px 彩色渠道官方徽章 + 群名」，微信卡重复副标题删除；该票自测 typecheck / test 354 passed / data:check / build 全绿。
+- **影响 1（C4/C6 证据作废）**：票 14 的 C4/C6 整卡观感截图与判定停留在旧版（三张同形卡片），**C4/C6 观感证据作废**，需按新弹窗重做（票 14 已于 2026-11-01 16:15 记录）；E1–E3 断网降级、A/B/D 组其余检查不受影响。
+- **影响 2（新版弹窗未发版）**：`94bbace` 未发版——`packages/base/package.json` 仍为 `0.1.5`，五仓仍钉已发布的 `0.1.5`（不含徽标）；contact-channel-badges 票 01 明确「五仓换钉与发版由发布/后续票跟进」，当前尚无后续票。C4/C6 重验载体二选一：① 用 base 仓本地构建的 demo 页重验（新弹窗可渲染，不依赖发版）；② 等新 base 版本发布 + 五仓换钉后在真实插件页重验（需新的版本轮次与发布票）。
+- **影响 3（D 组范围）**：D 组安装形态已于 15:27 通过，但装的是 npm 0.1.5（旧弹窗）；新弹窗发版后观感需再看一眼，安装形态本身不受影响。
+- **影响 4（提交未推送）**：manage 仓 `127a487`（票 14 证据回填）、`94bbace`（渠道徽标）、`f3fdeb5`（票 01 收口）3 个提交尚未推送，origin/main 仍为 `d6355a7`；收口复核的「变更在长线分支上」项需先 push。

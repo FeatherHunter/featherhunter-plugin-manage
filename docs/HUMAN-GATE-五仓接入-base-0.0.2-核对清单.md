@@ -128,7 +128,7 @@
 - ~~**B 组**~~：2026-11-01 owner 确认「B 组没问题」→ 已通过（见 §1 与票 14 记录）。
 - **C4 更窄档**：~~420px 左右单元格换行表现（代理只验到 900/1000 无溢出）~~ → **代理已自动化实测 PASS**（1200/600/420 三档列数 3/2/1、无横向溢出、无越界元素，见 §7.6）；仅剩主观观感待 owner 一眼。
 - **C6 语言切换**：~~中英切换在真实浏览器（demo 与插件面板内）的观感~~ → **demo 页中英切换已自动化实测 PASS**（文案/aria/弹窗全量切换并可复原，见 §7.6）；插件面板内英文需切 DSH UI 语言，组件双语已覆盖；观感待 owner 一眼。
-- **D 组（已按新形态改写）**：五仓插件要装进 **desktop profile** 才有「插件详情面板 / 总管页」真机入口；当前只验了 web profile 设置分区。**已可改用 npm 正式版**（2026-11-01：五仓全部发版，web profile 已是 npm 依赖；desktop profile 目前还是 registry 旧版 0.4.39 / 2.1.10 / 0.3.85 / beta.32 / 0.2.25）。desktop profile 正是当前 DSH Desktop 会话所在 profile，安装后需重启桌面应用，须 owner 授权/操作；本机 npmjs TLS 受限，需先给 desktop profile 加 `.npmrc`（registry=npmmirror）再用 `--save-exact` 列出五个版本。
+- **D 组**：~~desktop profile 安装形态（原 registry 旧版 0.4.39 / 2.1.10 / 0.3.85 / beta.32 / 0.2.25）~~ → **已通过（2026-11-01 15:27，owner 安装五仓 npm 正式版并重启桌面应用；16:42 反馈「现在都重启了，暂时没看到什么问题」）**：desktop profile 五仓全部为 npm 正式版（prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / life-pack 0.3.86），真实目录无软链，运行日志正常；证据见 §7.7。入口观感以 owner 本次反馈为准。
 - **E 组**：~~断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）~~ → **代理已自动化实测 PASS**：E1 三通道全失败仍显示 3 个内置真码、无白屏/错误框；E2 合成清单验证「远程图失败回退内置码 / 过期卡降级 link / 无内置码降级 link」三链路且不弹错；E3 恢复后 unpkg 清单 200 + 3 张远程图 200（回源成立），见 §7.6。
 
 ### 7.3 旧条目过期说明
@@ -152,7 +152,7 @@
 
 ### 7.6 代理自动化实测补齐 C4/C6/E（2026-11-01 14:0x，CDP 网络级模拟）
 
-> 依据 owner 2026-11-01 指示「你能自动化测试的 可以直接测试」。以下由代理用无头 Chrome（CDP）在真实页面执行，属**自动化实测证据**，不能替代 owner 对观感的主观确认；D 组安装形态仍需 owner 授权。
+> 依据 owner 2026-11-01 指示「你能自动化测试的 可以直接测试」。以下由代理用无头 Chrome（CDP）在真实页面执行，属**自动化实测证据**，不能替代 owner 对观感的主观确认；D 组安装形态已由 owner 于 15:27 完成并核验（见 §7.7）。
 
 **环境**
 - Chrome 156 headless，CDP 9333；web profile 页面 http://127.0.0.1:3080/（五仓 npm 正式版：prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / ilife 0.3.86，内联 base 0.1.5）；base demo 0.1.5 由静态服务器 http://127.0.0.1:8899/demo/index.html 提供（`packages/base/demo/` + `dist/demo.js`）。
@@ -202,6 +202,23 @@
 
 **结论**
 - 代理自动化侧：C4、C6、C7（辅助）、E1、E2、E3 全部 PASS，证据如上；§7.2 中 C4/C6/E 的「代理不可代劳」部分已由自动化实测覆盖。
-- 仍待 owner：C4/C6 的**主观观感**（一眼舒服即可）、D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）；B 组 owner 已确认。
+- 仍待 owner：C4/C6 的**主观观感**（一眼舒服即可）；D 组 desktop profile 安装形态已由 owner 完成并核验（见 §7.7）；B 组 owner 已确认。
 - 复跑命令：`node .tmp/hg-cdp.mjs .tmp/hg-plan-e2b.json`（其余 plan 同名规律：`hg-plan-demo-c4.json` / `hg-plan-demo-c6.json` / `hg-plan-demo-c7.json` / `hg-plan-web-c4.json` / `hg-plan-e1.json` / `hg-plan-e3.json`）。
+
+### 7.7 D 组 desktop profile 安装形态（2026-11-01 15:27，owner 操作 + 代理核验）
+
+- **owner 动作**：2026-11-01 15:27 前后在 DSH Desktop 里把五仓插件装/更到 npm 正式版，随后重启桌面应用；16:42 反馈「现在都重启了，暂时没看到什么问题」。
+- **代理核验（2026-11-01 16:4x，重启后）**：`C:\Users\辰辰洋洋\.dsh\profiles\desktop\package.json` dependencies 五仓均为 npm 精确版本，node_modules 实际版本一致且全部为真实目录（无 Junction）：
+
+| 插件 | declared | actual | link |
+| --- | --- | --- | --- |
+| dsh-prompt | 0.4.40 | 0.4.40 | 无 |
+| dsh-mattpocock-skills-deck | 1.9.0-beta.33 | 1.9.0-beta.33 | 无 |
+| dsh-opencode-palette | 2.1.11 | 2.1.11 | 无 |
+| dsh-im-companion | 0.2.26 | 0.2.26 | 无 |
+| dsh-life-pack | 0.3.86 | 0.3.86 | 无 |
+
+- **运行证据**：`.dsh-market\log.ndjson` 07:27:11Z「install dsh-mattpocock-skills-deck: pinned to the registry's latest, 1.9.0-beta.33, so pnpm's fresh-release hold cannot substitute an older version silently」→ 07:27:19Z「the host's own replay activated it; adopted instead of mounting a second copy (#814, #827)」+「dsh-mattpocock-skills-deck@1.9.0-beta.33 exit=0 hot=true」；`~/.dsh/logs/dsh-im-companion/2026-11-01.log` 持续 config.io load ok（读回 18 家 / 8 助理，至 16:43 仍活跃）→ 官方包已加载运行。
+- **附带修复**：此前 desktop 的 dsh-im-companion 是 Junction 指向本地仓（本地 0.2.26 vs 声明 0.2.25），pnpm 在 Windows 上 rename junction 报 `ERR_PNPM_EPERM`；15:18 已由代理改为 registry 0.2.26（真实目录，lock integrity 与 npm 一致，备份 `.tmp-backup-im-official-20261101-1518`），重启后运行正常。
+- **结论**：D 组安装形态通过；「插件详情面板 / 总管页」入口观感以 owner 本次「没看到什么问题」反馈为准。回滚方式：按备份或按版本号重装即可（npm 包可随时降级）。
 
