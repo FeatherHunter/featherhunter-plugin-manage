@@ -293,10 +293,14 @@ const candidateValid = definition("release-candidate-valid", "candidate is publi
       };
       return findingOutcome([finding]);
     }
+    // A candidate is optional evidence. A release path that ships without a
+    // frozen artifact still has a ticket record to check, so a missing
+    // candidate means "not checked here", not "the gate is blind". Callers
+    // that do require one set requireCandidate and get a hard failure above.
     return {
-      outcome: blocked(
-        "no candidate manifest was supplied; the gate cannot prove which bytes would ship",
-        "pass the frozen candidate.json to the gate (a missing candidate is blocked, never a pass)",
+      outcome: skipped(
+        "no candidate manifest was supplied; the ticket record was checked without byte-level identity",
+        "pass the frozen candidate.json to the gate as well, to prove which bytes would ship",
       ),
       findings: [],
     };

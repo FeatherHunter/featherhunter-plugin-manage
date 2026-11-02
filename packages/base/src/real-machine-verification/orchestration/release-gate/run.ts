@@ -79,7 +79,7 @@ export interface ReleaseGateOptions {
   readonly profile?: VerificationProfile;
   /** Direct adapter object, declaration to load, or false to disable. */
   readonly ticketFace?: TicketFaceAdapter | TicketFaceDeclaration | false;
-  /** When true a missing candidate is a fail, not blocked. */
+  /** When true a missing candidate is a fail; otherwise the candidate check is skipped. */
   readonly requireCandidate?: boolean;
   /** Test seam for the dynamic import. */
   readonly importModule?: TicketFaceImport;
@@ -556,6 +556,11 @@ export async function runReleaseGate(
   const resolution = await resolveAdapter(options);
   const notes: string[] = [];
   if (resolution.note !== null) notes.push(resolution.note);
+  if (candidate === null && options.requireCandidate !== true) {
+    // Say it in the report, not only on the skipped check: a ticket-only run
+    // must not look like a byte-level check that passed.
+    notes.push("no candidate manifest was supplied; release-candidate-valid was skipped");
+  }
 
   let snapshot: GateSnapshot | null = null;
   let blockedReasons: readonly ReleaseGateBlockedReason[] = resolution.blocked === null ? [] : [resolution.blocked];

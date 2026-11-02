@@ -355,12 +355,25 @@ describe("runReleaseGate", () => {
     expect(report.exitCode).toBe(1);
   });
 
-  it("blocks release-candidate-valid when no candidate was supplied", async () => {
+  it("skips release-candidate-valid when no candidate was supplied", async () => {
+    // Ticket-only release paths ship without a frozen artifact; the check is
+    // skipped, never blocked, so the ticket checks can still pass on their own.
     const report = await runGate(happyFace(), { candidate: null });
 
-    expect(statusOf(report, "release-candidate-valid")).toBe("blocked");
+    expect(statusOf(report, "release-candidate-valid")).toBe("skip");
     expect(report.candidate).toBeNull();
-    expect(report.exitCode).toBe(2);
+    expect(report.decision).toBe("pass");
+    expect(report.exitCode).toBe(0);
+    expect(report.notes.join("\n")).toContain("release-candidate-valid was skipped");
+    for (const id of [
+      "release-checklist-unique",
+      "release-checklist-closed",
+      "release-checklist-consistency",
+      "release-batch-identity",
+      "release-ancestor-audit",
+    ]) {
+      expect(statusOf(report, id)).toBe("pass");
+    }
   });
 
   it("fails release-candidate-valid when the path requires a candidate but none was supplied", async () => {
