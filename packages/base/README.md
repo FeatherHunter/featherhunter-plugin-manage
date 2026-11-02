@@ -69,9 +69,15 @@ const base = createBaseUI(React, {
 // 整行入口：<base.ContactRow />；作者插件卡：<base.AuthorPlugins />
 ```
 
-```sh
-npx dsh-base readme:sync --check
-npx dsh-base doctor
+```bash
+# 装好 base（五仓里它是 devDependency）后，用本地 bin；PATH 里不一定有 dsh-base，
+# 而 npx dsh-base 在没装好时可能被 npm exec 解析成 registry 上的同名包（真机验证 CLI 有同样问题）。
+node_modules/.bin/dsh-base readme:init            # 首次：README 还没有受管标记时先插入
+node_modules/.bin/dsh-base readme:sync --check     # 之后：只查漂移，不改文件
+node_modules/.bin/dsh-base doctor                  # 在五个受管仓的仓目录里才按仓名自动定位
+
+# 不依赖 PATH 的等价长命令：
+node node_modules/dsh-featherhunter-plugin-base/dist/node/cli.js readme:sync --check
 ```
 
 ## 页头操作组

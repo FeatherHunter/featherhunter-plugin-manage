@@ -13,7 +13,7 @@ node_modules/.bin/dsh-verify describe --json
 
 **capability 行是唯一判据。** npm 上有一个同名无关包 `dsh-verify@0.9.6`：bin 没装好时，裸 `npx dsh-verify` 与 `npx --no-install` 都可能复用 npx 缓存里同名的包、以 exit 0 打印别的工具的 usage。最稳的调用形式是 `node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js <命令>`（不依赖 PATH、不经过 npx）；安装与核对细节见 README 第一步。
 
-`describe` 返回的 commands / profileFields / builtInCheckIds / exitCodes / globalFlags 就是全部契约（参考段是它的投影）。旗标问题在解析期统一拦下：未知旗标、缺值、该命令不接受的旗标都 exit 2，并打印具体原因与该命令的 `usage:` 行。
+`describe` 返回的 commands / profileFields / builtInCheckIds / exitCodes / globalFlags 就是全部契约（参考段是它的投影）。旗标问题都 exit 2，并打印具体原因与该命令的 `usage:` 行：未知旗标、缺值在解析期就拦下；某命令不接受的已知旗标由该命令自己拒绝（`option(s) not valid for this command: --flag`）；例外是 `describe`——它不解释旗标，同一条命令上带 `--profile` 之类也照常输出描述。
 
 ## 1. 命令选择：代价从低到高，前层不绿不进下层
 
@@ -47,7 +47,7 @@ run.json 里每一条 blocked 检查带结构化原因 `blockedReason: { code, m
 
 命令层失败用 `FailureCode` 词表：`invalid-input` / `prerequisite` / `identity-mismatch` / `not-found` / `io` / `timeout` / `conflict` / `unsupported` / `internal`，渲染为 `[code] message — hint`；复述失败时保留 code 与 hint 原文。
 
-参数解析错误（未知旗标、缺值、多余位置参数）不走 `FailureCode`：有命令时输出 `dsh-verify <command>: unknown option(s): ...` 再跟 `  usage: <usage>`；没有命令时输出 `dsh-verify: unknown option(s): ...` 加整页 help；两种都 exit 2。`--json` 时 stdout 是同一形状的失败 JSON（`stage: "usage"`；没有命令时 `command` 是空字符串，问题写在 `error.message`）。
+参数解析错误（未知旗标、缺值、多余位置参数）不走 `FailureCode`：有命令时输出 `dsh-verify <command>: <问题>` 再跟 `  usage: <usage>`；没有命令时输出 `dsh-verify: <问题>` 加整页 help；两种都 exit 2。`<问题>` 的措辞：未知旗标是 `unknown option(s): ...`，多余位置参数是 `unexpected argument(s): ...`，缺值是 `<flag> needs a value`。`--json` 时 stdout 是同一形状的失败 JSON（`stage: "usage"`；没有命令时 `command` 是空字符串，问题写在 `error.message`）。
 
 ## 3. 证据与身份：先冻、再绑、再归档
 
