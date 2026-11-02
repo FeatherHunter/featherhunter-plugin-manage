@@ -2,38 +2,69 @@
 // Summarize GATE-RESULT / GATE-SUMMARY lines from a teed test log.
 // Why: a full matt chain writes ~3.7 MB and ~85 gates; reading it by hand 23 times was
 // both slow and easy to mis-count.
-import fs from "node:fs";
-import { parseArgs, readText, exists, emitJson, printHelp, die, red, green, yellow, dim, tail, routeLogsToStderrWhenJson } from "./lib/common.mjs";
+//
+// A log with no completion record is not evidence that the gates passed, and a gate
+// line whose record cannot be read is not "no failure". So: no gate lines at all is an
+// input error (exit 2, "未发现门禁行"), and unreadable gate lines fail the run (exit 1)
+// with the offending line numbers and text printed.
+import { parseArgs, readText, exists, emitJson, printHelp, die, red, green, dim, tail, routeLogsToStderrWhenJson } from "./lib/common.mjs";
 
 const HELP = [
   "Usage: node scripts/ops/gate-summary.mjs --log <file> [options]",
   "",
   "Options:",
   "  --log <file>       Test log to read (required).",
-  "  --json             Machine-readable output.",
+  "  --json             Machine-readable output (stdout is JSON only).",
   "  --failures-only    Only print failing gates.",
   "  --tail <n>         With --failures-only, print the last n log lines (default 0).",
   "  --help             This message.",
   "",
-  "Exit codes: 0 no failed assertions, 1 failed assertions found, 2 input error.",
+  "Exit codes: 0 all gates passed, 1 failed assertions or unreadable gate lines,",
+  "            2 input error (missing --log, unreadable file, no gate lines).",
 ];
+
+// A gate line starts with the marker; anything after it must be the record JSON.
+// Anchoring on the marker means a truncated or corrupted record is reported instead
+// of being skipped as if the log simply had no gate lines.
+const GATE_LINE = /^(GATE-RESULT|GATE-SUMMARY)(?:\s+(.*))?$/;
+
+function parseCount(value) {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 0 ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  }
+  return null;
+}
+
+function toRecord(doc) {
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) return null;
+  const gate = typeof doc.gate === "string" ? doc.gate.trim() : "";
+  if (!gate) return null;
+  const assertions = parseCount(doc.assertions);
+  const failed = parseCount(doc.failed);
+  if (assertions === null || failed === null) return null;
+  return { gate, assertions, failed };
+}
 
 function parseGateLines(text) {
   const lines = text.split(/\r?\n/);
   const results = [];
   const bad = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const m = /(GATE-RESULT|GATE-SUMMARY)\s*(\{.*\})\s*$/.exec(line.trim());
+    const line = lines[i].trim();
+    const m = GATE_LINE.exec(line);
     if (!m) continue;
-    try {
-      const doc = JSON.parse(m[2]);
-      results.push({ kind: m[1], gate: doc.gate || "(unnamed)", assertions: Number(doc.assertions || 0), failed: Number(doc.failed || 0), line: i + 1 });
-    } catch {
-      bad.push({ line: i + 1, text: line.trim().slice(0, 200) });
-    }
+    let record = null;
+    try { record = toRecord(JSON.parse(m[2] === undefined ? "" : m[2])); } catch { record = null; }
+    if (!record) { bad.push({ line: i + 1, text: line }); continue; }
+    results.push({ kind: m[1], gate: record.gate, assertions: record.assertions, failed: record.failed, line: i + 1 });
   }
   return { results, bad };
+}
+
+function noGateLinesMessage(logPath) {
+  return "未发现门禁行 (no GATE-RESULT/GATE-SUMMARY lines found in " + logPath + ")";
 }
 
 async function main() {
@@ -61,6 +92,7 @@ async function main() {
     totalAssertions += rec.assertions;
     if (rec.failed > 0) failed.push({ gate, assertions: rec.assertions, failed: rec.failed });
   }
+  const noGateLines = results.length === 0 && bad.length === 0;
   const report = {
     log: logPath,
     bytes: Buffer.byteLength(text),
@@ -69,14 +101,20 @@ async function main() {
     totalAssertions,
     failed: failed,
     unparsed: bad,
-    ok: failed.length === 0 && results.length > 0,
+    ok: !noGateLines && bad.length === 0 && failed.length === 0,
   };
-  if (options.json) { emitJson(report); process.exitCode = report.ok ? 0 : 1; return; }
+  const exitCode = noGateLines ? 2 : report.ok ? 0 : 1;
+  if (options.json) {
+    emitJson(report);
+    if (noGateLines) process.stderr.write(noGateLinesMessage(logPath) + "\n");
+    process.exitCode = exitCode;
+    return;
+  }
   console.log("log   " + logPath + "  (" + report.bytes + " bytes)");
   console.log("gates " + report.gates + "  lines " + report.resultLines + "  assertions " + report.totalAssertions);
-  if (!results.length) {
-    console.log(red("no GATE-RESULT/GATE-SUMMARY lines found"));
-    process.exitCode = 1;
+  if (noGateLines) {
+    console.log(red(noGateLinesMessage(logPath)));
+    process.exitCode = 2;
     return;
   }
   if (failed.length) {
@@ -86,14 +124,14 @@ async function main() {
     console.log(green("all gates passed: 0 failed assertions"));
   }
   if (bad.length) {
-    console.log(yellow("unparsed gate lines: " + bad.length));
-    for (const b of bad.slice(0, 10)) console.log("  line " + b.line + ": " + b.text);
+    console.log(red("unparsed gate lines: " + bad.length + " (gate log is corrupt; refusing to pass)"));
+    for (const b of bad) console.log("  " + red("BAD") + "  line " + b.line + ": " + b.text);
   }
   if (options.tail) {
     const n = Number(options.tail);
     if (n > 0) console.log(dim("\n--- last " + n + " lines ---\n" + tail(text, n)));
   }
-  process.exitCode = report.ok ? 0 : 1;
+  process.exitCode = exitCode;
 }
 
 main().catch((e) => { console.error("gate-summary crashed:", e && e.stack ? e.stack : e); process.exitCode = 2; });
