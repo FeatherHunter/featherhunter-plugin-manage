@@ -31,6 +31,10 @@ single-context: one repo shares one root `GLOSSARY.md`, architecture decisions l
 - 五个消费仓（dsh-prompt / palette / im / ilife / matt）按发布包 + 各自的 README / AGENTS-USAGE 自助接入。
 - 本仓不代跑五仓验证，不向五仓安装本地构建产物；五仓的问题由五仓自己复现与排障。
 
+## 排查
+
+- 会话日志被多帧压缩、只能解出第一帧时，按 `docs/排查-会话日志解压.md` 的复制即用命令解压与核对。
+
 ## 作业规则
 
 以下四条只做文档约束，不加强制 hook。
