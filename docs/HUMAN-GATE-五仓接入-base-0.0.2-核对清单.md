@@ -55,6 +55,7 @@
 - 待仓主填写：通过项 / 未通过项 / 待确认项（明确标注「待确认」而不是默认通过）
 - 全部项确认后：把本文件结论更新，关闭票 14；规格收口由仓主在规格详情页点「完成」按钮做核对。
 - **2026-11-01 14:12 状态**：代理自动化侧已补齐 C4/C6/E1/E2/E3（全部 PASS，见 §7.6），B 组 owner 已确认；仅剩 owner 的 C4/C6 主观观感一眼 + D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）。这两项确认后即可关票。
+- **2026-11-03 03:4x 状态（票 16：发版后真实页复核）**：prompt 0.4.41 / im 0.2.27 / ilife 0.3.87 已发 npm latest 与 GitHub Release，并在 web profile **真实插件页**完成 C4/C6 重验 PASS（见 §7.9），§7.8「demo 载体」限定解除；palette 2.1.13 换钉已推但发版被上游依赖窗口阻塞、deck 因并行会话活跃未动，聚合 doctor 仅 deck 4 项红。代理侧可实测项全部通过；待仓主复核（主观观感 + 是否接受两仓发版遗留）。
 - **2026-11-03 01:5x 状态（代理侧收口）**：五仓集成已完成（票 08–13 全关闭；五仓统一钉 base 0.1.7，各仓 `readme:check` exit 0，提交均已推送）；票 14 的 C4/C6 新弹窗观感证据按 §7.8 用 base 0.1.8 本地 demo 重验 PASS。代理侧结论：可实测项全部通过、未通过项 0；待确认项仅剩仓主在规格详情页点「完成」时的一眼观感核对（B 组 owner 已确认，D 组 owner 已确认见 §7.7，E 组代理实测 PASS 见 §7.6）。票 14 已于本轮关闭。
 
 ## 6. 场景化走查（照着做；做完把结果填回 §1–§4）
@@ -127,14 +128,14 @@
 ### 7.2 待仓主亲验（代理不可代劳）
 
 - ~~**B 组**~~：2026-11-01 owner 确认「B 组没问题」→ 已通过（见 §1 与票 14 记录）。
-- **C4 更窄档**：~~420px 左右单元格换行表现（代理只验到 900/1000 无溢出）~~ → **代理已自动化实测 PASS**（1200/600/420 三档列数 3/2/1、无横向溢出、无越界元素，见 §7.6）；2026-11-03 已按新弹窗（18px 渠道徽标）用 base 0.1.8 本地 demo 重验 PASS（见 §7.8）；主观观感并入规格「完成」核对。
-- **C6 语言切换**：~~中英切换在真实浏览器（demo 与插件面板内）的观感~~ → **demo 页中英切换已自动化实测 PASS**（文案/aria/弹窗全量切换并可复原，见 §7.6）；插件面板内英文需切 DSH UI 语言，组件双语已覆盖；2026-11-03 已按新弹窗用 base 0.1.8 本地 demo 重验 PASS（见 §7.8）；主观观感并入规格「完成」核对。
+- **C4 更窄档**：~~420px 左右单元格换行表现（代理只验到 900/1000 无溢出）~~ → **代理已自动化实测 PASS**（1200/600/420 三档列数 3/2/1、无横向溢出、无越界元素，见 §7.6）；2026-11-03 已按新弹窗（18px 渠道徽标）用 base 0.1.8 本地 demo 重验 PASS（见 §7.8）；2026-11-03 03:3x 已用**已发布插件**（prompt 0.4.41）在真实设置页重验 PASS（见 §7.9）；主观观感并入规格「完成」核对。
+- **C6 语言切换**：~~中英切换在真实浏览器（demo 与插件面板内）的观感~~ → **demo 页中英切换已自动化实测 PASS**（文案/aria/弹窗全量切换并可复原，见 §7.6）；插件面板内英文需切 DSH UI 语言，组件双语已覆盖；2026-11-03 已按新弹窗用 base 0.1.8 本地 demo 重验 PASS（见 §7.8）；2026-11-03 03:3x 真实插件页（prompt 0.4.41，宿主切 English）中英切换 PASS 并复原（见 §7.9）；主观观感并入规格「完成」核对。
 - **D 组**：~~desktop profile 安装形态（原 registry 旧版 0.4.39 / 2.1.10 / 0.3.85 / beta.32 / 0.2.25）~~ → **已通过（2026-11-01 15:27，owner 安装五仓 npm 正式版并重启桌面应用；16:42 反馈「现在都重启了，暂时没看到什么问题」）**：desktop profile 五仓全部为 npm 正式版（prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / life-pack 0.3.86），真实目录无软链，运行日志正常；证据见 §7.7。入口观感以 owner 本次反馈为准。
 - **E 组**：~~断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）~~ → **代理已自动化实测 PASS**：E1 三通道全失败仍显示 3 个内置真码、无白屏/错误框；E2 合成清单验证「远程图失败回退内置码 / 过期卡降级 link / 无内置码降级 link」三链路且不弹错；E3 恢复后 unpkg 清单 200 + 3 张远程图 200（回源成立），见 §7.6。
 
 ### 7.3 旧条目过期说明
 
-- §0 版本与提交为 0.0.2 时期快照；最新为 base 0.1.8（已发布 npm latest）与五仓统一钉 0.1.7（2026-11-02 已提交推送，含渠道徽标；换钉 0.1.8 属后续版本轮次）。
+- §0 版本与提交为 0.0.2 时期快照；最新为 base 0.1.8（已发布 npm latest）。五仓 0.1.8 换钉进度（2026-11-03 03:4x）：prompt / im / ilife 已换钉并发新版本（0.4.41 / 0.2.27 / 0.3.87）且真实页复核 PASS（§7.9）；palette 2.1.13 换钉已推、发版待上游 dsh-log / dsh-plugin-update 依赖窗口；deck 仍钉 0.1.7（并行会话活跃，未动）。
 - §6 D1–D5 的「面板底部联系入口 + 推荐卡」形态已被 owner 拍板取代：只保留页头三枚图标入口，底部联系整行已从五仓移除（base 的 ContactRow 组件保留给其他使用者）。
 - §6 B3 的过期降级已不再适用（微信码已换新并内置基线码，0.1.3 起离线也有码）。
 
@@ -252,6 +253,51 @@
 - 提示：16–18px 尺寸下飞书与 QQ 字形辨识度偏弱、两款蓝色接近；若仓主要更强区分，可另开「徽标加平台名/放大图标」后续票，不阻塞本规格收口。
 
 **结论**
-- 新弹窗 C4/C6 按票内 Option ① 重验 PASS；证据来自 base 0.1.8 本地 demo 构建，**不是已发布插件页面**。
-- 已发布插件（npm latest）仍是内联 base 0.1.5 旧弹窗；五仓工作树已钉 0.1.7（含徽标）并提交推送，换钉 0.1.8 与发五仓新版本属后续独立动作。
+- 新弹窗 C4/C6 按票内 Option ① 重验 PASS；证据来自 base 0.1.8 本地 demo 构建（保留作对照）。
+- **2026-11-03 03:4x 更新**：已发布插件页证据见 §7.9（prompt 0.4.41 / im 0.2.27 / ilife 0.3.87，真实设置页 C4/C6 PASS），本节「不是已发布插件页面」的限定已由 §7.9 解除。
+
+### 7.9 发版后真实插件页 C4/C6 重验（2026-11-03 03:3x，票 16）
+
+> 背景：§7.8 证据来自 base 0.1.8 本地 demo；本节换用**已发布 npm 插件**在 web profile 真实设置页重取，解除「demo 载体」限定。
+
+**载体与版本**
+- web profile 更新命令：`dsh plugin --profile web add --save-exact dsh-prompt@0.4.41 dsh-im-companion@0.2.27 dsh-life-pack@0.3.87 --registry=https://registry.npmmirror.com/`（exit 0；更新前备份 `D:\temp\hac2-pack\web-profile-backup-20261103-0330`）。
+- node_modules 实测：prompt 0.4.41 / im 0.2.27 / life-pack 0.3.87；三者产物均含内联 banner `dsh-featherhunter-plugin-base v0.1.8`（`baseBanner018=true`）。
+- 页面版本证据：prompt 设置页「已是最新 0.4.41」（`.tmp/hg-018-web-prompt-0441.png`）；im 设置页 `v0.2.27` / `dsh-im 5.1.0` /「已是最新 0.2.27」（`.tmp/hg-018-web-im-0227.png`）。
+- 驱动：Chrome 156 headless + CDP 9333（profile `.tmp/chrome-hg-web018`）+ `.tmp/hg-cdp.mjs`；服务 `http://127.0.0.1:3080`（pid 1240）。
+- 环境修复：profile 里 deck 被并行会话覆盖成 beta.34 本地产物（缺 `shell/receipt-reason.js`，`ERR_MODULE_NOT_FOUND` 阻塞启动）；按 npm 1.9.0-beta.33 tarball 原样复制回 `node_modules/dsh-mattpocock-skills-deck` 后服务正常。仅本地 profile，不涉及仓内文件。
+
+**C4 真实插件页（PASS）** — prompt 0.4.41 设置 →「提示词模板」→「联系我们」；plan `.tmp/hg-plan-web018-c4.json`
+
+| 视口 | 列数 | 布局 | 横向溢出 |
+| --- | --- | --- | --- |
+| 1200×1000 | 3 | 1 行（卡宽 241px，弹窗 800×487） | `docScrollWidth==viewportWidth`，grid/dlg 0、越界元素 0 |
+| 600×1000 | 2 | 2 行（卡宽 245，弹窗 552×851） | 同上 0 |
+| 420×1000 | 1 | 3 行（卡宽 338，弹窗 386×880，body 内部滚动 1296/708） | 同上 0 |
+
+- 徽标：3 枚均 18×18、各含 1 个 SVG、`aria-hidden=true`；底色 feishu `rgb(51,112,255)` / qq `rgb(18,183,245)` / wechat `rgb(7,193,96)`；卡标题 飞书群 / QQ群 / 微信群 + `DSH 插件交流群`。
+- QR 为 `data:image/png`，natural 320×320、显示 215×215；Esc 关闭 dialog 成立，关闭后 `activeElement=BUTTON`。
+- 截图：`.tmp/hg-018-web-c4-1200.png`（155130B）、`hg-018-web-c4-600.png`（94047B）、`hg-018-web-c4-420.png`（74714B）。
+
+**C6 真实插件页中英切换（PASS）** — plan `.tmp/hg-plan-web018-c6c.json`
+- 通用设置 → 语言下拉 → English：`document.documentElement.lang=en`；导航变 Account / General / Models / Built-in plugins / OpenCode Palette / MattSkills / Agent presets / IM Companion / Plugin Market / Prompt Templates / Open configuration file / Close…
+- 弹窗：标题 `Feedback and Contact`、hint `Scan the QR code to join us`、close aria `Close`；三卡 `Feishu group` / `QQ group` / `WeChat group`（+ `DSH Plugin Community`），徽标仍 18×18 且品牌色不变；note `This QR code never expires` / `Scan the QR code to join the group chat` / `Valid for 4 days (until 11/7)`。
+- 切回中文全部复原（反馈与联系 / 扫描二维码加入我们 / 关闭 / 飞书群…）；截图 `.tmp/hg-018-web-c6-settings-en3.png`（165950B）、`hg-018-web-c6-en-modal3.png`（169224B）、`hg-018-web-c6-zh-modal3.png`（155130B）。
+- console：仅 ResizeObserver loop 警告 ×2；另有一次其他客户端插件 `client loadSnapshot timeout 30s` 异常，与本组件无关。
+
+**观感（代理侧核验；视觉模型本轮不可用）**
+- vision_bootstrap 成功识别中 / 英两张同构弹窗（三卡 + 二维码 + 说明）；vision_describe 因后端 TIMEOUT（`VISION_BACKEND_UNAVAILABLE_THIS_TURN`）未取得模型观感，改用本地 `vision_crop`（徽标行放大件 `.dsh-vision-router/artifacts/.../hg-018-web-c4-1200-...-crop-200-340-1020-430.png`，820×90）与实测数据核对。
+- 三卡一行等宽、二维码纵向对齐、中英无截断 / 溢出；徽标可区分飞书蓝 / QQ 青 / 微信绿。18px 下飞书与 QQ 字形辨识度仍偏弱（沿用 §7.8 观感建议，不阻塞）。
+- 结论：真实插件页 C4/C6 PASS；§7.8 的「demo 载体」限定解除（demo 证据保留作对照）。
+
+**同轮附带发现 / 未完成**
+- 聚合门禁（manage 仓本地 base 0.1.8 CLI，`--repos D:\dsh-plugin`）：doctor 仅 deck 4 项红（readme-blocks / readme-images / dependency-version / inline-bundle-version，均因 deck 仍钉 0.1.7）；其余四仓全绿。`readme:sync --check --all` 仅 deck 三份 README 未同步。日志 `.tmp/ops-logs/ticket16/aggregate-018.log`。
+- 发版：prompt 0.4.41（run 41508353492）/ im 0.2.27（run 41509430749）/ ilife 0.3.87（release.ps1 本地 token 发布，commit `fd141685`、tag `v0.3.87`）均已是 npm latest + GitHub Release isLatest（ilife 资产 8 个）。
+- palette：2.1.13 换钉 + bump + release notes 已提交推送（`c965752`），但 build 门禁 `scripts/check-deps.ts` 因上游 `dsh-log@0.4.1` 与 `dsh-plugin-update@0.18.39` 的 `^0.3.4` 依赖窗口报红（升 0.4.1 会违反 #75 单拷贝测试 `tests/update-panel.test.ts:252-261`），发版待上游放宽后 dispatch `publish.yml`。
+- deck：另一会话持续活跃（工作树与 origin/main 均在变），本轮未改动、未发版。
+- dsh-life-pack 0.3.87 在干净 profile 激活失败：`base-entries@0.3.55` 已发布 tarball 缺 `currentRenderLanguage` 导出（ilife 本地源码已加），致 1 entry 未激活、设置无爱生活页；属并行 i18n 会话依赖窗口，需其发 base-entries 新版本，非本组件缺陷。
+
+**结论**
+- 真实插件页 C4/C6 PASS，已发布版本内联 base 0.1.8 的 banner 与版本号可核。
+- 本票遗留：palette 发版（上游阻塞）、deck 换钉与发版（并行会话）；两仓合计使「五仓发版」验收未闭合，票保持 open。
 
