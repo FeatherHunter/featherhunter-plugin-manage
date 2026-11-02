@@ -21,8 +21,8 @@ FeatherHunter DSH 插件共用的 base 包：设置面板里的**联系作者弹
 ## 真机验证（real-machine-verification）
 
 `./real-machine-verification` 是给**插件仓**用的真机验证能力：它不 mock 宿主，而是复制一份真实
-DSH profile、起隔离实例、用 HTTP 与页面判据验收，并把证据和身份链落盘，让结论可复核。装好 base 后
-插件仓只需要写一个 `verify/profile.ts` 声明：
+DSH profile、起隔离实例、用 HTTP 与页面判据验收，并把证据与身份链落盘，让结论可复核。接入是五步
+（安装 → 声明 → 两条 npm script → 跑 `self-check` → 读报告），插件仓只需要一个 `verify/profile.ts`：
 
 ```ts
 import { defineVerificationProfile } from "dsh-featherhunter-plugin-base/real-machine-verification";
@@ -36,14 +36,16 @@ export default defineVerificationProfile({
 ```
 
 ```bash
-npx --no-install dsh-verify self-check        # 只读自检：8 项常驻 + 1 项 --screen 软检查
-npx --no-install dsh-verify describe --json   # 权威表面：15 条命令、检查 id、profile 字段、退出码
-npx --no-install dsh-verify single-instance   # 单实例验收闭环（起、页面、日志、停干净）
+# 在插件仓里：钉精确版本，并核对 --version 第二行是 capability 行（唯一判据）
+npm install --save-dev dsh-featherhunter-plugin-base@0.1.7
+node_modules/.bin/dsh-verify --version        # 第二行必须是 capability real-machine-verification (schema 1)
+
+# 之后用不经过 npx 的长命令：npx 可能命中另一个同名包 dsh-verify@0.9.6
+node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js self-check
 ```
 
-- 为什么用 `--no-install`、接入四步与报告读法见 [真机验证 README](src/real-machine-verification/README.md)；
-- agent 用的命令选择、错误码、证据/身份链与扩展边界见
-  [AGENTS-USAGE](src/real-machine-verification/AGENTS-USAGE.md)；
+- 人的接入步骤、完成判据与报告读法见 [真机验证 README](src/real-machine-verification/README.md)；
+- agent 的命令选择、错误码、证据/身份链与扩展边界见 [AGENTS-USAGE](src/real-machine-verification/AGENTS-USAGE.md)；
 - 设计取舍与算法见 [DESIGN](src/real-machine-verification/DESIGN.md)。
 
 ## 使用

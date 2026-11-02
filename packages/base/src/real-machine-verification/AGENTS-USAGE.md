@@ -1,23 +1,23 @@
 # AGENTS-USAGE：真机验证的 agent 使用说明
 
-给「要验证一个 DSH 插件是不是真的活着」的 agent。人读的接入步骤在 [README.md](README.md)；本文件回答四件事：**按什么顺序选命令、结果怎么判、证据与身份怎么复核、哪些事情不用改核心就能做**。
+给「要验证一个 DSH 插件是不是真的活着」的 agent。人的接入步骤在 [README.md](README.md)；本文件给出四件事：**按什么顺序选命令、结果怎么判、证据与身份怎么复核、哪些事不用改核心就能做**。
 
-## 0. 先取权威表面，不要背文档
+权威表面是 `dsh-verify describe --json`；本文件末尾参考段由它生成。
+
+## 0. 先取权威表面
 
 ```bash
 node_modules/.bin/dsh-verify --version      # 第二行必须是 capability real-machine-verification (schema 1)
 node_modules/.bin/dsh-verify describe --json
 ```
 
-**先核对 `--version` 的 capability 行，再信任何短命令**：npm 上有一个同名无关包 `dsh-verify@0.9.6`。裸 `npx dsh-verify` 在 bin 没装好时会静默下载它；`npx --no-install` 也不是保险——实测 npx 会复用缓存里同名的包，同样以 exit 0 打印别的工具的 usage。最稳的调用形式是 `node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js <命令>`（不依赖 PATH、不经过 npx）。
+**capability 行是唯一判据。** npm 上有一个同名无关包 `dsh-verify@0.9.6`：bin 没装好时，裸 `npx dsh-verify` 与 `npx --no-install` 都可能复用 npx 缓存里同名的包、以 exit 0 打印别的工具的 usage。最稳的调用形式是 `node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js <命令>`（不依赖 PATH、不经过 npx）；安装与核对细节见 README 第一步。
 
-返回的命令表、`profileFields`、`builtInCheckIds`、`exitCodes`、`globalFlags` 就是全部契约；本文件末尾的参考段是它生成的。Flag 问题在解析期统一拦下：未知旗标、缺值、该命令不接受的旗标都会 exit 2，并打印具体原因与该命令的 `usage:` 行，不会静默忽略。
+`describe` 返回的 commands / profileFields / builtInCheckIds / exitCodes / globalFlags 就是全部契约（参考段是它的投影）。旗标问题在解析期统一拦下：未知旗标、缺值、该命令不接受的旗标都 exit 2，并打印具体原因与该命令的 `usage:` 行。
 
-## 1. 命令选择：从只读到动真实进程
+## 1. 命令选择：代价从低到高，前层不绿不进下层
 
-按「代价从低到高」推进，前一层不绿不要进下一层：
-
-| 层 | 命令 | 什么时候用 |
+| 层 | 命令 | 答什么问题 |
 | --- | --- | --- |
 | L1 | `describe` / `self-check` | 只读自检：这台机器能不能证明这个插件是活的 |
 | L1 | `single-instance` | 一个实例的完整闭环：起、页面、日志、停干净 |
@@ -29,84 +29,80 @@ node_modules/.bin/dsh-verify describe --json
 | L1 | `cleanup` | 停残留实例、清理 work root |
 | L2 | `launch` / `stop` / `isolation` / `model` / `install` / `skills` | 单点原语：自己控制起停、验证 home/设置隔离、修模型配置、装候选包、核对技能集合 |
 
-- 所有命令都支持 `--json`；`--json` 时 stdout 只有一段 JSON，进度与人话行走 stderr。
-- 写操作类命令都支持 `--dry-run`：零写盘、零 spawn、零 HTTP，打印的计划与真实执行共用同一份结论。先 dry-run 看一眼计划，再真跑，是默认习惯。
-- 默认工作根在 `<cwd>/.scratch/verify`（仓内、应被 gitignore）；要留档时用 `--work-root` 指到仓外临时目录。
+- 所有命令支持 `--json`：stdout 只有一段 JSON，进度与人话行走 stderr。
+- 写操作支持 `--dry-run`：零写盘、零 spawn、零 HTTP，计划与真实执行共用同一份结论。默认先 dry-run 看计划，再真跑。
+- 默认工作根 `<cwd>/.scratch/verify`（仓内、应被 gitignore）；要留档时用 `--work-root` 指到仓外临时目录。
 
-## 2. 结果怎么判：退出码 + 检查状态 + 错误码
+## 2. 结果怎么判：退出码 + 四态 + 错误码
 
-退出码只有三种含义（见参考段）：
+**退出码 `2` 不是失败：blocked 什么都没证明。**
 
 - `0`：全过（skip 不影响）；
 - `1`：有硬失败（fail）——插件或仓的问题；
-- `2`：有 blocked——**前置缺失，本次运行什么都没证明**。不要把 2 当失败写进报告，也不要用 1 的重试逻辑处理它。profile 不存在、没装 DSH、没注入浏览器适配器都属于这一类（包括 `package-installed` 在 profile 目录缺失时返回 blocked）。
+- `2`：有 blocked——前置缺失，本次运行什么都没证明。写报告时按 blocked 分型，不要用 1 的重试逻辑处理它；profile 不存在、没装 DSH、没注入浏览器适配器都属于这一类（`package-installed` 在 profile 目录缺失时也返回 blocked）。
 
-用 `--json` 时的三种结果词：`pass` / `fail` / `skip` / `blocked`。人话行格式固定为 `ok|fail|skip|blocked <id> <detail>`，fail 行追加缩进的 `expected:` / `actual:` / `hint:`，blocked 至少带 `hint:`（有的 blocked 没有 expected/actual）；解析日志时按行首词判定，别按位置。
+`--json` 的检查状态是 `pass` / `fail` / `skip` / `blocked`；人话行固定 `ok|fail|skip|blocked <id> <detail>`，fail 追加缩进的 `expected:` / `actual:` / `hint:`，blocked 至少带 `hint:`（有的 blocked 没有 expected/actual）。解析日志按行首词判定。
 
-run.json 里每一条 blocked 检查还带结构化原因 `blockedReason: { code, message, hint? }`，`code` 是 `adapter-missing`（缺适配器）/ `prerequisite-missing`（缺前置）/ `platform-unsupported`（平台不支持）三选一。机器要判断「缺什么、能不能补」时读这个字段；人话行不重复渲染它。
+run.json 里每一条 blocked 检查带结构化原因 `blockedReason: { code, message, hint? }`，`code` 三选一：`adapter-missing`（缺适配器）/ `prerequisite-missing`（缺前置）/ `platform-unsupported`（平台不支持）。机器判断「缺什么、能不能补」读这个字段；人话行不重复渲染它。
 
-命令层的失败（参数、声明、路径、前置命令）用 `FailureCode` 词表，稳定可编程：
+命令层失败用 `FailureCode` 词表：`invalid-input` / `prerequisite` / `identity-mismatch` / `not-found` / `io` / `timeout` / `conflict` / `unsupported` / `internal`，渲染为 `[code] message — hint`；复述失败时保留 code 与 hint 原文。
 
-`invalid-input` / `prerequisite` / `identity-mismatch` / `not-found` / `io` / `timeout` / `conflict` / `unsupported` / `internal`，渲染为 `[code] message — hint`。给用户复述失败时保留 code 与 hint 原文。
+参数解析错误（未知旗标、缺值、多余位置参数）不走 `FailureCode`：有命令时输出 `dsh-verify <command>: unknown option(s): ...` 再跟 `  usage: <usage>`；没有命令时输出 `dsh-verify: unknown option(s): ...` 加整页 help；两种都 exit 2。`--json` 时 stdout 是同一形状的失败 JSON（`stage: "usage"`；没有命令时 `command` 是空字符串，问题写在 `error.message`）。
 
-参数解析错误（未知旗标、缺值、多余位置参数）**不走** `FailureCode`，也不要去找 `[code]` 前缀：有命令时输出 `dsh-verify <command>: unknown option(s): ...` 再跟一行 `  usage: <usage>`；没有命令时（例如 `dsh-verify --bogus`）输出 `dsh-verify: unknown option(s): ...` 加整页 help；两种情况都 exit 2。`--json` 时 stdout 仍是那一段失败 JSON（`stage: "usage"`）；没有命令时该文档的 `command` 是空字符串，问题写在 `error.message`。
+## 3. 证据与身份：先冻、再绑、再归档
 
-## 3. 证据与身份：先冻结，再绑定，再归档
+真机结论靠三层绑定，不靠「我跑过了」：
 
-真机结论要能被别人复核，靠的是三层绑定而不是「我跑过了」：
+1. **候选（freeze）**：`freeze` 产出 `candidate.json`，含候选提交、包名/版本、tgz sha256、文件摘要（`fileDigest`）与稳定性判定（`validity` / `sourceStable`）。工作区 dirty 默认拒绝冻结；明确接受「这是开发候选」时用 `--allow-dirty`，并如实记录 `validity=development`。
+2. **批次（先开、再冻、再封）**：`batch open --name <n> --base-ref <r>` 只写 `batch.json`（`startHead` + 基线 tip 与目标版本，`candidate: null`）并打印基线行——批次必须在候选生成之前开始；接着 `freeze --out <批次目录>/pkg`，再 `batch open --name <n> --candidate <批次目录内的候选目录>`。封存按固定顺序逐条实测：不在批次目录 → 早于批次 → HEAD 不一致 → 构建提交不一致 → 源码不稳定 → 基线包含关系未判定/不成立 → 版本与基线不等 → 包缺失/哈希不符 → 文件摘要重算不符。通过才写候选身份并打印身份行；拒收 exit 1，前置无法测量 exit 2。
+3. **证据（evidence）**：`evidence add` 登记、`evidence archive` 归档（`SHA256SUMS`，最后一行也带换行）、`evidence verify` 复核；同名证据加序号不覆盖，更正只写旁注（notes）不改原件。
 
-1. **候选**：`freeze` 产出 `candidate.json`，含候选提交、包名/版本、tgz sha256、文件摘要（`fileDigest`）与稳定性判定（`validity` / `sourceStable`）。工作区 dirty 时默认拒绝冻结；只有明确接受「这是开发候选」时才用 `--allow-dirty`，并如实标注 `validity=development`。
-2. **批次**：批次先「开」再「封」。`batch open --name <n> --base-ref <r>` 只写 `batch.json`（`startHead` + 基线 tip 与目标版本，`candidate: null`）并打印基线行——批次必须在候选生成之前开始；接着 `freeze --out <批次目录>` 把候选冻进批次目录；再 `batch open --name <n> --candidate <批次目录内路径>` 按固定顺序实测并拒收（不在批次目录 → 早于批次 → HEAD → 构建提交 → 源码稳定 → 基线包含关系 → 版本 → 包缺失/哈希 → 文件摘要重算），通过才写候选身份并打印身份行。批次目录外的 `candidate.json` 会被 `not-in-batch-dir` 拒掉。之后的证据都挂在这个批次的目录下。
-3. **证据**：`evidence add` 登记、`evidence archive` 归档（`SHA256SUMS`，最后一行也带换行）、`evidence verify` 复核；同名证据加序号而不覆盖，更正只写旁注（notes）不改原件。
-
-身份行是逐字契约，出现在批次记录与票面里：
+身份行与基线行是逐字契约（出现在批次记录与票面里）：
 
 ```text
 - 验证身份：批次 <批次名>；候选提交 <40位小写hex>；候选包 sha256 <64位小写hex>
 ```
 
-基线行同样是逐字契约：
-
 ```text
 - 验证基线：本地 <ref> <tip>；目标版本 <version>
 ```
 
-Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的 sha256（`candidate.json` 的 `package.tgzSha256`），发布前检查拿它和候选清单逐字比对；**证据绑定用的是另一个值**——`evidence.json` 的 candidate 块记录 `candidate.json` 文件本身的摘要，防的是清单被改写，两者不要混用。没有基线时 batch 不会假装通过（新鲜度判 blocked），`--allow-stale` 只降级「HEAD 已移动」/「基线不是候选祖先」这两项，不豁免「没有基线」，也不放过版本不等。`batch status` 的 `candidate-identity` 每次重算清单与 tgz 的 sha256、文件摘要：候选被替换或清单被改写就 fail，不会沿用开批时的旧结论。
+**Cookie-cutter 规则（最容易混的两个 sha）**：身份行里的「候选包 sha256」是候选 tgz 的 sha256（`candidate.json` 的 `package.tgzSha256`）；证据绑定用的是**另一个值**——`evidence.json` 的 candidate 块记录 `candidate.json` 文件本身的摘要，防的是清单被改写。
 
-文件摘要算法（跨语言可复核）：拒绝反斜杠与坏 sha；路径按 UTF-16 排序；每行 `<sha256>  <path>`；行间 join 后再整体 sha256；无尾换行；路径不做归一化。
+其余判据：
 
-候选判定顺序是「先根因后衍生」，按顺序答：不在批次目录 → 早于批次 → HEAD 不一致 → 产物构建提交不一致 → 源码不稳定 → 基线包含关系未判定/不成立 → 版本与基线不等 → 包缺失/哈希不符 → 文件摘要重算不符。
+- `--allow-stale` 只降级「HEAD 已移动」与「基线不是候选祖先」两项；没有基线仍 blocked，版本不等仍 fail。
+- `batch status` 的 `candidate-identity` 每次重算清单与 tgz 的 sha256、文件摘要：候选被替换或清单被改写就 fail，不沿用开批时的旧结论。
+- 文件摘要算法（跨语言可复核）：拒绝反斜杠与坏 sha；路径按 UTF-16 排序；每行 `<sha256>  <path>`；行间 join 后再整体 sha256；无尾换行；路径不做归一化。
 
 ## 4. 隔离纪律：真实 home 只读
 
-- 一切跑实例的命令都要用 `DSH_HOME=<批次 home>` 指到**复制出来的 profile**；真实 `~/.dsh` 只读，报告里的 `dshHome` 指向批次 home 是正确语义。
-- 批次 home 的标准做法：复制真实 `profiles/<name>` 到批次目录，再把候选包装进副本；证据里记录真实 home 关键文件运行前后的 sha256 不变。
-- 真实 home 的证据按**固定文件清单**取（整目录哈希会假阳性：宿主常驻时 `~/.dsh/storages` 空闲也会变）：`<DSH_HOME>/.credentials.yaml`、`profiles/<p>/package.json`、`profiles/<p>/cordis.patch.yml`、`profiles/<p>/node_modules/<packageName>/package.json`。Windows 用 `Get-FileHash <file> -Algorithm SHA256` 与运行前值比对（没有 `sha256sum`）。
-- `install`（以及 `model --fix`）的默认目标是 `DSH_HOME` 的 profile；它们按**解析后的目标 home**判断隔离——只要等于真实 home（包括 `DSH_HOME` 被显式指到真实 home），真实写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向「复制成批次 home 再装」）；`--dry-run` 仍出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。先复制 profile、把 `DSH_HOME` 指到副本再装。同一判定也覆盖显式写目标：`--work-root` / `--out` / `--archive-root` 指到真实 home 里面时，非 dry-run 直接拒绝（exit 2、`[prerequisite]`，hint 点名该 flag），dry-run 只警告（它不写盘）。
-- `isolation` 探针同理：它证明子进程的 userprofile / 插件设置目录落在 work root 下，而不是真实 home。声明没写 `pluginSettingsDir` 时它会 blocked 并给出补字段的 hint——这是声明缺口，不是 bug。
-- `cleanup` / `stop` 收尾；`--keep` 保留现场时要在结论里注明「teardown 记 skip，不是通过」。
+- 一切跑实例的命令用 `DSH_HOME=<批次 home>` 指向**复制出来的 profile**；真实 `~/.dsh` 只读，报告里的 `dshHome` 指向批次 home 是正确语义。
+- 批次 home 的标准做法：复制真实 `profiles/<name>` 到批次目录，再把候选包装进副本；证据里记录真实 home 关键文件运行前后的 sha256 不变。固定清单、取哈希与比对写法见 README「真实 home 只读」（含 PowerShell 片段）。
+- `install`（以及 `model --fix`）按**解析后的目标 home** 判隔离：等于或落在真实 home（含子目录、junction）内就拒绝（exit 2、`[prerequisite]`，hint 指向复制成批次 home 再装）；`--dry-run` 只警告、不写盘。先复制 profile、把 `DSH_HOME` 指到副本再装。同一判定覆盖显式写目标 `--work-root` / `--out` / `--archive-root`。
+- `isolation` 探针证明子进程的 userprofile / 插件设置目录落在 work root 下；声明没写 `pluginSettingsDir` 时它 blocked 并给出补字段 hint——这是声明缺口，不是 bug。
+- `cleanup` / `stop` 收尾；`--keep` 保留现场时在结论里注明「teardown 记 skip，不是通过」。
 
-## 5. 不用改核心能表达什么（扩展边界）
+## 5. 扩展边界：场景、钩子、自定义检查
 
-插件特有的端到端场景写成仓内场景文件（`verify/scenarios/*.mjs` 或 `.ts`），用 `run` 跑；场景里可用的原语：`launch` / `stop` / `logs` / `page` / `model` / `install` / `skills` / `check` / `evidence` / `expect` / `sleep` / `instances` / `lastInstance` / `dispose`，另加自定义步骤。声明里的 `checks` 还能挂插件特有的自定义检查（与内建检查同一份报告词表）。
+插件特有的端到端场景写成仓内场景文件（`verify/scenarios/*.mjs` 或 `.ts`），用 `run` 跑；场景原语：`launch` / `stop` / `logs` / `page` / `model` / `install` / `skills` / `check` / `evidence` / `expect` / `sleep` / `instances` / `lastInstance` / `dispose`，另加自定义步骤。声明里的 `checks` 挂插件特有的自定义检查（与内建检查同一份报告词表）。
 
-场景文件可以声明三个起停钩子，时机不同：`beforeLaunch` 时隔离 home 还不存在（只能准备 home 外的路径）；`prepareHome` 时 home 刚复制完、进程还没启动，是种 workspace 注册表/设置这类「宿主启动时读进内存」状态的唯一可靠时机（启动后写会被宿主覆盖）；`afterLaunch` 时实例已就绪，适合观察或种宿主按需从磁盘读的状态。
+场景可以声明三个起停钩子，时机不同：`beforeLaunch` 时隔离 home 还不存在（只能准备 home 外路径）；`prepareHome` 时 home 刚复制完、进程还没启动，是种 workspace 注册表/设置这类「宿主启动时读进内存」状态的唯一可靠时机（启动后写会被宿主覆盖）；`afterLaunch` 时实例已就绪，适合观察或种宿主按需从磁盘读的状态。
 
-边界（判断标准：需要改核心就记为扩展性缺陷，不要私改核心）：
+边界按「需要改核心就记为扩展性缺陷」判断：
 
-- 需要**有头**浏览器（真全屏、多窗口预设）时，`run` 的场景原语固定 headless；这类检查应留成仓内有头脚本，不要塞进场景硬跑。
-- 自定义检查与内建检查同一套四态：返回 `{ status: "blocked", blockedReason: { code: "adapter-missing" | "prerequisite-missing" | "platform-unsupported", message, hint? } }` 就能在报告里记 blocked（不是 fail）；`{ status: "skip" }` 表示不适用。旧的 `ok: true/false` 仍兼容。
-- 插件特有的状态目录、技能目录、模型要求都应通过声明字段表达；声明表达不了才提契约扩展。
+- 需要**有头**浏览器（真全屏、多窗口预设）时，`run` 的场景原语固定 headless；这类检查留成仓内有头脚本。
+- 自定义检查与内建检查同一套四态：返回 `{ status: "blocked", blockedReason: { code: "adapter-missing" | "prerequisite-missing" | "platform-unsupported", message, hint? } }` 记 blocked（不是 fail）；`{ status: "skip" }` 表示不适用；旧的 `ok: true/false` 仍兼容。
+- 插件特有的状态目录、技能目录、模型要求通过声明字段表达；声明表达不了才提契约扩展。
 
-## 6. 给 agent 的硬规矩
+## 6. 退出前自检（每条都要能拿出证据）
 
-- 先 `describe --json` 再动手；不要凭记忆写旗标。
-- 先 `--dry-run` 再真跑写操作。
-- 退出码 2（blocked）不是失败，不要重试到绿；补齐前置后重跑，并在结论里说明是什么缺失。
-- 不要读、打印或落盘任何密钥值：模型与凭据检查只消费引用名，报告里也只有来源与是否可用。
-- 真实 home 零写入是硬要求；报告要带「真实 home 前后 sha256 不变」的证据。
-- 改动后跑 `npm run docs:check`：本文件与 README 的参考段必须和 `describe` 一致；手改生成段会被测试拦下。
-
+- `describe --json` 跑过；用到的旗标与 check id 来自它，不凭记忆。
+- 写操作先 `--dry-run`，且 dry-run 与真跑结论一致。
+- 退出码 2 已分型（`adapter-missing` / `prerequisite-missing` / `platform-unsupported` 或命令层 `FailureCode`），并写明缺什么、怎么补。
+- 真实 home 前后 sha256 不变，证据已随报告归档。
+- 报告、证据、身份行/基线行已归档，sha256 能按 README 第五步复核。
+- 改了声明或能力描述后跑过 `npm run docs:check`。
 ## 参考（自动生成，勿手改）
 
 本段由 `dsh-verify describe` 生成。改完能力描述后运行 `npm run docs:sync`。
