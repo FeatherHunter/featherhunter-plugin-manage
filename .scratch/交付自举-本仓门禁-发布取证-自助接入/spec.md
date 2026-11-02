@@ -207,4 +207,21 @@
 - 检查结果来自本次会话（2026-11-03 01:05 +08:00）当场复跑，不是记忆：gate exit 0，JSON 明细在 `.tmp/gate-final-1a6e2f6.json`。
 - 10 张实施票均 closed，本次逐张复核了代码、测试与命令结果；关闭规格表示实施与收口证据齐备。仍交给用户/外部的两项：CI 远端首跑结果（排队中）、未跟踪 `docs/证据义务-业界机制调研.md` 的归属。
 
+### local — 2026-11-02T17:28:34.720Z
+### 收口后附记：CI 首跑与修复（2026-11-03）
+
+规格已于 2026-11-03 01:07 +08:00 在 `33a8244` 上关闭，当时本地 gate 全绿；关闭评论第五节把「CI 远端首跑结果（排队中）」列为外部待办。关闭后首跑结果到达，如实补记：
+
+1. 关闭验收提交 `1a6e2f6` 的 CI run [41487810450](https://github.com/FeatherHunter/featherhunter-plugin-manage/actions/runs/41487810450) **失败**：job `base gates` 的 tests 步骤 exit 1，files 2 failed | 78 passed | 1 skipped (81)。失败点是两个既有测试的夹具，不是本次 10 票文件：
+   - `packages/base/src/real-machine-verification/tests/browser-adapter.test.ts:60`
+   - `packages/base/src/real-machine-verification/tests/ticket-face-adapter.test.ts:79`
+   根因：夹具的假 repo 根固定为 Windows 形态（`C:/repo`、`C:\\repo`）；loader 用 `joinFsPath` 保留首段分隔符风格，在 POSIX runner 上得到反斜杠路径，`pathToFileURL` 把它当相对路径编码成 `%5C`，与期望的 file URL 不等。
+2. 修复提交 `0d0a32d`「fix(test): make adapter file-URL fixtures host-neutral」：夹具改为与宿主相称的假 repo 根（win32 仍 `C:/repo`，其它 `/repo`），断言意图不变（仓库相对模块 → 真实 file URL）；无产品代码改动。这是关闭后对验收树做的唯一改动，目的是让规格故事 1「push / PR 跑本仓门禁」在真实 runner 上成立。
+3. 修复后的验证：
+   - 本地：在 `0d0a32d` 上复跑 CI 的同一命令 `node scripts/ops/base-verify.mjs --json`，exit 0；typecheck 1.42s、tests 1080 passed | 6 skipped（81 文件）、docs ok、scan 318 文件 0 issue、build 1.72s；JSON 存 `.tmp/gate-0d0a32d.json`。
+   - 远端：推送 `33a8244..0d0a32d` 后 run [41489076525](https://github.com/FeatherHunter/featherhunter-plugin-manage/actions/runs/41489076525)（head `0d0a32d`）**success**，job `base gates` 全步骤 success。
+4. 交付树更新：`main` == `origin/main` == `0d0a32d`（本条记录另起一次提交）。四件关闭条件在 `0d0a32d` 上均成立：规格承诺已实现、改动在长期分支、给定提交可复现全绿（本地 + CI）、遗留已处置。
+5. 保留说明：关闭评论写在 `1a6e2f6`/`33a8244`；CI 首跑失败暴露的是实施前既有的 Windows-only 测试夹具缺陷，属本规格门禁目标下必须处理的遗留，故按「关闭后附记」处理，未改动规格状态。若复核者认为关闭时 CI 未绿不满足收口条件，请人工重开规格 00 后重新关闭；当前 `main` 的本地与 CI 证据均绿。
+
+
 ## 进度
