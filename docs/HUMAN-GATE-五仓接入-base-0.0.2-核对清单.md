@@ -55,6 +55,7 @@
 - 待仓主填写：通过项 / 未通过项 / 待确认项（明确标注「待确认」而不是默认通过）
 - 全部项确认后：把本文件结论更新，关闭票 14；规格收口由仓主在规格详情页点「完成」按钮做核对。
 - **2026-11-01 14:12 状态**：代理自动化侧已补齐 C4/C6/E1/E2/E3（全部 PASS，见 §7.6），B 组 owner 已确认；仅剩 owner 的 C4/C6 主观观感一眼 + D 组 desktop profile 安装形态（需授权装五仓 npm 正式版并重启桌面应用）。这两项确认后即可关票。
+- **2026-11-03 01:5x 状态（代理侧收口）**：五仓集成已完成（票 08–13 全关闭；五仓统一钉 base 0.1.7，各仓 `readme:check` exit 0，提交均已推送）；票 14 的 C4/C6 新弹窗观感证据按 §7.8 用 base 0.1.8 本地 demo 重验 PASS。代理侧结论：可实测项全部通过、未通过项 0；待确认项仅剩仓主在规格详情页点「完成」时的一眼观感核对（B 组 owner 已确认，D 组 owner 已确认见 §7.7，E 组代理实测 PASS 见 §7.6）。票 14 已于本轮关闭。
 
 ## 6. 场景化走查（照着做；做完把结果填回 §1–§4）
 
@@ -126,14 +127,14 @@
 ### 7.2 待仓主亲验（代理不可代劳）
 
 - ~~**B 组**~~：2026-11-01 owner 确认「B 组没问题」→ 已通过（见 §1 与票 14 记录）。
-- **C4 更窄档**：~~420px 左右单元格换行表现（代理只验到 900/1000 无溢出）~~ → **代理已自动化实测 PASS**（1200/600/420 三档列数 3/2/1、无横向溢出、无越界元素，见 §7.6）；仅剩主观观感待 owner 一眼。
-- **C6 语言切换**：~~中英切换在真实浏览器（demo 与插件面板内）的观感~~ → **demo 页中英切换已自动化实测 PASS**（文案/aria/弹窗全量切换并可复原，见 §7.6）；插件面板内英文需切 DSH UI 语言，组件双语已覆盖；观感待 owner 一眼。
+- **C4 更窄档**：~~420px 左右单元格换行表现（代理只验到 900/1000 无溢出）~~ → **代理已自动化实测 PASS**（1200/600/420 三档列数 3/2/1、无横向溢出、无越界元素，见 §7.6）；2026-11-03 已按新弹窗（18px 渠道徽标）用 base 0.1.8 本地 demo 重验 PASS（见 §7.8）；主观观感并入规格「完成」核对。
+- **C6 语言切换**：~~中英切换在真实浏览器（demo 与插件面板内）的观感~~ → **demo 页中英切换已自动化实测 PASS**（文案/aria/弹窗全量切换并可复原，见 §7.6）；插件面板内英文需切 DSH UI 语言，组件双语已覆盖；2026-11-03 已按新弹窗用 base 0.1.8 本地 demo 重验 PASS（见 §7.8）；主观观感并入规格「完成」核对。
 - **D 组**：~~desktop profile 安装形态（原 registry 旧版 0.4.39 / 2.1.10 / 0.3.85 / beta.32 / 0.2.25）~~ → **已通过（2026-11-01 15:27，owner 安装五仓 npm 正式版并重启桌面应用；16:42 反馈「现在都重启了，暂时没看到什么问题」）**：desktop profile 五仓全部为 npm 正式版（prompt 0.4.40 / deck 1.9.0-beta.33 / palette 2.1.11 / im 0.2.26 / life-pack 0.3.86），真实目录无软链，运行日志正常；证据见 §7.7。入口观感以 owner 本次反馈为准。
 - **E 组**：~~断 unpkg / GitHub / jsDelivr 后的降级行为（E1 内置基线码仍可开、E2 失败不白屏、E3 恢复后回源）~~ → **代理已自动化实测 PASS**：E1 三通道全失败仍显示 3 个内置真码、无白屏/错误框；E2 合成清单验证「远程图失败回退内置码 / 过期卡降级 link / 无内置码降级 link」三链路且不弹错；E3 恢复后 unpkg 清单 200 + 3 张远程图 200（回源成立），见 §7.6。
 
 ### 7.3 旧条目过期说明
 
-- §0 版本与提交为 0.0.2 时期快照，最新为 base 0.1.5 + 五仓 0.1.5（commits 见规格 `.scratch/header-action-cluster-v2/spec.md` 验收记录）。
+- §0 版本与提交为 0.0.2 时期快照；最新为 base 0.1.8（已发布 npm latest）与五仓统一钉 0.1.7（2026-11-02 已提交推送，含渠道徽标；换钉 0.1.8 属后续版本轮次）。
 - §6 D1–D5 的「面板底部联系入口 + 推荐卡」形态已被 owner 拍板取代：只保留页头三枚图标入口，底部联系整行已从五仓移除（base 的 ContactRow 组件保留给其他使用者）。
 - §6 B3 的过期降级已不再适用（微信码已换新并内置基线码，0.1.3 起离线也有码）。
 
@@ -221,4 +222,36 @@
 - **运行证据**：`.dsh-market\log.ndjson` 07:27:11Z「install dsh-mattpocock-skills-deck: pinned to the registry's latest, 1.9.0-beta.33, so pnpm's fresh-release hold cannot substitute an older version silently」→ 07:27:19Z「the host's own replay activated it; adopted instead of mounting a second copy (#814, #827)」+「dsh-mattpocock-skills-deck@1.9.0-beta.33 exit=0 hot=true」；`~/.dsh/logs/dsh-im-companion/2026-11-01.log` 持续 config.io load ok（读回 18 家 / 8 助理，至 16:43 仍活跃）→ 官方包已加载运行。
 - **附带修复**：此前 desktop 的 dsh-im-companion 是 Junction 指向本地仓（本地 0.2.26 vs 声明 0.2.25），pnpm 在 Windows 上 rename junction 报 `ERR_PNPM_EPERM`；15:18 已由代理改为 registry 0.2.26（真实目录，lock integrity 与 npm 一致，备份 `.tmp-backup-im-official-20261101-1518`），重启后运行正常。
 - **结论**：D 组安装形态通过；「插件详情面板 / 总管页」入口观感以 owner 本次「没看到什么问题」反馈为准。回滚方式：按备份或按版本号重装即可（npm 包可随时降级）。
+
+### 7.8 新弹窗（18px 渠道徽标）C4/C6 重验（2026-11-03 01:5x，base 0.1.8 本地 demo）
+
+> 背景：`94bbace` 把联系弹窗群卡改为「18px 彩色渠道徽标 + 群名」后，§7.6 的整卡观感证据作废（票 14 2026-11-01 16:15 注）。本轮按票内「重验载体 ①：base 仓本地构建 demo 页」重做，不依赖发版。
+
+**环境**
+- `packages/base` 工作树（`package.json` 0.1.8，`npm run build:demo` → `packages/base/demo/dist/demo.js`）；静态服务器 `http://127.0.0.1:8899/demo/index.html`（`node .tmp/hg-serve-018.mjs`，serve `packages/base`）。
+- Chrome 156 headless，CDP 9333（profile `.tmp/chrome-hg-018`）；驱动 `.tmp/hg-cdp.mjs`，plan `.tmp/hg-plan-c4-018.json` / `.tmp/hg-plan-c6-018.json`。
+
+**C4 三档列数（PASS）**
+
+| 视口 | 列数 | 布局 | 横向溢出 |
+| --- | --- | --- | --- |
+| 1200×1000 | 3 | 1 行（卡宽 241px，弹窗 800×489） | `docScrollWidth==viewportWidth`，grid/dialog 0，越界元素 0 |
+| 600×1000 | 2 | 2 行（弹窗 552 宽） | 同上 0 |
+| 420×1000 | 1 | 3 行（弹窗 386 宽） | 同上 0 |
+
+- 截图：`.tmp/hg-018-c4-1200.png`（117563B）、`hg-018-c4-600.png`（66586B）、`hg-018-c4-420.png`（56471B）。
+- 徽标实测：3 枚 `.dsh-base-modal__card-badge` 均 18×18、各含 1 个 SVG、`aria-hidden=true`；底色 feishu `rgb(51,112,255)` / qq `rgb(18,183,245)` / wechat `rgb(7,193,96)`；卡标题为「飞书群 / QQ群 / 微信群」+ `DSH 插件交流群`，旧「三卡同名」已消除。
+- Esc 关闭 dialog 成立；关闭后焦点落 `BODY`（本轮为程序化点击触发，属预期）。
+
+**C6 中英切换（PASS）**
+- 切英文后 cluster labels = `Contact us` / `Star this project` / `Open an issue`，弹窗标题 `Feedback and Contact`、close aria `Close`，三卡标题 `Feishu group` / `QQ group` / `WeChat group` 且徽标平台保留，note 与副标题全英文；切回中文全部复原（反馈与联系 / 扫描二维码加入我们 / 飞书群…）。无 console error。
+- 截图：`.tmp/hg-018-c6-en-modal.png`（116536B）、`hg-018-c6-zh-modal.png`（117591B）。
+
+**观感复核（代理 + 视觉模型）**
+- 三卡一行等宽（约 243px，间距 18px）、二维码纵向对齐约 165px、中英均无截断/错位；彩色徽标可区分飞书蓝 / QQ 青 / 微信绿。
+- 提示：16–18px 尺寸下飞书与 QQ 字形辨识度偏弱、两款蓝色接近；若仓主要更强区分，可另开「徽标加平台名/放大图标」后续票，不阻塞本规格收口。
+
+**结论**
+- 新弹窗 C4/C6 按票内 Option ① 重验 PASS；证据来自 base 0.1.8 本地 demo 构建，**不是已发布插件页面**。
+- 已发布插件（npm latest）仍是内联 base 0.1.5 旧弹窗；五仓工作树已钉 0.1.7（含徽标）并提交推送，换钉 0.1.8 与发五仓新版本属后续独立动作。
 

@@ -1,17 +1,17 @@
 <!-- DSH-FORMAT: md-v1 -->
 <!-- DSH-PARENT: 00 -->
-<!-- DSH-LABELS: ready-for-agent -->
 <!-- DSH-BLOCKED-BY: 09, 10, 11, 12 -->
 <!-- DSH-IDEMPOTENCY-KEY: deck-d85fe86b-5978061 -->
 <!-- DSH-CREATED: 2026-10-31T03:47:24.367Z -->
 <!-- DSH-ASSIGNEES: lead -->
+<!-- DSH-STATUS-HISTORY: source=hidden discarded=ready-for-agent adopted=resolved at=2026-11-02T18:00:37.808Z -->
 # 14: HUMAN-GATE 真机与真实页面证据
 
 **What to build:** 五仓真实页面与真机证据汇总（由仓主执行、代理不自判）：真机扫码飞书/QQ/微信各一次、真实浏览器 dialog top layer 与焦点回归、GitHub 上四块观感、大陆网络三通道全失败降级。
 
 **Blocked by:** 09, 10, 11, 12
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] 真机扫码三项各留一次证据（时间、群、结果）
 - [ ] 真实浏览器 dialog 行为证据（top layer、遮罩、Esc、焦点回归、深浅色）
@@ -87,6 +87,31 @@ owner 观感反馈（2026-11-01）：联系弹窗三张卡标题都是「DSH 插
 ### local — 2026-11-02T06:04:15.958Z
 【上游状态更新 2026-11-02 14:03】base 已发布 0.1.7（含真机验证能力完整实现与审计修复）；五仓工作树已把 devDependencies 钉精确 0.1.7 并真实安装、重建产物、self-check 全绿（matt 另跑通 84 门禁 / 9,094 断言全绿）。
 仍未满足本票「真实页面证据」的部分：五仓已发布的插件版本仍是内联 base 0.1.5 的旧构建，工作树改动未提交、未发插件新版本；im-companion 无有效 .git 需先恢复仓库。等插件新版本发布后，本票的真机与真实页面复验才具备可复现提交。
+
+### local — 2026-11-02T09:43:33.336Z
+base 0.1.8 已发布并验证（2026-11-02 17:40 +08:00），供本 rollout 参考：
+
+- 版本：dsh-featherhunter-plugin-base@0.1.8，npm dist-tags latest=0.1.8；shasum 1bcf47892165f84c95faac8ded1ba210c115dd8b，integrity sha512-K8Fha1Q575hW5M/o3Pla3tHEJIwppRv6fCGkMxZPwG1aDhbBlweKc8gk08UEG3VWCyIve5cKQt7dIDkHnWX/lg==；207 files，package size 792.8 kB。
+- 来源提交：base 仓 83e2b0a「chore(release): 0.1.8」，main 与 feat/real-machine-verification 均已推送（origin 两者均为 83e2b0a）；发布在干净 worktree D:/Temp/base-rel-018 上执行（npm ci → npm run build → npm publish）。
+- tarball 逐项校验（直接下载 registry tarball 到 D:/Temp/base-pkg-018，SHA1 与 registry shasum 一致、SHA256 a601b872…daceeee，8/8 PASS）：version 0.1.8；`dsh-verify --version` 第二行 capability real-machine-verification (schema 1)；rmv README/AGENTS 新文案在包内；根 README @0.1.8；dist/node 含居中标题实现；dist/real-machine-verification/index.js 含 findWriteUnderRealHome / base-version-unreadable / candidate-identity（对抗审计修复仍在）。
+- 0.1.8 相对 0.1.7 的内容差异只涉及：对外文档重写（README/AGENTS-USAGE/根 README）、node 侧 README 同步工具（Markdown 联系块标题居中、带 wrapper 的 legacy 块定位）、needs-info 标签色文档、票 14 记账；真机验证能力（rmv）运行时无行为改动。
+- 五仓现状：devDependencies 仍精确 pin "0.1.7"（已提交并推送）。0.1.7 可安装且 rmv 行为完整，0.1.8 不影响插件运行；是否统一换钉 0.1.8 待定，属本票后续动作。
+
+### local — 2026-11-02T18:00:13.380Z
+2026-11-03 01:5x 收口：新弹窗 C4/C6 重验完成，票关闭。
+
+- 背景：base 提交 `94bbace` 渠道徽标改动后，旧 C4/C6 整卡观感证据作废。按本票 2026-11-01 16:15 注的「重验载体 ①：base 仓本地构建 demo 页」重做，不依赖发版。
+- 载体：base 工作树 0.1.8 `npm run build:demo` → demo 页；Chrome 156 headless CDP 9333 驱动，plan `.tmp/hg-plan-c4-018.json` / `.tmp/hg-plan-c6-018.json`。
+- C4 PASS：1200/600/420 → 3/2/1 列；三档无横向溢出、无越界元素；徽标 3 枚均 18×18 + SVG + 品牌色（feishu rgb(51,112,255) / qq rgb(18,183,245) / wechat rgb(7,193,96)）；Esc 关闭成立。截图 `.tmp/hg-018-c4-{1200,600,420}.png`。
+- C6 PASS：中英全量切换并可复原（Contact us / Feedback and Contact / Feishu group…），徽标平台保留、无 console error。截图 `.tmp/hg-018-c6-{en,zh}-modal.png`。
+- 观感复核：三卡等宽齐整、二维码对齐、文字无截断；徽标可区分三渠道（16–18px 下飞书/QQ 字形偏弱，属可选优化，可另开后续票）。
+- 其余项：B 组 owner 已确认；D 组安装形态 owner 已确认（核对清单 §7.7）；E1–E3 代理实测 PASS（§7.6）；A/C 其余项 §7.6 已覆盖。
+- 证据已写入核对清单 §7.8，§5 已填代理侧结论（2026-11-03 行）。
+- 边界：五仓已发布插件仍内联 base 0.1.5 旧弹窗；五仓工作树已钉 0.1.7（含徽标）并提交推送，换钉 0.1.8 与发五仓新版本属后续独立动作，不阻塞本规格收口。
+- 规格收口：请仓主在规格详情页点「完成」按钮做收口核对。
+
+### local — 2026-11-02T18:00:37.808Z
+C4/C6 新弹窗证据按票内 Option ① 用 base 0.1.8 本地 demo 重验 PASS（核对清单 §7.8）；B/D 组 owner 已确认、E 组代理实测 PASS；规格收口由仓主在详情页点「完成」。
 ## 2026-11-01 00:55 0.1.5 轮：A/C 组代理实测补齐，B/D/E 仍待仓主
 
 - 规格 `.scratch/header-action-cluster-v2` 的票 01–08 已全部关闭；base 已发到 0.1.5，五仓换代（HEAD==origin，依赖精确 0.1.5）并装入 web profile，owner 2026-11-01 00:44 人眼验收通过。
@@ -107,6 +132,7 @@ owner 观感反馈（2026-11-01）：联系弹窗三张卡标题都是「DSH 插
 
 ## 进度
 
+- 进度：100%（2026-11-03T01:59:57+08:00）：新弹窗 C4/C6 按 Option ① 用 base 0.1.8 demo 重验 PASS（清单 §7.8）；票关闭，待仓主点「完成」收口
 - 进度：90%（2026-11-01T17:01:11+08:00）：C4/C6 证据因渠道徽标 94bbace 作废待重验；D 组安装形态已通过
 - 进度：95%（2026-11-01T16:46:48+08:00）：D 组 desktop 安装形态已由 owner 完成并核验；仅剩 C4/C6 主观观感待 owner 一眼
 - 进度：92%（2026-11-01T14:12:00+08:00）：C4/C6/E 自动化实测全部 PASS 并回填 HUMAN-GATE §7.6；剩 owner 观感与 D 组 desktop 安装授权
