@@ -172,7 +172,12 @@
 
 - 三条一手依据：`docs/DSH宿主可观测面-真机验证调研.md`（宿主通道与纠错，每条带 file:line）、`docs/dsh-web-profile-真机验证环境调研.md`（profile/端口/token/重装语义）、`docs/五仓发布与真机验证现状调研.md`（五仓差距与发布目录差异）；matt 旧实现的第一性原理复盘在 `docs/matt-真机验证-第一性原理复盘.md`。
 - 已冻结的 contracts 原型可作为规则层参照（候选判定、新鲜度、身份行、技能比较、模型 patch 编辑），但**不作为交付物**；实现时允许重构，接口保持不变。
-- 两个待实施时确认的点：①技能完整清单默认走文件树枚举还是插件端点（默认文件树，插件端点作为可选加速）；②批次 work root 的默认位置（默认仓库内 `.scratch` 下的验证工作根，且必须被 gitignore）。
+- 两个待实施时确认的点（实施时已定）：①技能完整清单走文件树枚举（六个根 × rank 100/200/300/400/500/600），插件端点只作为可选补充，见 `docs/adr/0002-real-machine-verification-as-built.md` 决定 9；②批次 work root 默认仓库内 `.scratch/verify`，已被五仓 `.gitignore` 覆盖，也可用 `--work-root` 指到系统临时目录。
 - 历史教训要写进门禁：2026-10-29 用 setViewportSize 假装全屏导致误判产品缺陷；批次重跑覆盖证据；手改证据副本导致「原件」不存在；同版本重装是静默 no-op（必须先 remove 再 add）。
 
 ## 进度
+
+- 2026-11-02：实施票 01–22 全部关闭。base 0.1.7 发布到 npm（latest；shasum 8de03dd147d86d31949b24d1938271d15c03c80d），五仓 `devDependencies` 精确钉 `0.1.7` 并重建产物；matt 仓旧通用真机台删除 41 个文件 9,591 行，保留插件特有 15 个文件 4,392 行。
+- 能力代码在 `packages/base/src/real-machine-verification/`（独立导出子路径与独立 bin）；接入形态为每个插件仓一份 `verify/profile.ts` + 两条 npm script。
+- 交付与门禁：base 分支 `feat/real-machine-verification` 已快进合入 `main`；matt `npm test` 全链 84 条门禁全绿；五仓 `self-check` 全绿；matt 真机 11 步全绿。
+- 评审与偏离：两轴 code-review（Standards + Spec）与对抗式审计的修复见票 20；偏离与已知限制见 `docs/adr/0002-real-machine-verification-as-built.md`。
