@@ -150,16 +150,69 @@ function detectContact(raw: string): { lang?: Lang; variant?: HeadingVariant; he
  * ordinary headings would swallow the rest of the README.
  */
 function locateLegacyContact(markdown: string): LegacyBlockSpan | null {
-  const headingPattern =
-    /^(?:<h2\b[^\n]*?(?:CONNECT|反馈与联系|Feedback and Contact)[^\n]*?|<sub>\s*CONNECT\s*<\/sub>[^\n]*?|<h2\b[^\n]*?>[^\n]*?(?:反馈与联系|Feedback and Contact)[^\n]*?>|##\s+[^\n]*(?:反馈与联系|Feedback and Contact)[^\n]*)\s*$/im;
-  const heading = headingPattern.exec(markdown);
-  if (heading === null) return null;
-  const start = heading.index;
-  const closingDiv = /^[ \t]*<\/div>[ \t]*$/m;
-  const rest = markdown.slice(start + heading[0].length);
-  const closing = closingDiv.exec(rest);
-  if (closing === null) return null;
-  return { start, end: start + heading[0].length + closing.index + closing[0].length };
+  const lines = markdownLines(markdown);
+  let fence = false;
+  let headingIndex = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index]!.text;
+    if (isFenceLine(text)) {
+      fence = !fence;
+      continue;
+    }
+    if (!fence && LEGACY_CONTACT_HEADING_LINE.test(text)) {
+      headingIndex = index;
+      break;
+    }
+  }
+  if (headingIndex === -1) return null;
+
+  // The Markdown heading may sit inside its own centring <div> (the shape this
+  // package now writes for the Markdown variant): start at that wrapper so init
+  // never splits the wrapper away from its heading.
+  let startIndex = headingIndex;
+  for (let back = headingIndex - 1; back >= 0; back -= 1) {
+    if (lines[back]!.text.trim() === "") continue;
+    if (WRAPPING_DIV_LINE.test(lines[back]!.text)) startIndex = back;
+    break;
+  }
+  const wrappedHeading = startIndex !== headingIndex;
+
+  // The welcome line and the card table live in a sibling centring <div>. Walk
+  // the contiguous wrapper blocks (at most a heading wrapper plus the content
+  // wrapper) and end at their last closing </div>.
+  let divIndex = -1;
+  if (WRAPPING_DIV_LINE.test(lines[startIndex]!.text)) {
+    divIndex = startIndex;
+  } else {
+    for (let index = headingIndex + 1; index < lines.length; index += 1) {
+      const text = lines[index]!.text;
+      if (text.trim() === "") continue;
+      if (WRAPPING_DIV_LINE.test(text)) divIndex = index;
+      break;
+    }
+  }
+  if (divIndex === -1) return null;
+  const maxBlocks = wrappedHeading ? 2 : 1;
+  let depth = 0;
+  let blocks = 0;
+  let endIndex = -1;
+  for (let index = divIndex; index < lines.length; index += 1) {
+    const text = lines[index]!.text;
+    const trimmed = text.trim();
+    if (depth === 0 && endIndex !== -1) {
+      if (trimmed === "") continue;
+      if (!WRAPPING_DIV_LINE.test(text)) break;
+      if (blocks >= maxBlocks) break;
+    }
+    depth += (text.match(/<div\b/gi)?.length ?? 0) - (text.match(/<\/div\s*>/gi)?.length ?? 0);
+    if (depth < 0) return null;
+    if (depth === 0 && /<\/div\s*>/i.test(text)) {
+      endIndex = index;
+      blocks += 1;
+    }
+  }
+  if (endIndex === -1) return null;
+  return { start: lines[startIndex]!.start, end: lines[endIndex]!.end };
 }
 
 /**
@@ -182,6 +235,9 @@ function detectMore(raw: string): { lang?: Lang; variant?: HeadingVariant; headi
 const MORE_HEADING_LINE = /^(?:<h2\b[^\n]*(?:\bMORE\b|作者的其他作品|More from the author|More by the author)[^\n]*<\/h2>|##\s+[^\n]*(?:\bMORE\b|作者的其他作品|More from the author|More by the author)[^\n]*)\s*$/i;
 const THANKS_HEADING_LINE = /^(?:<h2\b[^\n]*(?:\bTHANKS\b|致谢|\bThanks\b|\bContributors\b)[^\n]*<\/h2>|##\s+[^\n]*(?:\bTHANKS\b|致谢|\bThanks\b|\bContributors\b)[^\n]*)\s*$/i;
 const CONTACT_HEADING_LINE = /^(?:<h2\b[^\n]*(?:CONNECT|反馈与联系|Feedback and Contact)[^\n]*<\/h2>|##\s+[^\n]*(?:CONNECT|反馈与联系|Feedback and Contact)[^\n]*)\s*$/i;
+/** Heading shapes accepted when locating a pre-marker contact block. */
+const LEGACY_CONTACT_HEADING_LINE =
+  /^(?:<h2\b[^\n]*?(?:CONNECT|反馈与联系|Feedback and Contact)[^\n]*?|<sub>\s*CONNECT\s*<\/sub>[^\n]*?|<h2\b[^\n]*?>[^\n]*?(?:反馈与联系|Feedback and Contact)[^\n]*?>|##\s+[^\n]*(?:反馈与联系|Feedback and Contact)[^\n]*)\s*$/i;
 const STAR_MARKER_LINE = /star-history[-a-z]*\.svg|star-history\.html|星标增长曲线|Star history chart/i;
 const WRAPPING_DIV_LINE = /^\s*<div\b/i;
 /** A managed block boundary already seeded by a previous init pass. */

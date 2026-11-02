@@ -23,7 +23,19 @@ describe("renderContactBlock", () => {
     const comparison = compareBlocks("contact", expected, rendered);
     expect(comparison.contentDifferences).toEqual([]);
     expect(comparison.equivalent).toBe(true);
-    expect(rendered.startsWith("## 反馈与联系")).toBe(true);
+    // The Markdown heading needs a centring wrapper: GitHub only centres the
+    // HTML h2 through its align attribute, so the sync keeps the same wrapper
+    // the repository's other headings use.
+    expect(rendered.startsWith('<div align="center">\n\n## 反馈与联系\n\n</div>')).toBe(true);
+  });
+
+  it("centres the Markdown heading variant while keeping its wording", () => {
+    const rendered = renderContactBlock({
+      variant: "markdown-heading",
+      headingText: "反馈与联系 <sub>CONNECT</sub>",
+    });
+    expect(rendered.startsWith('<div align="center">\n\n## 反馈与联系 <sub>CONNECT</sub>\n\n</div>')).toBe(true);
+    expect(rendered).not.toContain("<h2");
   });
 
   it("renders English headings, titles and alt text for the en fixture", () => {

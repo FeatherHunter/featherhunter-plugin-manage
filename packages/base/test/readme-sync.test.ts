@@ -102,7 +102,7 @@ describe("readme:init", () => {
       expect(result.errors).toEqual([]);
       const markdown = readFileSync(readmePath, "utf8");
       const inner = markedInner(markdown);
-      expect(inner.startsWith("## 反馈与联系")).toBe(true);
+      expect(inner.startsWith('<div align="center">\n\n## 反馈与联系')).toBe(true);
       expect(inner).not.toContain("<h2");
       const comparison = compareBlocks("contact", expectMigratedContactSources(contactRaw), inner);
       expect(comparison.contentDifferences).toEqual([]);
@@ -126,7 +126,7 @@ describe("readme:init", () => {
       expect(result.errors).toEqual([]);
       const markdown = readFileSync(readmePath, "utf8");
       const inner = markedInner(markdown);
-      expect(inner.startsWith("## 反馈与联系 <sub>CONNECT</sub>")).toBe(true);
+      expect(inner.startsWith('<div align="center">\n\n## 反馈与联系 <sub>CONNECT</sub>')).toBe(true);
       expect(inner).not.toContain("<h2");
       const comparison = compareBlocks("contact", expectMigratedContactSources(withSub), inner);
       expect(comparison.contentDifferences).toEqual([]);
@@ -135,6 +135,42 @@ describe("readme:init", () => {
       expect(again.errors).toEqual([]);
       expect(again.changed).toBe(false);
       expect(readFileSync(readmePath, "utf8")).toBe(markdown);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("seeds markers around a Markdown contact heading already wrapped in its centring div", () => {
+    // The shape this package writes now: the Markdown heading sits in its own
+    // centring <div> and the welcome/table keep the content wrapper. A README
+    // without markers must still migrate cleanly and leave nothing behind.
+    const legacy = fixtureContactRaw("ilife");
+    const content = legacy.slice(legacy.indexOf('<div align="center">'));
+    const wrapped = [
+      '<div align="center">',
+      "",
+      "## 反馈与联系 <sub>CONNECT</sub>",
+      "",
+      "</div>",
+      "",
+      content,
+    ].join("\n");
+    const { dir, readmePath, cleanup } = setup(fakeReadme(wrapped));
+    try {
+      const result = updateReadme({ root: dir, command: "init" });
+      expect(result.errors).toEqual([]);
+      const markdown = readFileSync(readmePath, "utf8");
+      const inner = markedInner(markdown);
+      expect(inner.startsWith('<div align="center">\n\n## 反馈与联系 <sub>CONNECT</sub>')).toBe(true);
+      // The heading wrapper and the content wrapper are both inside the block.
+      expect(inner.match(/<div align="center">/g)).toHaveLength(2);
+      const tail = markdown.slice(markdown.indexOf(END) + END.length);
+      expect(tail).not.toContain("反馈与联系");
+      expect(tail).not.toContain("欢迎提交");
+
+      const sync = updateReadme({ root: dir, command: "sync" });
+      expect(sync.errors).toEqual([]);
+      expect(sync.changed).toBe(false);
     } finally {
       cleanup();
     }

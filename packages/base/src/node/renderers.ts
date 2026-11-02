@@ -126,9 +126,19 @@ export function contactCardUrl(
 
 function contactHeading(lang: Lang, options: BlockRenderOptions): string {
   // The Markdown heading keeps the wording recovered from the README (ilife's
-  // plain "反馈与联系", prompt's "反馈与联系 <sub>CONNECT</sub>"); the HTML
-  // heading always carries the CONNECT sub-label in its own structure.
-  if (options.variant === "markdown-heading") return "## " + (options.headingText ?? CONTACT_TEXT.heading[lang]);
+  // plain "反馈与联系", prompt's "反馈与联系 <sub>CONNECT</sub>").
+  // Both heading forms are centred: the HTML form centres itself through the
+  // h2 attribute, while the Markdown form needs a centring wrapper so GitHub
+  // renders it exactly like the other plugins' READMEs (see renderMoreBlock).
+  if (options.variant === "markdown-heading") {
+    return [
+      '<div align="center">',
+      "",
+      "## " + (options.headingText ?? CONTACT_TEXT.heading[lang]),
+      "",
+      "</div>",
+    ].join("\n");
+  }
   return '<h2 align="center"><sub>' + CONTACT_TEXT.sub + "</sub><br>" + CONTACT_TEXT.heading[lang] + "</h2>";
 }
 
