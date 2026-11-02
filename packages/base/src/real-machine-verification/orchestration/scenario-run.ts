@@ -701,10 +701,46 @@ function skippedObservation(step: ScenarioStep<ScenarioContext>, reason: string)
   };
 }
 
-function evidenceResolver(store: EvidenceStore): (paths: readonly string[]) => EvidenceItemRef[] {
+/**
+ * Adopt the files a scenario declared as evidence.
+ *
+ * The contract says a scenario hands files it wants kept to the evidence
+ * collector; before this existed, declaring a path a scenario had written itself
+ * (a screenshot) silently produced no evidence item, so the file sat in the run
+ * directory without a digest and could not be re-checked from an archive. Files
+ * are adopted in place (relative paths resolve against the evidence root), and a
+ * file that cannot be adopted is reported on stderr rather than dropped.
+ */
+async function adoptDeclaredEvidence(
+  observations: readonly ScenarioObservation[],
+  store: EvidenceStore,
+  adopted: Map<string, EvidenceItemRef>,
+  note: (message: string) => void,
+): Promise<void> {
+  for (const observation of observations) {
+    for (const declared of observation.evidence ?? []) {
+      if (adopted.has(declared)) continue;
+      const absolute =
+        isPosixAbsolute(declared) || isWindowsAbsolute(declared) ? declared : joinFsPath(store.root, declared);
+      const recorded = await store.recordFile(absolute);
+      if (!recorded.ok) {
+        note(`evidence ${declared} was not recorded: ${recorded.error.message}`);
+        continue;
+      }
+      adopted.set(declared, { path: recorded.value.path, sha256: recorded.value.sha256, kind: recorded.value.kind });
+    }
+  }
+}
+
+function evidenceResolver(
+  store: EvidenceStore,
+  adopted: ReadonlyMap<string, EvidenceItemRef>,
+): (paths: readonly string[]) => EvidenceItemRef[] {
   const items = store.items();
   return (paths) =>
     paths.flatMap((path) => {
+      const registered = adopted.get(path);
+      if (registered !== undefined) return [registered];
       const found = items.find(
         (item) => item.path === path || item.path.endsWith(`/${path}`) || item.path.endsWith(`\\${path}`),
       );
@@ -748,6 +784,7 @@ async function runOne(
 
   const stepResults: ScenarioStepResult[] = [];
   const runSteps: RunStep[] = [];
+  const adoptedEvidence = new Map<string, EvidenceItemRef>();
   let stopped = false;
 
   for (const step of definition.steps) {
@@ -797,6 +834,7 @@ async function runOne(
       })];
     }
     const finishedAt = options.ports.clock.nowMs();
+    await adoptDeclaredEvidence(observations, options.evidence, adoptedEvidence, note);
     const failed = stepFailed(observations);
     stepResults.push({
       stepId: step.id,
@@ -817,7 +855,7 @@ async function runOne(
   }
 
   const checks: CheckResult[] = [];
-  const refs = evidenceResolver(options.evidence);
+  const refs = evidenceResolver(options.evidence, adoptedEvidence);
   for (const stepResult of stepResults) {
     stepResult.observations.forEach((observation, index) => {
       checks.push(

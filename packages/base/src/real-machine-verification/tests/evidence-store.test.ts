@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { sha256Text } from "../contracts/identity";
+import { sha256Bytes, sha256Text } from "../contracts/identity";
 import { evidenceRefs, createEvidenceStore } from "../evidence/store";
 import { FakeClock, FakeFs } from "./support/fake-fs";
 
@@ -88,6 +88,82 @@ describe("evidence store", () => {
     expect(evidenceRefs(store.items())).toEqual([
       { path: "environment.txt", sha256: item.value.sha256, kind: "text" },
     ]);
+  });
+
+  it("adopts a file that already exists under the root, hashing the bytes on disk", async () => {
+    const { fs, case: store } = storeFor();
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    const absolute = `${ROOT}\\screenshots\\instance-pages.png`;
+    fs.seedFile(absolute, bytes);
+
+    const adopted = await store.recordFile(absolute, { note: "the adapter wrote this PNG" });
+    expect(adopted.ok).toBe(true);
+    if (!adopted.ok) return;
+    expect(adopted.value.kind).toBe("screenshot");
+    expect(adopted.value.path).toBe("screenshots/instance-pages.png");
+    expect(adopted.value.bytes).toBe(bytes.byteLength);
+    expect(adopted.value.sha256).toBe(sha256Bytes(bytes));
+    expect(adopted.value.capturedAt).toBe("2026-11-01T21:00:00.000+08:00");
+    expect(adopted.value.note).toBe("the adapter wrote this PNG");
+    expect(store.items()).toHaveLength(1);
+  });
+
+  it("names the kind from the extension but lets the caller override it", async () => {
+    const { fs, case: store } = storeFor();
+    fs.seedFile(`${ROOT}\\snapshot.json`, "{}");
+    fs.seedFile(`${ROOT}\\trace.bin`, new Uint8Array([1, 2, 3]));
+
+    const json = await store.recordFile(`${ROOT}\\snapshot.json`);
+    const binary = await store.recordFile(`${ROOT}\\trace.bin`, { kind: "command" });
+    expect(json.ok && binary.ok).toBe(true);
+    if (!json.ok || !binary.ok) return;
+    expect(json.value.kind).toBe("json");
+    expect(binary.value.kind).toBe("command");
+  });
+
+  it("refuses a file outside the evidence root and a directory", async () => {
+    const { fs, case: store } = storeFor();
+    fs.seedFile("C:\\Temp\\elsewhere\\shot.png", new Uint8Array([1]));
+    fs.seedDir(`${ROOT}\\shots`);
+
+    const outside = await store.recordFile("C:\\Temp\\elsewhere\\shot.png");
+    const escape = await store.recordFile(`${ROOT}\\..\\escape.png`);
+    const directory = await store.recordFile(`${ROOT}\\shots`);
+    expect(outside.ok).toBe(false);
+    expect(escape.ok).toBe(false);
+    expect(directory.ok).toBe(false);
+    expect(store.items()).toHaveLength(0);
+  });
+
+  it("refuses a missing file and an empty file instead of inventing an item", async () => {
+    const { fs, case: store } = storeFor();
+    fs.seedFile(`${ROOT}\\empty.png`, new Uint8Array(0));
+
+    const missing = await store.recordFile(`${ROOT}\\missing.png`);
+    const empty = await store.recordFile(`${ROOT}\\empty.png`);
+    expect(missing.ok).toBe(false);
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.error.message).toContain("empty");
+    expect(store.items()).toHaveLength(0);
+  });
+
+  it("keeps adoption idempotent for the same bytes and rejects a changed file", async () => {
+    const { fs, case: store } = storeFor();
+    const absolute = `${ROOT}\\shot.png`;
+    fs.seedFile(absolute, new Uint8Array([9, 9, 9]));
+
+    const first = await store.recordFile(absolute);
+    const second = await store.recordFile(absolute);
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(second.value.sha256).toBe(first.value.sha256);
+    expect(store.items()).toHaveLength(1);
+
+    fs.seedFile(absolute, new Uint8Array([9, 9, 9, 9]));
+    const changed = await store.recordFile(absolute);
+    expect(changed.ok).toBe(false);
+    if (!changed.ok) expect(changed.error.message).toContain("changed after it was recorded");
+    expect(store.items()).toHaveLength(1);
   });
 
   it("honours a pinned capture time and a custom kind", async () => {

@@ -20,12 +20,11 @@
  * being declared broken because a test changed the page instead of the window.
  *
  * The screenshot is written through the adapter (it owns the browser) but
- * hashed and measured through `ports.fs`, so the evidence item records the
- * bytes that actually reached disk rather than the adapter's claim. Evidence
- * naming stays local on purpose: `evidence/store.ts` writes text/JSON only and
- * is a shared file owned by another ticket.
+ * adopted through the evidence store, which measures and hashes the bytes that
+ * actually reached disk rather than trusting the adapter's claim. Adopting it
+ * (instead of building an item here) is what puts the digest into
+ * `evidence.json`, so an archived run can be re-checked later.
  */
-import { asEvidencePath } from "../contracts/branding";
 import type { BlockedReason, EvidenceItem, EvidenceItemRef } from "../contracts/evidence-contract";
 import { isSafeEvidencePath } from "../contracts/evidence-contract";
 import type {
@@ -35,7 +34,7 @@ import type {
   Ports,
   ScreenInfo,
 } from "../contracts/ports";
-import { err, failure, ok, type Failure, type Result } from "../contracts/result";
+import { err, failure, type Failure, type Result } from "../contracts/result";
 import type { VerificationProfile } from "../contracts/verification-profile";
 import type { EvidenceStore } from "../evidence/store";
 import {
@@ -320,7 +319,7 @@ async function captureScreenshot(
   context: PageCheckContext,
   page: BrowserPageHandle,
 ): Promise<Result<EvidenceItem>> {
-  const { fs, clock } = context.ports;
+  const { fs } = context.ports;
   const dir = context.evidenceDir ?? joinFsPath(context.evidence.root, "screenshots");
   const made = await fs.makeDir(dir);
   if (!made.ok) return made;
@@ -342,20 +341,8 @@ async function captureScreenshot(
 
   const captured = await page.screenshot(absolute, { fullPage: false });
   if (!captured.ok) return captured;
-  const stat = await fs.stat(absolute);
-  if (!stat.ok) return stat;
-  if (stat.value.size <= 0) {
-    return err(failure("io", `the browser wrote an empty screenshot: ${absolute}`));
-  }
-  const digest = await fs.hashFile(absolute);
-  if (!digest.ok) return digest;
-
-  return ok({
+  return context.evidence.recordFile(absolute, {
     kind: "screenshot",
-    path: asEvidencePath(toPosixPath(relative)),
-    bytes: stat.value.size,
-    sha256: digest.value,
-    capturedAt: clock.iso(),
     note: `the instance page captured by ${PAGE_CHECK_ID}`,
   });
 }

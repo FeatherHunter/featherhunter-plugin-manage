@@ -13,7 +13,7 @@ import type { CheckResult } from "../../contracts/check";
 import type { EvidenceItem, EvidenceKind } from "../../contracts/evidence-contract";
 import type { ClockPort, Ports } from "../../contracts/ports";
 import { sha256Text } from "../../contracts/identity";
-import { ok, type Result } from "../../contracts/result";
+import { err, failure, ok, type Result } from "../../contracts/result";
 import { stateFromChecks } from "../../contracts/run-state";
 import { MODEL_CATALOG_CAVEAT } from "../../contracts/skills-rules";
 import type { DeclarationLoadResult, LoadDeclarationOptions } from "../../declaration/loader";
@@ -74,6 +74,14 @@ function createMemoryEvidenceStore(clock: ClockPort): EvidenceStore {
     items: () => [...recorded],
     recordText: async (name, content, options) => record(name, content, "text", options),
     recordJson: async (name, value, options) => record(name, `${JSON.stringify(value, null, 2)}\n`, "json", options),
+    recordFile: async (path) =>
+      err(
+        failure(
+          "invalid-input",
+          `the in-memory evidence store cannot adopt the file ${path}`,
+          "this command writes nothing; use a command that owns an evidence directory",
+        ),
+      ),
   };
 }
 

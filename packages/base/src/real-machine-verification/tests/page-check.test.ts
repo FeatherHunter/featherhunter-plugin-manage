@@ -144,6 +144,13 @@ describe("runPageChecks with an injected adapter", () => {
     expect(screenshot?.sha256).toBe(sha256Bytes(FAKE_PNG_BYTES));
     expect(screenshot?.capturedAt).toBe(fixture.clock.iso());
     expect(outcome.evidence?.map((item) => item.kind)).toEqual(["screenshot", "json"]);
+    // The screenshot must be in the evidence store, not only on disk: a path in
+    // the report without a digest cannot be re-checked from an archive.
+    expect(fixture.evidence.items().map((item) => item.path)).toEqual([
+      "screenshots/instance-pages.png",
+      "instance-pages.json",
+    ]);
+    expect(fixture.evidence.items()[0]?.sha256).toBe(sha256Bytes(FAKE_PNG_BYTES));
 
     const stored = await fixture.fs.readBytes(screenshotPath);
     expect(stored.ok).toBe(true);

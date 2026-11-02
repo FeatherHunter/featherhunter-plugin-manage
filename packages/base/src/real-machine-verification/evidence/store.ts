@@ -37,6 +37,16 @@ export interface EvidenceRecordOptions {
   readonly capturedAt?: string;
 }
 
+/** Options for adopting a file that was written by someone else (an adapter's screenshot). */
+export interface EvidenceFileOptions {
+  /** Defaults from the extension: images are `screenshot`, `.json` is `json`, the rest `file`. */
+  readonly kind?: EvidenceKind;
+  /** Human sentence stored in the item, mirroring the check's `detail`. */
+  readonly note?: string;
+  /** Overrides the clock; tests pin it so `capturedAt` is deterministic. */
+  readonly capturedAt?: string;
+}
+
 /** One run's evidence directory, with the items recorded so far. */
 export interface EvidenceStore {
   /** Absolute directory the items are written to. */
@@ -45,6 +55,17 @@ export interface EvidenceStore {
   items(): readonly EvidenceItem[];
   recordText(name: string, content: string, options?: EvidenceRecordOptions): Promise<Result<EvidenceItem>>;
   recordJson(name: string, value: unknown, options?: EvidenceRecordOptions): Promise<Result<EvidenceItem>>;
+  /**
+   * Adopt a file that already exists under `root`, measuring and hashing the
+   * bytes on disk. This is how an artifact written by a port (the browser's
+   * screenshot) enters the evidence log: a path in a report without a digest is
+   * not evidence, because a reader cannot tell whether the bytes changed.
+   *
+   * The file is not renamed or copied. Adopting the same path twice is
+   * idempotent when the bytes still match, and a conflict when they do not — an
+   * item path must never refer to two different byte strings.
+   */
+  recordFile(path: string, options?: EvidenceFileOptions): Promise<Result<EvidenceItem>>;
 }
 
 export interface CreateEvidenceStoreOptions {
@@ -56,6 +77,29 @@ export interface CreateEvidenceStoreOptions {
 /** Trim the full items down to the references a `CheckResult` carries. */
 export function evidenceRefs(items: readonly EvidenceItem[]): readonly EvidenceItemRef[] {
   return items.map((item) => ({ path: item.path, sha256: item.sha256, kind: item.kind }));
+}
+
+/** Extensions that identify a screenshot without asking the caller. */
+const SCREENSHOT_EXTENSIONS: ReadonlySet<string> = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+
+/** The `/`-separated path of `absolute` below `root`, or null when it is outside. */
+function relativeToRoot(root: string, absolute: string): string | null {
+  const rootPosix = toPosixPath(root).replace(/\/+$/, "");
+  const filePosix = toPosixPath(absolute);
+  if (filePosix === rootPosix) return null;
+  if (!filePosix.startsWith(`${rootPosix}/`)) return null;
+  const relative = filePosix.slice(rootPosix.length + 1);
+  return isSafeEvidencePath(relative) ? relative : null;
+}
+
+/** Name the kind from the extension when the caller did not. */
+function kindForExtension(relative: string): EvidenceKind {
+  const dot = relative.lastIndexOf(".");
+  const extension = dot < 0 ? "" : relative.slice(dot).toLowerCase();
+  if (SCREENSHOT_EXTENSIONS.has(extension)) return "screenshot";
+  if (extension === ".json") return "json";
+  if (extension === ".txt") return "text";
+  return "file";
 }
 
 /**
@@ -131,6 +175,55 @@ export function createEvidenceStore(options: CreateEvidenceStoreOptions): Eviden
     },
     async recordJson(name, value, recordOptions) {
       return record(name, JSON_EXTENSION, "json", `${JSON.stringify(value, null, 2)}\n`, recordOptions);
+    },
+    async recordFile(path, fileOptions) {
+      const relative = relativeToRoot(root, path);
+      if (relative === null) {
+        return err(
+          failure(
+            "invalid-input",
+            `evidence file ${path} is outside the evidence root ${root}`,
+            "write the artifact under the run evidence directory, then declare it",
+          ),
+        );
+      }
+      const existing = recorded.find((item) => item.path === relative);
+      if (existing !== undefined) {
+        const digest = await fs.hashFile(path);
+        if (!digest.ok) return digest;
+        if (digest.value === existing.sha256) return ok(existing);
+        return err(
+          failure(
+            "conflict",
+            `evidence file ${relative} changed after it was recorded`,
+            "evidence is immutable: record the new bytes under a new name, or restore the original",
+          ),
+        );
+      }
+      const stat = await fs.stat(path);
+      if (!stat.ok) return stat;
+      if (stat.value.kind !== "file") {
+        return err(
+          failure("invalid-input", `evidence path ${relative} is not a regular file`, "declare a file, not a directory"),
+        );
+      }
+      if (stat.value.size <= 0) {
+        return err(
+          failure("io", `evidence file ${relative} is empty`, "write the artifact before declaring it as evidence"),
+        );
+      }
+      const digest = await fs.hashFile(path);
+      if (!digest.ok) return digest;
+      const item: EvidenceItem = {
+        kind: fileOptions?.kind ?? kindForExtension(relative),
+        path: asEvidencePath(relative),
+        bytes: stat.value.size,
+        sha256: digest.value,
+        capturedAt: fileOptions?.capturedAt ?? clock.iso(),
+        ...(fileOptions?.note === undefined ? {} : { note: fileOptions.note }),
+      };
+      recorded.push(item);
+      return ok(item);
     },
   };
 }

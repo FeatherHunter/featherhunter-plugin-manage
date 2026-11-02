@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { sha256Bytes } from "../contracts/identity";
 import { parseArgs } from "../cli/args";
 import { runScenarioCommand, type RunCommandDeps } from "../cli/commands/run";
 import { joinFsPath } from "../runtime/paths";
@@ -407,6 +408,62 @@ describe("run command", () => {
     expect(report.checks.find((check) => check.id === "host-logs")?.status).toBe("pass");
     expect(report.checks.find((check) => check.id === "plugin-note")?.status).toBe("pass");
     expect((report as RunJson & { evidence?: { itemCount?: number } }).evidence?.itemCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it("registers a file the scenario wrote itself when the observation declares it", async () => {
+    const fixture = createLaunchFixture();
+    fixture.fs.seedFile("C:\\fake\\repo\\verify\\declared-evidence.ts", "// fixture path\n");
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 7, 7, 7]);
+    const module = {
+      default: {
+        id: "declared-evidence",
+        title: "the scenario writes a screenshot and declares it as evidence",
+        steps: [
+          {
+            id: "write-shot",
+            title: "write the screenshot",
+            kind: "custom",
+            run: async (context: ScenarioContext) => {
+              const absolute = joinFsPath(context.evidence.root, "shots", "panel.png");
+              fixture.fs.seedFile(absolute, bytes);
+              return [
+                {
+                  checkId: "panel-shot",
+                  ok: true,
+                  detail: "the scenario wrote the screenshot",
+                  evidence: [absolute],
+                },
+              ];
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await run(
+      fixture,
+      ["run", "verify/declared-evidence.ts", "--work-root", fixture.paths.workRoot, "--json"],
+      { importModule: async () => module },
+    );
+
+    expect(result.code).toBe(0);
+    const report = parseReport(result.out);
+    const check = report.checks.find((item) => item.id === "panel-shot") as
+      | (CheckJson & { readonly evidence?: readonly { readonly path: string; readonly sha256: string; readonly kind: string }[] })
+      | undefined;
+    expect(check?.status).toBe("pass");
+    expect(check?.evidence).toEqual([{ path: "shots/panel.png", sha256: sha256Bytes(bytes), kind: "screenshot" }]);
+
+    const runsRoot = joinFsPath(fixture.paths.workRoot, "runs");
+    const runs = await fixture.fs.list(runsRoot);
+    expect(runs.ok).toBe(true);
+    if (runs.ok) {
+      const runDir = joinFsPath(runsRoot, runs.value[0]?.name ?? "");
+      const manifest = fixture.fs.readJsonSync(joinFsPath(runDir, "evidence", "evidence.json")) as {
+        readonly items: readonly { readonly path: string; readonly sha256: string }[];
+      };
+      expect(manifest.items.find((item) => item.path === "shots/panel.png")?.sha256).toBe(sha256Bytes(bytes));
+    }
   });
 
   it("exposes the L3 escape hatch: launch hooks, raw process, and a browser page handle", async () => {
