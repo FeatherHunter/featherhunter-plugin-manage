@@ -387,6 +387,18 @@ export interface ExecuteInstanceOptions {
   readonly runtime: DshRuntimePaths;
   readonly note?: (message: string) => void;
   readonly readyTimeoutMs?: number;
+  /**
+   * Runs after the isolated home is copied and the instance directories exist,
+   * but before the host process starts. The only safe moment to seed state the
+   * host loads into memory during boot (workspace registries, settings rows):
+   * seeding after startup is overwritten by the running host, seeding before
+   * this point loses the files with the home copy.
+   */
+  readonly beforeStart?: (info: {
+    readonly home: string;
+    readonly dir: string;
+    readonly profile: string;
+  }) => void | Promise<void>;
 }
 
 /** A launched, proven-ready instance plus the evidence captured at launch time. */
@@ -462,6 +474,20 @@ export async function executeInstance(
   for (const directory of [plan.layout.dir, plan.layout.userprofile, plan.layout.workdir]) {
     const made = await fs.makeDir(directory);
     if (!made.ok) return prerequisite(made.error, `could not create ${directory}`);
+  }
+
+  if (options.beforeStart !== undefined) {
+    try {
+      await options.beforeStart({ home: plan.layout.home, dir: plan.layout.dir, profile: plan.profileName });
+    } catch (error) {
+      return prerequisite(
+        failure(
+          "prerequisite",
+          `beforeStart hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          "the hook runs after the isolated home is copied and before the host starts; fix it and rerun",
+        ),
+      );
+    }
   }
 
   note(`starting the instance (${plan.launch.argv[0] ?? "no executable"})`);

@@ -422,6 +422,9 @@ describe("run command", () => {
           beforeLaunch: (_context: ScenarioContext, info: { readonly home: string; readonly dir: string; readonly profile: string }) => {
             hooks.push(`before:${info.profile}`);
           },
+          prepareHome: (_context: ScenarioContext, info: { readonly home: string; readonly dir: string; readonly profile: string }) => {
+            hooks.push(`prepare:${info.profile}`);
+          },
           afterLaunch: (_context: ScenarioContext, info: { readonly instance: unknown }) => {
             const handle = info.instance as InstanceHandle;
             launchedPid = handle.pid;
@@ -463,7 +466,7 @@ describe("run command", () => {
     );
 
     expect(result.code).toBe(0);
-    expect(hooks).toEqual(["before:web", "after:4242:true:true"]);
+    expect(hooks).toEqual(["before:web", "prepare:web", "after:4242:true:true"]);
     expect(launchedPid).toBe(4242);
     expect(fakeBrowser.launches).toHaveLength(1);
     expect(fakeBrowser.pages).toHaveLength(1);
@@ -471,6 +474,38 @@ describe("run command", () => {
     expect(fakeBrowser.sessionsClosed).toBe(1);
     const report = parseReport(result.out);
     expect(report.checks.find((check) => check.id === "page-handle")?.source).toBe("custom");
+  });
+
+  it("blocks the launch step when prepareHome throws, and never spawns", async () => {
+    const fixture = createLaunchFixture();
+    fixture.fs.seedFile("C:\\fake\\repo\\verify\\seed-fails.ts", "// fixture path\n");
+    const module = {
+      default: {
+        id: "seed-fails",
+        title: "the scenario seeds the home before launch",
+        hooks: {
+          prepareHome: () => {
+            throw new Error("the seed refused to write");
+          },
+        },
+        steps: [{ id: "launch-host", title: "launch the host", kind: "launch" }],
+      },
+    };
+
+    const result = await run(
+      fixture,
+      ["run", "verify/seed-fails.ts", "--work-root", fixture.paths.workRoot, "--json"],
+      { importModule: async () => module },
+    );
+
+    // A launch prerequisite failure is blocked, not failed: exit 2 is the
+    // documented "fix the environment and rerun" code.
+    expect(result.code).toBe(2);
+    const report = parseReport(result.out);
+    const check = report.checks.find((item) => item.id === "launch-host");
+    expect(check?.status).toBe("blocked");
+    expect(check?.actual).toContain("beforeStart hook failed: the seed refused to write");
+    expect(fixture.process.spawns).toHaveLength(0);
   });
 });
 

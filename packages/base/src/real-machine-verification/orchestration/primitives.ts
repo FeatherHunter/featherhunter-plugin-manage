@@ -110,8 +110,18 @@ export interface LaunchPrimitiveOptions {
   readonly port?: number;
   readonly keep?: boolean;
   readonly readyTimeoutMs?: number;
-  /** Runs after the plan exists and its directories are created, before the process starts. */
+  /**
+   * Runs after the plan exists and before the isolated home does: prepare paths
+   * outside the home here (the launcher copies the home from the real one).
+   */
   readonly beforeLaunch?: (info: { readonly home: string; readonly dir: string; readonly profile: string }) => void | Promise<void>;
+  /**
+   * Runs after the isolated home is copied and the instance directories exist,
+   * but before the host process starts. Seed startup state (workspace
+   * registries, settings rows) here: the host loads those stores in memory as
+   * it boots, so a later write is overwritten by the running host.
+   */
+  readonly prepareHome?: (info: { readonly home: string; readonly dir: string; readonly profile: string }) => void | Promise<void>;
   /** Runs after the process is ready; the handle is the L3 escape hatch. */
   readonly afterLaunch?: (handle: InstanceHandle) => void | Promise<void>;
 }
@@ -411,6 +421,14 @@ export function createPrimitives(options: PrimitiveOptions): Primitives {
           });
         }
       }
+      // prepareHome runs inside executeInstance, after copyProfile and the
+      // directory creation, so the hook can seed a home that actually exists.
+      const beforeStart =
+        launchOptions.prepareHome === undefined
+          ? undefined
+          : async (info: { readonly home: string; readonly dir: string; readonly profile: string }): Promise<void> => {
+              await launchOptions.prepareHome?.(info);
+            };
       note(`launching ${profileName}`);
       const executed = await executeInstance({
         ports,
@@ -418,6 +436,7 @@ export function createPrimitives(options: PrimitiveOptions): Primitives {
         runtime: options.runtimePaths,
         note,
         ...(launchOptions.readyTimeoutMs === undefined ? {} : { readyTimeoutMs: launchOptions.readyTimeoutMs }),
+        ...(beforeStart === undefined ? {} : { beforeStart }),
       });
       if (!executed.ok) return executed;
       const handle = makeHandle(executed.value);

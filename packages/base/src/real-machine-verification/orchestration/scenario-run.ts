@@ -460,6 +460,9 @@ async function executeStep(
         ...(definition.hooks?.beforeLaunch === undefined
           ? {}
           : { beforeLaunch: (info: { home: string; dir: string; profile: string }) => definition.hooks?.beforeLaunch?.(context, info) }),
+        ...(definition.hooks?.prepareHome === undefined
+          ? {}
+          : { prepareHome: (info: { home: string; dir: string; profile: string }) => definition.hooks?.prepareHome?.(context, info) }),
         ...(definition.hooks?.afterLaunch === undefined
           ? {}
           : { afterLaunch: (handle: InstanceHandle) => definition.hooks?.afterLaunch?.(context, { instance: handle }) }),

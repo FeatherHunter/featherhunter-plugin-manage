@@ -118,9 +118,28 @@ export interface ScenarioAfterLaunchHookInfo {
 /**
  * Startup hooks the scenario owns. They run inside the launch primitive so a
  * plugin repository can seed a first-run state without reimplementing launch.
+ *
+ * Three moments, in execution order:
+ *
+ * 1. `beforeLaunch` — the plan exists, but nothing has been written: the
+ *    isolated home does not exist yet (the launcher copies it from the real
+ *    home, and copying refuses to overwrite an existing target). Use it to
+ *    prepare paths *outside* the home, such as a workspace directory that will
+ *    be registered later.
+ * 2. `prepareHome` — the isolated home has just been copied and the instance
+ *    directories exist, but the host process has not started. This is the only
+ *    safe moment to seed state that the host reads during startup (workspace
+ *    registries, settings rows): the host initializes those stores in memory as
+ *    it boots and rewrites them from that memory, so a seed written after
+ *    startup is overwritten, and a seed written before the home exists is lost
+ *    with the copy.
+ * 3. `afterLaunch` — the instance is ready and the handle is live; use it only
+ *    to observe or to seed state the running host is expected to pick up from
+ *    disk on demand.
  */
 export interface ScenarioHooks<TContext = unknown> {
   readonly beforeLaunch?: (context: TContext, info: ScenarioLaunchHookInfo) => void | Promise<void>;
+  readonly prepareHome?: (context: TContext, info: ScenarioLaunchHookInfo) => void | Promise<void>;
   readonly afterLaunch?: (context: TContext, info: ScenarioAfterLaunchHookInfo) => void | Promise<void>;
 }
 
@@ -178,7 +197,7 @@ export function parseScenario<TContext>(definition: ScenarioDefinition<TContext>
     if (!isRecord(definition.hooks)) {
       return invalid(`scenario ${definition.id}: hooks must be an object`);
     }
-    for (const name of ["beforeLaunch", "afterLaunch"] as const) {
+    for (const name of ["beforeLaunch", "prepareHome", "afterLaunch"] as const) {
       const hook = definition.hooks[name];
       if (hook !== undefined && typeof hook !== "function") {
         return invalid(`scenario ${definition.id}: hooks.${name} must be a function`);

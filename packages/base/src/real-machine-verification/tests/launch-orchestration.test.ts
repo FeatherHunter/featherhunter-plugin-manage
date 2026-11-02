@@ -180,6 +180,28 @@ describe("planInstance", () => {
     if (!executed.ok) return;
     expect(executed.value.record.keep).toBe(true);
   });
+
+  it("runs beforeStart after the home exists and before the process starts", async () => {
+    const fixture = createLaunchFixture({ profileFiles: { "settings.json": "{}" } });
+    const plan = await planned(fixture);
+    const seen: string[] = [];
+    const executed = await executeInstance({
+      ports: fixture.ports,
+      plan,
+      runtime: RUNTIME,
+      beforeStart: async (info) => {
+        // The point of the hook: the isolated home already exists (so a seed
+        // survives), while the host has not booted yet (so a seed is read).
+        seen.push(`home-exists=${await fixture.fs.exists(plan.layout.home)}`);
+        seen.push(`spawns-at-hook=${fixture.process.spawns.length}`);
+        seen.push(`info=${info.profile}:${info.home === plan.layout.home}:${info.dir === plan.layout.dir}`);
+      },
+    });
+
+    expect(executed.ok).toBe(true);
+    expect(seen).toEqual(["home-exists=true", "spawns-at-hook=0", "info=web:true:true"]);
+    expect(fixture.process.spawns).toHaveLength(1);
+  });
 });
 
 /* ------------------------------------------------------ execute: success */
@@ -273,6 +295,26 @@ describe("executeInstance", () => {
 /* --------------------------------------------------- execute: failures */
 
 describe("executeInstance failures", () => {
+  it("fails as a prerequisite when beforeStart throws, before spawning", async () => {
+    const fixture = createLaunchFixture();
+    const plan = await planned(fixture);
+    const executed = await executeInstance({
+      ports: fixture.ports,
+      plan,
+      runtime: RUNTIME,
+      beforeStart: () => {
+        throw new Error("seed refused");
+      },
+    });
+
+    expect(executed.ok).toBe(false);
+    if (executed.ok) return;
+    expect(executed.error.stage).toBe("prerequisite");
+    expect(executed.error.message).toContain("beforeStart hook failed: seed refused");
+    expect(fixture.process.spawns).toHaveLength(0);
+    expect(await fixture.fs.exists(plan.layout.instancePath)).toBe(false);
+  });
+
   it("reports the captured stderr when the host exits before printing its URL", async () => {
     let seed: (request: SpawnRequest) => void = () => {};
     const dying = new ScriptedProcess({ pid: 777, alive: () => false, onSpawn: (request) => seed(request) });

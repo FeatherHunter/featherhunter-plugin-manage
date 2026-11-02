@@ -88,6 +88,8 @@ Cookie-cutter 规则：身份行里的「候选包 sha256」绑定候选 manifes
 
 插件特有的端到端场景写成仓内场景文件（`verify/scenarios/*.mjs` 或 `.ts`），用 `run` 跑；场景里可用的原语：`launch` / `stop` / `logs` / `page` / `model` / `install` / `skills` / `check` / `evidence` / `expect` / `sleep` / `instances` / `lastInstance` / `dispose`，另加自定义步骤。声明里的 `checks` 还能挂插件特有的自定义检查（与内建检查同一份报告词表）。
 
+场景文件可以声明三个起停钩子，时机不同：`beforeLaunch` 时隔离 home 还不存在（只能准备 home 外的路径）；`prepareHome` 时 home 刚复制完、进程还没启动，是种 workspace 注册表/设置这类「宿主启动时读进内存」状态的唯一可靠时机（启动后写会被宿主覆盖）；`afterLaunch` 时实例已就绪，适合观察或种宿主按需从磁盘读的状态。
+
 边界（判断标准：需要改核心就记为扩展性缺陷，不要私改核心）：
 
 - 需要**有头**浏览器（真全屏、多窗口预设）时，`run` 的场景原语固定 headless；这类检查应留成仓内有头脚本，不要塞进场景硬跑。
