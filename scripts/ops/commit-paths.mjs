@@ -11,7 +11,8 @@ import {
 const HELP = [
   "Usage: node scripts/ops/commit-paths.mjs --message-file <file> <path> [<path>...]",
   "",
-  "Commits only the listed paths (git add -- <paths>, then git commit -F <file>).",
+  "Commits only the listed paths (git add -- <paths>, then git commit --cleanup=verbatim -F <file>).",
+  "The message file is committed verbatim: no comment or whitespace cleanup is applied.",
   "",
   "Options:",
   "  --repo <path>       Repo root (default: current directory).",
@@ -27,6 +28,13 @@ const HELP = [
 
 function git(repo, args) {
   return runCapture("git", ["-C", repo].concat(args), {});
+}
+
+// Read-only calls must not refresh the index: without --no-optional-locks
+// `git status` rewrites .git/index with fresh stat data, which would make
+// --dry-run (and refusals) mutate the repository they promised not to touch.
+function gitRead(repo, args) {
+  return runCapture("git", ["-C", repo, "--no-optional-locks"].concat(args), {});
 }
 
 function fail(message, code) {
@@ -61,19 +69,32 @@ async function main() {
     const abs = path.resolve(repo, rel);
     const relToRepo = path.relative(repo, abs);
     if (relToRepo.startsWith("..") || path.isAbsolute(relToRepo)) { fail("path escapes the repo: " + rel, 2); return; }
-    const status = git(repo, ["status", "--porcelain", "--", relToRepo]);
+    const status = gitRead(repo, ["status", "--porcelain", "--", relToRepo]);
     if (status.code !== 0) { fail("git status failed for " + rel + ": " + status.stderr.trim(), 2); return; }
     const line = status.stdout.replace(/\r/g, "").trim();
     if (!line && !exists(abs)) { fail("path has no change and does not exist: " + rel, 2); return; }
     paths.push(relToRepo);
   }
 
-  const staged = git(repo, ["diff", "--cached", "--name-only"]);
-  if (staged.code !== 0) fail("git diff --cached failed: " + staged.stderr.trim(), 2);
+  const norm = (v) => v.replace(/\\/g, "/").replace(/\/+$/, "");
+  const staged = gitRead(repo, ["diff", "--cached", "--name-only"]);
+  if (staged.code !== 0) { fail("git diff --cached failed: " + staged.stderr.trim(), 2); return; }
   const stagedNames = staged.stdout.replace(/\r/g, "").split("\n").filter(Boolean);
-  if (stagedNames.length && !options["include-staged"]) {
-    console.log(yellow("the index already has staged changes:"));
-    for (const name of stagedNames) console.log("  " + name);
+  // Only *unrelated* staged work is a reason to refuse: a path the caller
+  // explicitly listed is exactly what this tool was asked to commit.
+  const requested = paths.map(norm);
+  const isRequested = (name) => {
+    const stagedPath = norm(name);
+    return paths.some((p, i) => {
+      if (stagedPath === requested[i]) return true;
+      const abs = path.join(repo, p);
+      return exists(abs) && fs.statSync(abs).isDirectory() && stagedPath.startsWith(requested[i] + "/");
+    });
+  };
+  const unrelated = stagedNames.filter((name) => !isRequested(name));
+  if (unrelated.length && !options["include-staged"]) {
+    console.error(yellow("the index already has unrelated staged changes:"));
+    for (const name of unrelated) console.error("  " + name);
     fail("refusing to commit; unstage them or pass --include-staged", 2);
     return;
   }
@@ -90,9 +111,8 @@ async function main() {
 
   let added = git(repo, ["add", "--"].concat(paths));
   if (added.code !== 0) { fail("git add failed: " + (added.stderr || added.stdout).trim(), 1); return; }
-  const after = git(repo, ["diff", "--cached", "--name-only"]);
+  const after = gitRead(repo, ["diff", "--cached", "--name-only"]);
   const stagedAfter = after.stdout.replace(/\r/g, "").split("\n").filter(Boolean);
-  const norm = (v) => v.replace(/\\/g, "/");
   const missing = paths.filter((p) => {
     const abs = path.join(repo, p);
     if (exists(abs) && fs.statSync(abs).isDirectory()) {
@@ -103,7 +123,9 @@ async function main() {
   });
   if (missing.length) { fail("git add did not stage: " + missing.join(", "), 1); return; }
 
-  const commitArgs = ["commit", "-F", messageFile];
+  // --cleanup=verbatim keeps the file's bytes exactly; git's default "strip"
+  // would drop trailing whitespace, leading blank lines and # comment lines.
+  const commitArgs = ["commit", "--cleanup=verbatim", "-F", messageFile];
   if (options["no-verify"]) commitArgs.push("--no-verify");
   const commit = git(repo, commitArgs);
   if (commit.code !== 0) {
@@ -111,9 +133,9 @@ async function main() {
     fail("git commit failed; staged paths were left in the index: " + paths.join(", "), 1);
     return;
   }
-  const hash = git(repo, ["rev-parse", "HEAD"]).stdout.trim();
-  const stat = git(repo, ["show", "--stat", "--oneline", "--no-color", "HEAD"]).stdout.replace(/\r/g, "").trim();
-  const files = git(repo, ["show", "--pretty=format:", "--name-only", "HEAD"]).stdout.replace(/\r/g, "").split("\n").filter(Boolean);
+  const hash = gitRead(repo, ["rev-parse", "HEAD"]).stdout.trim();
+  const stat = gitRead(repo, ["show", "--stat", "--oneline", "--no-color", "HEAD"]).stdout.replace(/\r/g, "").trim();
+  const files = gitRead(repo, ["show", "--pretty=format:", "--name-only", "HEAD"]).stdout.replace(/\r/g, "").split("\n").filter(Boolean);
   if (options.json) { emitJson({ ok: true, hash, message: plan.messageFirstLine, files, stat }); return; }
   console.log(green("committed " + hash));
   console.log(dim(stat.split("\n")[0]));

@@ -6,13 +6,13 @@
  * any clone, any cwd and on CI. Everything below is asserted across the
  * process boundary: exit codes, stdout JSON, stderr text and on-disk effects.
  */
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   REPO_ROOT,
   copyOpsToolkit,
-  hashDirectory,
   makeTempDir,
   removeTempDir,
   runOps,
@@ -36,10 +36,31 @@ function normalizePath(value: string): string {
   return process.platform === "win32" ? slashed.toLowerCase() : slashed;
 }
 
-/** The ops log dir must not change when a script only prints --help. */
+/**
+ * Fingerprint of the log files the scripts under test could write themselves.
+ *
+ * The shared .tmp/ops-logs directory is also where the gate writes its own
+ * per-step logs (base-verify-<stamp>-<step>.log) and where background jobs tee
+ * their output, so hashing the whole directory makes this assertion fail while
+ * the gate runs the tests. Scoping to the three scripts' own log names keeps the
+ * claim "these scripts' --help writes no logs" honest and still falsifiable.
+ */
+const OWNED_LOG = /^(?:matt-verify|repos-status|refresh-base)[-.]/;
+
 function logSnapshot(): string {
   const logDir = join(REPO_ROOT, ".tmp", "ops-logs");
-  return existsSync(logDir) ? hashDirectory(logDir) : "absent";
+  if (!existsSync(logDir)) return "absent";
+  const entries = readdirSync(logDir).filter((name) => OWNED_LOG.test(name)).sort();
+  if (entries.length === 0) return "none";
+  const hash = createHash("sha256");
+  for (const name of entries) {
+    const file = join(logDir, name);
+    hash.update(name);
+    hash.update("\u0000");
+    if (statSync(file).isFile()) hash.update(readFileSync(file));
+    hash.update("\u0000");
+  }
+  return hash.digest("hex");
 }
 
 describe("ops toolkit portability", () => {
