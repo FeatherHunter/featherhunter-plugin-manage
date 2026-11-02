@@ -1,6 +1,6 @@
 <!-- DSH-FORMAT: md-v1 -->
 <!-- DSH-TITLE: 交付自举：只服务 base 仓的门禁、发布取证与自助接入 -->
-<!-- DSH-STATUS: ready-for-agent -->
+<!-- DSH-STATUS: closed -->
 <!-- DSH-LABELS: ready-for-agent -->
 <!-- DSH-IDEMPOTENCY-KEY: deck-f9dc28e3-5978767 -->
 <!-- DSH-CREATED: 2026-11-02T14:38:02.402Z -->
@@ -126,5 +126,85 @@
 - 建议实施顺序：脚本路径可移植 + 扫描步骤 + 测试骨架 → CI → 发布后校验 → AGENTS 规则与导航 + 排查文档 → 日常工具测试。先写测试并确认旧行为会红，再实现。
 - 风险：CI 首跑会暴露脚本对本地绝对路径的隐含依赖（这正是本规格要修的）；registry 传播慢时校验步骤需给足超时（workflow 内显式设置）；发布后校验失败意味着包已发布，只能人工处置。
 - 门禁设计的一条纪律：任何“为了让测试通过而改测试预期”的做法不接受；测试的价值在于能在旧行为上红。
+
+## Comments
+
+### local — 2026-11-02T17:07:40.425Z
+# 规格收口：交付自举（本仓门禁、发布取证与自助接入）
+
+规格：`.scratch/交付自举-本仓门禁-发布取证-自助接入/spec.md`（票 00）。实施票 01–10 全部 closed。
+交付：仓库 `FeatherHunter/featherhunter-plugin-manage`，长期分支 `main`，验收提交 `1a6e2f65d79db514552adcb9d7080f58ef21e994`（`origin/main` 同一提交）。仓库无 PR 约定（`gh pr list --state all` 为空），按既有惯例直接推送 main。收口时另有一个只改规格/票面 markdown 的 deck 记录提交随本次关闭产生。
+验收时间：2026-11-03 01:05（Asia/Shanghai）。规格无单独验收标准，口径为 10 张实施票判据之和。
+
+## 一、逐票核对（打开票对照判据，看最终代码与测试，不只看关闭状态）
+
+- **01 可移植性与 ops 测试骨架**（`7184482`，合入 `6c2d6ec`）：`scripts/ops/lib/common.mjs` 用 `fileURLToPath(import.meta.url)` 推出 `OPS_DIR`/`REPO_ROOT`，`DEFAULT_REPOS.base = REPO_ROOT`；新增冻结夹具 `packages/base/test/ops/support/ops-fixtures.ts`（`runOps` 子进程、临时目录/复制工具箱/写文件/git 夹具，文件头写明冻结）；`test/ops/portability.test.ts` 3 例。核对：把工具箱复制到无 `packages/base` 的临时目录运行入口→exit 2 且 stderr 指向该临时目录（旧代码 exit 0）；真实仓任意 cwd 跑 `--only docs --json` 回执 `repo`=本仓根；跨仓脚本 `--help` 全部 exit 0。
+- **02 门禁源码扫描**（`13101d9`，合入 `aaa8340`）：`scripts/ops/scan-sources.mjs`（流式读、NUL 字节、`TextDecoder` fatal 判非法 UTF-8、不可读/过大，跳过 node_modules/.git/dist/.tmp/.local/.scratch 与非文本扩展）；`base-verify.mjs` 加入 scan 步骤（固定序 typecheck→tests→docs→scan→build，scan 进程内执行、summary `{scanned,issues}`）并同步 `--help` 与 `scripts/ops/README.md`；`test/ops/scan.test.ts` 10 例。核对：`node scripts/ops/base-verify.mjs --only scan` 真实仓 318 文件 0 issue exit 0；含 NUL 夹具 exit 1 并报文件路径。
+- **03 日志门禁汇总钉行为**（`177dc87`，合入 `63d8e3a`）：`scripts/ops/gate-summary.mjs` 无门禁行 exit 2 并说「未发现门禁行」，坏行（JSON 坏/字段缺失/负数/非整数）exit 1 且逐条列行号与原文，`--failures-only` 只列失败，JSON 字段 `{log,bytes,gates,resultLines,totalAssertions,failed,unparsed,ok}`，只读不改日志；`test/ops/gate-summary.test.ts` 8 例。核对：旧实现 2 红（无门禁行 exit 1；坏行 exit 0 自称全绿）→ 新实现 8/8。
+- **04 CI 门禁接入**（`2b12bb5`，合入 `04ee6d3`）：新增 `.github/workflows/ci.yml`（push 与 pull_request、Node 22、包目录 `npm ci` 用包内 lockfile 缓存、从仓库根调 `node scripts/ops/base-verify.mjs --json`；无逐条 npm 命令、无五仓路径、无 secrets、concurrency 取消旧跑）；`test/ops/ci-workflow.test.ts` 9 例。核对：本地用同一入口退出 0（见三）。
+- **05 发布后 tarball 校验接入**（`c116f96`，合入 `1b6050c`）：`publish-base.yml` 在 `npm publish` 后新增 verify 步骤（`working-directory: .`、`timeout-minutes: 20`、版本从 `packages/base/package.json` 读、调 `scripts/ops/base-release.mjs --skip-publish` 同一入口、JSON 写 `$RUNNER_TEMP`）与 upload-artifact（`if: always()`）；verify 步骤无 NODE_AUTH_TOKEN、无 `if`/continue-on-error/跳过输入；`test/ops/publish-verify.test.ts` 5 例（本地假 registry）、`publish-workflow.test.ts` 7 例。核对：5/5、7/7 绿。
+- **06 AGENTS.md 导航、边界与作业规则**（`86d2789`，合入 `f348c5a`）：AGENTS.md 16→53 行，导航 4 条指针（DESIGN.md `## 10. CLI 表面`、`## 11. 证据与身份链`；`docs/adr/0002-real-machine-verification-as-built.md` `## 决定`；AGENTS-USAGE.md `## 3. 证据与身份：先冻、再绑、再归档`）、边界三条、作业规则四条固定标题；`test/ops/agents-doc.test.ts` 5 例（指针目标存在且章节标题匹配、四条规则都在）。
+- **07 提交器**（`4254769`，合入 `d6b4353`）：`scripts/ops/commit-paths.mjs` 只提交指定路径、无关已暂存默认拒绝（`--include-staged` 放行）、越界路径拒绝、`--dry-run` 不写索引、消息 `git commit --cleanup=verbatim -F` 字节保真；`test/ops/commit-paths.test.ts` 9 例（临时 git 仓，`git show --name-only` 只含指定文件）。
+- **08 票面读取器**（`d4f04b4`，合入 `127fb01`）：`scripts/ops/tickets.mjs` 只读；跨 effort 同号 exit 1 且在 stderr 逐个列候选（effort/state/title/file），`--json` 给结构化 `candidates`；key 不存在 exit 1、repo 不存在 exit 2；`--effort` 改精确优先（修掉真实仓 base-package 与 base-package-rollout 的假歧义）；`test/ops/tickets.test.ts` 14 例（运行前后目录哈希一致，不写文件）。
+- **09 会话日志排查文档**（`cf48476`，合入 `aedfb30`）：`docs/排查-会话日志解压.md` 说明多帧 zstd 与 Node 只解第一帧（含 30MB 实测：218B/1 行 vs 12,314 帧/约 120MB/28,401 行），给出 Python `zstandard` `read_across_frames=True` 的复制即用命令与完整性验证；`test/ops/log-unzip-doc.test.ts` 4 例；`96b8b51` 在 AGENTS.md 加 `## 排查` 链入。核对：文档无真实凭据/个人绝对路径。
+- **10 消费者文档示例核对**（`c5abc15`，合入 `073b557`）：`packages/base/README.md` 与 `AGENTS-USAGE.md` 共 +11/−5（`node_modules/.bin/dsh-base` 可复制示例、`readme:init`、等价长命令、旗标分层与 `option(s) not valid for this command: --flag`、参数解析错误措辞）；未改文档结构与章节标题。核对：`npm run docs:check` 绿。说明：本票原实现子代理失败无收尾消息，由 Lead 接管完成并提交，此事实如实记录。
+
+## 二、逐条用户故事 → 实现或测试证据（22/22）
+
+1. push/PR 自动跑完整门禁：`.github/workflows/ci.yml`；`test/ops/ci-workflow.test.ts` 9 例（触发含 push/pull_request、调用本地同一入口、Node 版本）。
+2. 本地一条命令 = CI 同一条链：`scripts/ops/base-verify.mjs` 固定 `ALL_STEPS`；ci.yml 只调该入口；测试断言入口同名（ci-workflow 9 例）与步骤顺序（scan.test.ts 10 例含全链 JSON）。
+3. 失败即见失败步骤的结构化结果与日志路径：`base-verify --json` 输出 `steps[{id,ok,exitCode,logFile,summary}]`，默认失败即停（`--keep-going` 才继续）；本次 gate JSON 见三。
+4. 只跑子集：`--quick`（仅 typecheck+tests）、`--only <ids>`、`--filter`（help/README 已同步）；`portability.test.ts`（`--only docs`）、`scan.test.ts`（`--only scan`）。
+5. 源码 NUL/二进制报路径：`scripts/ops/scan-sources.mjs` + `scan.test.ts` 10 例（NUL 夹具 exit 1 报路径、非法 UTF-8、超大文件、跳过目录、干净树 exit 0）。
+6. 大日志一条命令汇总：`scripts/ops/gate-summary.mjs` + `gate-summary.test.ts` 8 例（门禁数/断言数/失败门禁、`--failures-only`、无门禁行 exit 2、坏行必须失败并列坏行）。
+7. 发布后下载 tarball 全验：`base-release.mjs` verify 链（轮询 registry→直接下载 tarball→sha1/sha256/sha512→包名/版本→dist 入口四标记 prepareHome/findWriteUnderRealHome/candidate-identity/runReleaseGate→tarball 内 CLI `--version`/capability→随包文档）；`publish-verify.test.ts` 5 例（本地假 registry，成功 JSON 含 dist/download/entry/cli）。
+8. 本地与 CI 同一份校验代码：`publish-base.yml` verify 步骤调 `scripts/ops/base-release.mjs --skip-publish`；`publish-workflow.test.ts` 7 例（publish 之后存在调用同一入口的步骤、无跳过开关/输入/条件、token 只在发布步骤）。
+9. 失败保留结构化证据与下载物：脚本失败分支保留 download/worktree 目录；workflow 用 `if: always()` 上传校验 JSON artifact；`publish-verify.test.ts` 覆盖 404/版本不符的失败回执。
+10. 传播延迟不被 npm pack notarget 误判：直接 fetch tarball（不用 npm pack）+ registry 轮询；`publish-verify.test.ts`「waits through registry propagation lag instead of failing the publish (exit 0)」（manifest 前 2 次 404，期望 exit 0 且请求≥3）。
+11. 任意克隆路径与 runner 可跑：`common.mjs` 从脚本位置推仓库根；`portability.test.ts` 3 例；`da9c3a3` 给 `runCommandLine` 加 POSIX `/bin/sh -c` 分支，使 ubuntu runner 不再依赖 ComSpec；ci.yml 从仓库根调用。
+12. README/AGENTS-USAGE 可复制示例：票 10 的 `c5abc15`；`npm run docs:check` 绿。
+13. 文档写明 base 不代跑五仓、不装本地 dist：AGENTS.md「边界：只建设 base」三条；`agents-doc.test.ts` 断言。
+14. AGENTS.md 指向权威文档与章节：AGENTS.md 导航段 4 条指针；`agents-doc.test.ts` 断言每个目标存在且章节标题匹配。
+15. 等待规则：AGENTS.md「### 等待规则」；`agents-doc.test.ts`。
+16. >90 秒后台跑并 Tee 日志：AGENTS.md「### 长任务规则」（`.tmp/ops-logs/<ticket>/` 被 gitignore）；`agents-doc.test.ts`。
+17. 三步以上先落脚本：AGENTS.md「### 多步操作规则」；`agents-doc.test.ts`。
+18. 只提交本票路径的提交器：`commit-paths.mjs` + `commit-paths.test.ts` 9 例（只含指定文件、无关暂存拒绝/显式放行、越界拒绝、dry-run、消息字节保真）。
+19. 只读票面读取器与跨 effort 歧义：`tickets.mjs` + `tickets.test.ts` 14 例（exit 1 候选、`--json candidates`、repo 不存在 exit 2、目录哈希前后一致）。
+20. 指针/CI 调用链/发布校验链都有测试守住：`agents-doc.test.ts` 5、`ci-workflow.test.ts` 9、`publish-workflow.test.ts` 7、`publish-verify.test.ts` 5。
+21. 多帧日志解压命令进排查文档：`docs/排查-会话日志解压.md` + `log-unzip-doc.test.ts` 4 例 + AGENTS.md `## 排查` 链入。
+22. 证据统一落 gitignore 临时目录且可事后读：`base-verify.mjs` 默认 `<repo>/.tmp/ops-logs`（`.gitignore` 的 `.tmp/`）、`--no-log` 可关；`base-release.mjs --download` 目录；workflow 校验 JSON 写 `$RUNNER_TEMP` 并以 artifact 留存；测试见 publish-workflow 与 portability 的「--help 不写日志」断言。
+
+## 三、检查命令与结果（在 1a6e2f6 上，2026-11-03 01:05 +08:00 复跑）
+
+- `git rev-parse HEAD` = `git ls-remote origin refs/heads/main` = `1a6e2f65d79db514552adcb9d7080f58ef21e994`。
+- 仓库规定检查（CI 用的同一入口，先删 `.tmp/ops-logs`）：`node scripts/ops/base-verify.mjs --json` → **exit 0**。步骤明细（`.tmp/gate-final-1a6e2f6.json`）：typecheck exit 0（1.45s）；tests exit 0（`80 passed | 1 skipped (81)` 文件、`1080 passed | 6 skipped (1086)` 用例、32.4s）；docs exit 0（`docs ok: README.md and AGENTS-USAGE.md match describe`）；scan exit 0（318 文件、0 issue、238ms）；build exit 0（1.68s，`build ok: core/index, client/index, node/index, node/cli, real-machine-verification/index, real-machine-verification/cli/main`）。日志在 `.tmp/ops-logs/`（gitignored）。
+- 复现：`git checkout 1a6e2f6` → `cd packages/base && npm ci` → 回仓库根跑 `node scripts/ops/base-verify.mjs --json`。
+- 备注：CI 首跑属远端外部状态，见五。
+
+## 四、交付证明
+
+- 长期分支 `main`，验收提交 `1a6e2f6`（`origin/main` 同一提交）。实施整合提交 `800556d`（`git show --stat`: 31 files changed，`feat/delivery-bootstrap` 以 `--no-ff` 合入），其后 `96b8b51`（docs 收尾）与 `1a6e2f6`（票面收口评论）。
+- 票级提交与合入：01 `7184482`→`6c2d6ec`；02 `13101d9`→`aaa8340`；03 `177dc87`→`63d8e3a`；04 `2b12bb5`→`04ee6d3`；05 `c116f96`→`1b6050c`；06 `86d2789`→`f348c5a`；07 `4254769`→`d6b4353`；08 `d4f04b4`→`127fb01`；09 `cf48476`→`aedfb30`；10 `c5abc15`→`073b557`。
+- 非票提交（收口时修复跨票缺陷/遗留，未新开票）：`607edf5`（dist 自举：干净克隆无 dist 时 dist-contract 先构建）、`da9c3a3`（`runCommandLine` POSIX 分支 + portability 日志快照只指纹被测脚本）、`a251531`（verify 模式轮询 registry，票 05 遗留）、`4544225`（spec 票面读取器退出码文字，票 08 遗留）、`96b8b51`（AGENTS 排查链入，票 09 遗留）。
+- 推送记录：`83e2b0a..800556d`、`800556d..96b8b51`、`96b8b51..1a6e2f6`（均 `main -> main`）。
+- 提交信息不含 `Closes #` 等自动关闭关键词；规格关闭只由本次 `deck_issue_patch` 执行。
+
+## 五、遗留处置
+
+- 票 05 登记的「--skip-publish 预检在传播窗口立即退 2」：已修 `a251531`（预检改轮询，超时才退 2）并新增传播窗口用例；`docs/base包-发布与回滚.md` §5 补「发布后自动校验失败」处置（deprecate 旧版本 + 修版本重发，不对同一版本重试 publish）。已合入 main。
+- 票 08 登记的 spec 文字与实现冲突：`4544225` 已改 spec.md:108 为「key 不存在退出 1、repo 不存在退出 2」。
+- 票 09 登记的可选后续「排查文档未链入」：`96b8b51` 已在 AGENTS.md 增加 `## 排查`。
+- CI 首跑（外部状态）：`ci.yml` 已有运行记录——`41484849326`（head `800556d`）被后续 push 的 concurrency 取消（cancelled，非失败）；`41486384986`（head `96b8b51`）同样被取消；head `1a6e2f6` 的 run `41487810450` 已触发、收口时 GitHub runner 仍 queued（job `base gates`，ubuntu-latest）。本地用 CI 同一条命令复跑全绿（见三）；配置内容由 `ci-workflow.test.ts` 9 例守住。远端首次真实执行结果需在 runner 分配后看 run 页。
+- 未合并分支（均为本次实施前既有、未触碰）：`prototype/header-action-cluster`（独有 `9e1ac64` 四方向原型、`253b0ff` 图标样张、`108b3c9` 图标样张 v2；一次性原型，不进产品）；`ticket/11-sync-doctor`（独有 `5bbfd8a`、`88f0948`；其实现已被 `5ff50de` 取代、未合入 main）。按「未合并分支保留并列出独有提交」处置，保留供审阅。
+- 未提交改动：无本次实施产生的未提交改动。工作区仅 `.scratch/base-package-rollout/issues/14-human-gate-真机与真实页面证据.md`（前一规格既有脏文件）与未跟踪 `docs/证据义务-业界机制调研.md`（非本次交付、来源待用户确认；均未提交、未触碰）。
+- 临时工作区与临时分支：t01–t10 共 10 个 worktree 已 `git worktree remove`，`D:\Temp\fh-wt` 已空（`git worktree list` 只剩主工作树）；`ticket/01`–`ticket/10` 与 `feat/delivery-bootstrap` 均以 `--merged main` 删除。
+- 临时文件：本次的 `.tmp/` 下 gate 结果/日志/任务书（gitignored）保留为证据，可整目录删除后再生成；`.tmp/ops-logs/` 保留最终 gate 的 5 个日志。
+- 新票：无。
+
+## 六、关闭前自检
+
+- 本评论写的提交 = 跑检查的那棵树：`1a6e2f6`，`origin/main` 同提交；工作树无本次实施产生的未提交改动（其后仅有本次关闭产生的规格/票面 markdown 记录提交）。
+- 检查结果来自本次会话（2026-11-03 01:05 +08:00）当场复跑，不是记忆：gate exit 0，JSON 明细在 `.tmp/gate-final-1a6e2f6.json`。
+- 10 张实施票均 closed，本次逐张复核了代码、测试与命令结果；关闭规格表示实施与收口证据齐备。仍交给用户/外部的两项：CI 远端首跑结果（排队中）、未跟踪 `docs/证据义务-业界机制调研.md` 的归属。
 
 ## 进度
