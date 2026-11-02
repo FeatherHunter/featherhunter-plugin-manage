@@ -15,7 +15,8 @@
 | `repos-status.mjs` | 六仓 base 钉版/安装形态/lock/verify/banner 偏差扫描 | 只读 |
 | `tickets.mjs` | 直接读 `.scratch` 本地票面，绕过 deck 的 scope 歧义 | 只读 |
 | `refresh-base.mjs` | 把消费仓已安装的 base 换成本地 dist（pnpm 硬链接安全） | 是（`--check`/`--dry-run` 除外） |
-| `base-verify.mjs` | base 的 typecheck / vitest / docs / build 一条链 | 只读（build 写 dist） |
+| `base-verify.mjs` | base 的 typecheck / vitest / docs / scan / build 一条链 | 只读（build 写 dist） |
+| `scan-sources.mjs` | 源码 / 脚本 / 测试 / 文档的 NUL 字节与 UTF-8 解码扫描（门禁 scan 步骤的实现） | 只读 |
 | `matt-verify.mjs` | matt 预检：生成源码、gate-map、typecheck，可选 ui/smoke/npm test | 只读（`--fix` 才会重生成） |
 | `base-release.mjs` | 干净 worktree 发布 + registry tarball 校验（也支持只校验已发布版本） | 是（发布/下载） |
 | `commit-paths.mjs` | 只提交指定路径，提交消息从文件读 | 是 |
@@ -50,11 +51,19 @@
 
 ### 3. base 的提交前门禁
 
-    node scripts/ops/base-verify.mjs                 # typecheck -> vitest -> docs:check -> build
+    node scripts/ops/base-verify.mjs                 # typecheck -> vitest -> docs:check -> scan -> build
     node scripts/ops/base-verify.mjs --quick         # typecheck + vitest
+    node scripts/ops/base-verify.mjs --only scan     # 只跑源码扫描
     node scripts/ops/base-verify.mjs --only typecheck,tests --json
 
 日志落在 `<repo>/.tmp/ops-logs/`（仓库已 gitignore `.tmp/`）。
+
+`scan` 步骤走 `scan-sources.mjs`：扫描 `packages/base/{src,scripts,test,demo}`、`scripts/`
+（含 ops）、`docs/` 与仓库根目录的文本文件，跳过 `node_modules`、`.git`、`dist`、`.tmp`、
+`.local`、`.scratch` 与非文本扩展名。命中 NUL 字节或无法按 UTF-8 解码的文件时，列出文件路径并
+exit 1；干净树 exit 0。`--json` 时问题列表在 scan 步骤的 `summary.issues`（绝对路径、仓库内
+相对路径、原因与说明），stdout 只有 JSON。`base-verify.mjs --help` 列出固定步骤顺序与
+`--only scan` 的用法。
 
 ### 4. matt 真机验收前的预检
 
@@ -97,8 +106,9 @@ candidate-identity / runReleaseGate）→ 删 worktree。成功才清理证据�
 
 ## 安全模型
 
-- 默认只读；写盘只发生在 `refresh-base`（删目标副本再拷）、`base-verify --build`（dist）、
-  `matt-verify --fix/--ui/--smoke/--npm-test`、`base-release`、`commit-paths` 这些明确动作上。
+- 默认只读；`base-verify` 的 scan 步骤与 `scan-sources` 只读。写盘只发生在 `refresh-base`
+  （删目标副本再拷）、`base-verify --build`（dist）、`matt-verify --fix/--ui/--smoke/--npm-test`、
+  `base-release`、`commit-paths` 这些明确动作上。
 - `refresh-base` 拒绝替换解析到发布仓内或不在 `node_modules` 下的目标；不 `pnpm install`、不改 lockfile。
 - `base-release` 在版本已发布、commit 内 package.json 版本不符、npm 未登录、worktree 已存在时直接 exit 2。
 - `commit-paths` 拒绝越界路径与已暂存的无关改动。
