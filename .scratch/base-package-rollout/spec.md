@@ -25,20 +25,20 @@
 - HUMAN-GATE：真机扫飞书/QQ/微信各一次、真实浏览器 dialog 顶层与焦点回归、GitHub 上四块观感、至少一仓真实构建链吃下产物（palette 最高风险）、中国大陆网络三通道全失败降级，由仓主确认。
 
 ## 当前状态
-- 票 08–14 已全部关闭；五仓已全部接入 base 并统一钉 `dsh-featherhunter-plugin-base: "0.1.7"`（2026-11-02 提交并推送，五仓 HEAD==origin）；五仓当前已发 npm 版本：prompt `0.4.40`、deck `1.9.0-beta.33`、palette `2.1.11`、im-companion `0.2.26`、ilife `0.3.86`（这些发布版本内部仍内联 base 0.1.5；五仓工作树已含 0.1.7 的渠道徽标弹窗，待下一轮发版生效）。web profile 保持 npm 精确版本（§7.5）。
+- 票 08–15 已全部关闭（01–07 是规格容器建立前的重复票，已按重复关闭）；五仓已全部接入 base 并统一钉 `dsh-featherhunter-plugin-base: "0.1.7"`（2026-11-02 提交并推送，五仓 HEAD==origin）；五仓当前已发 npm 版本：prompt `0.4.40`、deck `1.9.0-beta.33`、palette `2.1.12`（web/desktop profile 仍为 2.1.11）、im-companion `0.2.26`、ilife `0.3.86`（这些发布版本内部仍内联 base 0.1.5；五仓工作树已含 0.1.7 的渠道徽标弹窗，待下一轮发版生效）。web profile 保持 npm 精确版本（§7.5）。
 - 票 14 HUMAN-GATE 已于 2026-11-03 01:5x 关闭（进度 100%）：B 组 owner 已确认；D 组 desktop profile 安装形态由 owner 2026-11-01 15:27 完成、16:42 反馈无问题，代理核验通过（核对清单 §7.7）；E1–E3 断网降级代理实测 PASS（§7.6）；C4/C6 新弹窗（18px 渠道徽标）按票内 Option ① 用 base 0.1.8 本地 demo 重验 PASS（§7.8，截图 `.tmp/hg-018-*.png`）。
 - **C4/C6 状态（2026-11-01 16:14 作废 → 2026-11-03 重验）**：base 仓 `94bbace` 渠道徽标改动后旧证据作废；本轮按 Option ① 用 base 0.1.8 本地 demo 重验 PASS（三档列数/无溢出、徽标 18×18+SVG+品牌色、中英全量切换），详见核对清单 §7.8。
-- 票 14 已关闭；请仓主在规格详情页点「完成」按钮做最终收口核对（不是自动关闭）。
+- 票 14 已关闭；本规格收口进行中：收尾评论与关闭经 `deck_issue_patch` 写入，写入后文末追加「收口记录（规格关闭，2026-11-03）」；规格详情页的「完成」按钮由仓主核对后点击（不是自动关闭）。
 
 ## 票号说明
-最早建的 01–07 是在本规格容器存在之前以普通 issue 建的，挂不到规格下；已按规格体系重建为 08–14（kind=spec-ticket、父票 00、依赖边齐全），01–07 已作为重复票关闭。
+最早建的 01–07 是在本规格容器存在之前以普通 issue 建的，挂不到规格下；已按规格体系重建为 08–14（kind=spec-ticket、父票 00、依赖边齐全），01–07 已作为重复票关闭；15 是 2026-10-31 追加需求票（页头三件套 + 微信群码换发），同样挂在父票 00 下。
 
 ## 验收记录（票 13 回填，2026-10-31 14:10 +08:00）
 - 五仓自动验收全部通过：聚合 `readme:sync --check --all --repos D:\dsh-plugin` exit 0（11 份 README up to date）、`doctor --repos D:\dsh-plugin` exit 0 全绿；五仓构建/测试通过（prompt check+build、deck verify-parallel 459/459、palette build+312 tests、im check 595、ilife tsc -b+build+97 定向测试）；git 对比确认未新增 workflow 文件；base 仓 typecheck + vitest（314 pass）全绿。
 - 证据与逐仓明细：`docs/五仓接入-base-0.0.2-验收记录.md`。
 - 五仓接入提交（本地提交，尚未推送）：dsh-prompt `944905c`、deck `42280a82`、palette `862a4c2`、im-companion `76dd0f6`、ilife `d7cdda30`。
 - 票 08–13 已全部关闭；票 14 HUMAN-GATE 待仓主真机/真实页面证据（扫码三群、浏览器内 dialog 顶层与焦点、GitHub 观感、大陆网络三通道降级）。
-- 注：markdown 后端的 spec 容器不支持 deck_issue_patch 评论（工具报 `map.md not-found`），本条按工作区约定直接回填在 spec.md 正文。
+- 注（2026-11-03 更正）：此前误记「markdown 后端的 spec 容器不支持 deck_issue_patch 评论」；实为 `deck_issue_patch` 作用在 spec 容器时需传 `feature:`（传 `effort:` 会按探索地图解析并报 `map.md not-found`）。本规格的收尾评论与关闭已按正确参数经 `deck_issue_patch` 写回 `## Comments` 与状态行。
 
 ## 验收记录（票 15 回填，2026-10-31 17:55 +08:00）
 - 追加需求（用户 2026-10-31 提出）：页头三件套（联系 / Star / Issue）+ 三项合一控件 + 公共 HoverTip；微信群二维码换发（旧码 10-30 到期）。
