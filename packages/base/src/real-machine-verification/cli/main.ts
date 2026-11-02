@@ -258,107 +258,61 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
     return EXIT_CODES.blocked;
   }
 
+  // Every implemented command but the pure list helpers takes the same deps
+  // object; building it once keeps a new command to a single line of wiring.
+  const ports = deps.ports ?? createNodePorts();
+  const common = {
+    ports,
+    io,
+    runtime: runtimeFacts(deps),
+    ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
+  };
+
   if (parsed.command === "self-check") {
-    return runSelfCheckCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runSelfCheckCommand(parsed, common);
   }
 
   if (parsed.command === "launch") {
-    return runLaunchCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runLaunchCommand(parsed, common);
   }
 
   if (parsed.command === "isolation") {
-    return runIsolationCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runIsolationCommand(parsed, common);
   }
 
   if (parsed.command === "freeze") {
-    return runFreezeCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runFreezeCommand(parsed, common);
   }
 
   if (parsed.command === "model") {
-    return runModelCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runModelCommand(parsed, common);
   }
 
   if (parsed.command === "concurrent") {
-    return runConcurrentCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runConcurrentCommand(parsed, common);
   }
 
   if (parsed.command === "batch") {
-    return runBatchCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runBatchCommand(parsed, common);
   }
 
   if (parsed.command === "run") {
-    return runScenarioCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runScenarioCommand(parsed, common);
   }
 
   if (parsed.command === "install") {
-    return runInstallCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runInstallCommand(parsed, common);
   }
 
   if (parsed.command === "skills") {
-    return runSkillsCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runSkillsCommand(parsed, common);
   }
 
   if (parsed.command === "single-instance") {
-    return runSingleInstanceCommand(parsed, {
-      ports: deps.ports ?? createNodePorts(),
-      io,
-      runtime: runtimeFacts(deps),
-      ...(deps.loadDeclaration === undefined ? {} : { loadDeclaration: deps.loadDeclaration }),
-    });
+    return runSingleInstanceCommand(parsed, common);
   }
 
   if (parsed.command === "evidence") {
-    const ports = deps.ports ?? createNodePorts();
     return runEvidenceCommand(parsed, {
       ports,
       io,
@@ -375,11 +329,11 @@ export async function main(argv: readonly string[] = process.argv.slice(2), deps
   }
 
   if (parsed.command === "cleanup") {
-    return runCleanupCommand(parsed, { ports: deps.ports ?? createNodePorts(), io });
+    return runCleanupCommand(parsed, { ports, io });
   }
 
   if (parsed.command === "stop") {
-    return runStopCommand(parsed, { ports: deps.ports ?? createNodePorts(), io });
+    return runStopCommand(parsed, { ports, io });
   }
 
   io.stderr(`${CLI_NAME}: "${parsed.command}" reached an unexpected dispatch branch\n`);

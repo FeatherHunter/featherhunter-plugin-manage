@@ -2,6 +2,8 @@
 
 > 本文是该能力的**唯一**规划：不分期、不留「第二期再说」的口子。所有能力在同一批交付。
 > 规则的直接来源：用户 2026-11-01 的决策（base 掌控完整核心；使用方可选择；TS 化；自解释目录；完全解耦；对抗式审查；不过度发散）。
+>
+> **实施状态（as-built，2026-11-02）**：本文件是开工前的完整规划，能力已按它交付。实现过程中被现实约束取代的几处（L2 门面 `createHarness`、`tests/negative/` 目录形态、§12 环境白名单、§3/§5/§16 里部分文件名、DoD #8 的迁移比例）以 `docs/adr/0002-real-machine-verification-as-built.md` 为准；实际模块布局以 `src/real-machine-verification/` 的源码树为准。
 
 ---
 
@@ -22,10 +24,10 @@
 | 5 | 模型：三件套 + 跨条目引用一致性 + 凭据三段查找；`--fix` 二次运行零写入 | 文件 mtime/hash 不变 |
 | 6 | 技能：用**集合相等**判定，不受「模型可见数量」影响 | 造 27 里 16 个 hidden 的夹具 |
 | 7 | 秘密：canary 密钥跑全流程，所有 stdout/stderr/JSON/计划/日志 grep 零命中 | 全局 grep 断言 |
-| 8 | matt 迁移：删除 >85% 通用代码，既有门禁保持绿，能力不减反增 | `git diff --stat` + 门禁全绿 |
+| 8 | matt 迁移：删除 >85% 通用代码，既有门禁保持绿，能力不减反增 | `git diff --stat` + 门禁全绿（实测删除 70.2%：保留项是插件特有工具，见 ADR-0002 §5） |
 | 9 | 第二仓接入：palette ≤20 行 profile + 2 条 script 跑通 self-check | 实际提交 |
-| 10 | **AI 未预置场景**：不改 base 写出并跑通一个我们没预置的场景 | 见 §14 |
-| 11 | 反例矩阵：每条检查都有能把打红的夹具，且全部为红 | 反例测试全量跑（每条检查专门的「必须红」测试） |
+| 10 | **AI 未预置场景**：不改 base 写出并跑通一个我们没预置的场景 | 见 §14（以 `verify/scenarios/*.ts` 场景文件交付，不是 `createHarness`；见 ADR-0002 §1） |
+| 11 | 反例矩阵：每条检查都有能把打红的夹具，且全部为红 | 反例测试全量跑（「必须红」夹具内联在各门禁测试里，断言门禁拒绝坏输入；见 ADR-0002 §2） |
 | 12 | 架构门禁：依赖方向 / 无插件常量 / 零依赖 / describe 与文档一致 | 4 条扫描脚本 |
 | 13 | **文档即入口**：一个只读 README 的新插件仓能自己完成接入并跑通 `self-check`，全程不问人 | 独立子代理只拿 README 在陌生仓执行；凡需要提问/猜测处一律记为文档缺陷（用户 2026-11-01 追加的硬要求） |
 
@@ -40,6 +42,8 @@
 **判据**：随机 10 个 matt 现有命令，≥8 个必须能在**零改 base**的前提下表达；需要改 base 才能表达 = 扩展性缺陷 = bug。
 
 ## 3. 目录与文件清单（一个能力、一个目录、全部自包含）
+
+> 下表的文件名是开工计划；实际文件以源码树为准（例如 `runtime/dsh/*`、`orchestration/*` 的命名与下表有出入）。
 
 ```
 packages/base/src/real-machine-verification/
@@ -111,7 +115,7 @@ packages/base/src/real-machine-verification/
 │       ├── batch.ts · run.ts · evidence.ts · cleanup.ts
 │
 └── tests/                        自包含（含反例矩阵与架构门禁）
-    ├── architecture.test.ts      四条门禁：依赖方向/无插件常量/零依赖/describe 同步
+    ├── architecture.test.ts      三条门禁：依赖方向/无插件常量/零依赖（describe 同步在 test/docs-sync.test.ts）
     ├── negative/*.test.ts        每条检查一个"必须红"夹具
     ├── contracts/*.test.ts       纯判据（不需要真机）
     ├── runtime/*.test.ts         端口替身驱动
@@ -140,14 +144,16 @@ adapters → contracts（仅接口）
 contracts → （无）
 ```
 
-四条硬门禁（`tests/architecture.test.ts`，任一红则整个能力不交付）：
+四条硬门禁（前三条在 `tests/architecture.test.ts`，第四条在 `test/docs-sync.test.ts`——docs 读 `scripts/`，而 `src` 下测试静态 import 它会让声明构建 red；任一红则整个能力不交付）：
 
 1. **方向**：禁止 `contracts` import 上层；禁止 `adapters` 被 runtime 反向依赖；禁止本目录 import base 的 `core/`、`client/`；禁止 base 其他目录 import 本目录。
-2. **无插件常量**：本目录（除 `tests/fixtures/`）禁止出现任何具体插件名、`.dsh-<插件缓存>` 字面量、profile 名常量；一切差异来自 `VerificationProfile`。
+2. **无插件常量**：本目录（除 `tests/fixtures/`）禁止出现任何具体插件名、`.dsh-<插件缓存>` 字面量、profile 名常量；一切差异来自 `VerificationProfile`。DSH 宿主 schema key（`llm-pi-ai`、`agent-default-model`）不是插件身份，属允许例外（见 ADR-0002 §4）。
 3. **零依赖**：esbuild metafile 里本入口的非相对 import 只能是 `node:` 前缀。
 4. **文档同步**：`describe()` 的检查项/命令/退出码表必须与 `AGENTS-USAGE.md` 对应段落逐字一致（生成 + 校验）。
 
 ## 5. 对外 API（完整签名）
+
+> as-built：L2 以 `index.ts` 导出的原语交付（`orchestration/primitives.ts`、`orchestration/instance.ts`、`orchestration/scenario-run.ts`、`contracts/scenario.ts`），本节的 `createHarness`/`Harness` 是开工计划，未实现（见 ADR-0002 §1）。
 
 ```ts
 // index.ts
@@ -344,7 +350,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 
 ## 12. 安全与秘密
 
-- 环境文件白名单（默认 `PATH`、`GITLAB_TOKEN`、`GLAB_CONFIG_DIR`，可按 profile 扩展但必须显式声明）。
+- 环境白名单分层（as-built，spec「父进程环境不得整体下传」为准）：`BASE_ENV_ALLOWLIST` 的宿主管道变量 → profile 声明的 `instanceEnvAllowlist`（插件特有变量名由插件仓声明，如 matt 的 `GLAB_CONFIG_DIR`/`GITLAB_TOKEN`/`GLAB_BIN`）→ 固定实例变量 → 模型密钥最后注入。核心不硬编码任何插件变量名（见 ADR-0002 §3）。
 - 凭据三段查找（批次 home → 真实 home → 进程环境），**只注入子进程**；所有输出只报来源名。
 - 报错只给文件/行号/变量名，永不回显原行内容。
 - 计划（`--dry-run`）/instance.json/回执里**零秘密值**。
@@ -367,7 +373,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 | 新鲜度 | HEAD 不动但 main 前进 | 造基线前进夹具 |
 | 归档 | 归档后又被重跑覆盖 | 同批重跑两次，断言归档不变 |
 
-**执行**：每条在 `tests/negative/*.test.ts` 里，CI 要求「这些用例必须失败」，失败即门禁红。
+**执行**：每条检查的「必须红」夹具内联在对应门禁测试里，测试断言「门禁拒绝了坏输入」（rather than 一个必须失败的用例文件）；CI 要求这些断言全绿，坏输入被放过即门禁红。见 ADR-0002 §2。
 
 ## 14. 「AI 未预置场景」的验收（这条要讲清楚）
 
@@ -405,7 +411,7 @@ dsh-verify cleanup [--yes] [--keep-batches 2]
 | W6 | 证据与身份 | `evidence/**`、`identity`、`candidate/batch-rules` | DoD 1/4/11 |
 | W7 | 编排与 CLI | `orchestration/**`、`cli/**` | L1 全部命令可用；`describe` 与文档同步 |
 | W8 | 适配器 | `adapters/**` | 缺省时 `blocked`，注入时生效 |
-| W9 | 反例与门禁 | `tests/negative/**`、`tests/architecture.test.ts` | DoD 11/12 |
+| W9 | 反例与门禁 | `tests/architecture.test.ts`（方向/无插件常量/零依赖 + 合成反例）+ `test/docs-sync.test.ts`（文档同步）；反例内联在各门禁测试，不另建 `tests/negative/` | DoD 11/12 |
 | W10 | 文档 | `README.md`、`AGENTS-USAGE.md`（生成） | 与 `describe()` 一致 |
 | W11 | matt 迁移 | matt 仓：profile + 场景 + 删除通用代码 | DoD 8 |
 | W12 | 四仓接入 | palette / im / prompt / ilife：各一份 profile + script | DoD 9（palette 实际跑通） |

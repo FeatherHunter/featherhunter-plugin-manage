@@ -7,7 +7,8 @@
  * test is the boring one that catches the real failure mode — someone edited the
  * description and forgot to run `npm run docs:sync`.
  */
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -91,5 +92,32 @@ describe("documents on disk", () => {
     const result = checkDocs(PACKAGE_ROOT);
     expect(result.problems).toEqual([]);
     expect(result.ok).toBe(true);
+  });
+});
+
+// This is architecture gate 4 (DESIGN.md §4) and it lives here, not in
+// src/real-machine-verification/tests/architecture.test.ts: `checkDocs` comes from
+// scripts/, which is outside `src`, and tsconfig.build.json pins rootDir to `src` —
+// a static import from a test under src would fail the declaration build (TS6059).
+describe("the gate has teeth", () => {
+  it("reports a stale block and a missing document on a synthetic root", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "dsh-verify-docs-gate-"));
+    const docsDir = resolve(root, "src", "real-machine-verification");
+    mkdirSync(docsDir, { recursive: true });
+    const staleBlock = [REFERENCE_BEGIN, "stale block", REFERENCE_END].join("\n");
+    writeFileSync(resolve(docsDir, "README.md"), staleBlock, "utf8");
+
+    // AGENTS-USAGE.md is absent, so one problem must be a missing document.
+    const missing = checkDocs(root);
+    expect(missing.ok).toBe(false);
+    expect(missing.problems).toHaveLength(2);
+    expect(missing.problems.map((problem) => problem.problem)).toContain("missing document");
+    expect(missing.problems.some((problem) => problem.problem.includes("stale"))).toBe(true);
+
+    writeFileSync(resolve(docsDir, "AGENTS-USAGE.md"), staleBlock, "utf8");
+    const stale = checkDocs(root);
+    expect(stale.ok).toBe(false);
+    expect(stale.problems).toHaveLength(2);
+    expect(stale.problems.every((problem) => problem.problem.includes("stale"))).toBe(true);
   });
 });

@@ -79,146 +79,97 @@ export interface ParsedArgs {
   readonly given: readonly string[];
 }
 
+/**
+ * Every flag this build accepts, declared once.
+ *
+ * Each spec owns its key (the `ParsedArgs` field), its canonical spelling and any
+ * aliases; the lookup maps, the canonical-spelling record and the default-value
+ * objects are all derived from these three tables. Adding a flag is therefore one
+ * row, not four edits that can drift apart.
+ */
+interface FlagSpec<Key extends string> {
+  readonly key: Key;
+  /** Non-empty; the first spelling is canonical (reported in `given` and errors). */
+  readonly spellings: readonly [string, ...string[]];
+}
+
 /** Flags that consume the next argument as their value. */
-type ValueFlag =
-  | "declaration"
-  | "profile"
-  | "workRoot"
-  | "port"
-  | "id"
-  | "dir"
-  | "count"
-  | "profiles"
-  | "out"
-  | "name"
-  | "baseRef"
-  | "batch"
-  | "candidate"
-  | "archiveRoot"
-  | "tgz"
-  | "method"
-  | "provider"
-  | "model"
-  | "apiKeyEnv"
-  | "concurrency"
-  | "keepBatches"
-  | "keepHomes";
+const VALUE_FLAG_SPECS = [
+  { key: "declaration", spellings: ["--declaration"] },
+  { key: "profile", spellings: ["--profile"] },
+  { key: "workRoot", spellings: ["--work-root"] },
+  { key: "port", spellings: ["--port"] },
+  { key: "id", spellings: ["--id"] },
+  { key: "dir", spellings: ["--dir"] },
+  { key: "count", spellings: ["--count"] },
+  { key: "profiles", spellings: ["--profiles"] },
+  { key: "out", spellings: ["--out"] },
+  { key: "name", spellings: ["--name"] },
+  { key: "baseRef", spellings: ["--base-ref"] },
+  { key: "batch", spellings: ["--batch"] },
+  { key: "candidate", spellings: ["--candidate"] },
+  { key: "archiveRoot", spellings: ["--archive-root"] },
+  { key: "tgz", spellings: ["--tgz"] },
+  { key: "method", spellings: ["--method"] },
+  { key: "provider", spellings: ["--provider"] },
+  { key: "model", spellings: ["--model"] },
+  { key: "apiKeyEnv", spellings: ["--api-key-env"] },
+  { key: "concurrency", spellings: ["--concurrency"] },
+  { key: "keepBatches", spellings: ["--keep-batches"] },
+  { key: "keepHomes", spellings: ["--keep-homes"] },
+] as const satisfies readonly FlagSpec<string>[];
+
+type ValueFlag = (typeof VALUE_FLAG_SPECS)[number]["key"];
 
 /** Flags that may be given more than once; every occurrence is kept. */
-type MultiValueFlag = "file" | "check";
+const MULTI_VALUE_FLAG_SPECS = [
+  { key: "file", spellings: ["--file"] },
+  { key: "check", spellings: ["--check"] },
+] as const satisfies readonly FlagSpec<string>[];
 
-const VALUE_FLAGS = new Map<string, ValueFlag>([
-  ["--declaration", "declaration"],
-  ["--profile", "profile"],
-  ["--work-root", "workRoot"],
-  ["--port", "port"],
-  ["--id", "id"],
-  ["--dir", "dir"],
-  ["--count", "count"],
-  ["--profiles", "profiles"],
-  ["--out", "out"],
-  ["--name", "name"],
-  ["--base-ref", "baseRef"],
-  ["--batch", "batch"],
-  ["--candidate", "candidate"],
-  ["--archive-root", "archiveRoot"],
-  ["--tgz", "tgz"],
-  ["--method", "method"],
-  ["--provider", "provider"],
-  ["--model", "model"],
-  ["--api-key-env", "apiKeyEnv"],
-  ["--concurrency", "concurrency"],
-  ["--keep-batches", "keepBatches"],
-  ["--keep-homes", "keepHomes"],
-]);
+type MultiValueFlag = (typeof MULTI_VALUE_FLAG_SPECS)[number]["key"];
 
+/** Boolean switches, including the short aliases. */
+const BOOLEAN_FLAG_SPECS = [
+  { key: "json", spellings: ["--json"] },
+  { key: "help", spellings: ["--help", "-h"] },
+  { key: "version", spellings: ["--version", "-v"] },
+  { key: "screen", spellings: ["--screen"] },
+  { key: "keep", spellings: ["--keep"] },
+  { key: "dryRun", spellings: ["--dry-run"] },
+  { key: "all", spellings: ["--all"] },
+  { key: "fix", spellings: ["--fix"] },
+  { key: "failFast", spellings: ["--fail-fast"] },
+  { key: "collectAll", spellings: ["--collect-all"] },
+  { key: "yes", spellings: ["--yes"] },
+  { key: "includePkg", spellings: ["--include-pkg"] },
+  { key: "allowDirty", spellings: ["--allow-dirty"] },
+  { key: "allowStale", spellings: ["--allow-stale"] },
+] as const satisfies readonly FlagSpec<string>[];
+
+type BooleanFlag = (typeof BOOLEAN_FLAG_SPECS)[number]["key"];
+
+function lookupMap<Key extends string>(specs: readonly FlagSpec<Key>[]): ReadonlyMap<string, Key> {
+  const map = new Map<string, Key>();
+  for (const spec of specs) {
+    for (const spelling of spec.spellings) map.set(spelling, spec.key);
+  }
+  return map;
+}
+
+function canonicalRecord<Key extends string>(specs: readonly FlagSpec<Key>[]): Readonly<Record<Key, string>> {
+  const record = {} as Record<Key, string>;
+  for (const spec of specs) record[spec.key] = spec.spellings[0];
+  return record;
+}
+
+const VALUE_FLAGS = lookupMap(VALUE_FLAG_SPECS);
 /** The spelling reported in `given`; `--flag=value` still reports the flag name. */
-const VALUE_CANONICAL: Readonly<Record<ValueFlag, string>> = {
-  declaration: "--declaration",
-  profile: "--profile",
-  workRoot: "--work-root",
-  port: "--port",
-  id: "--id",
-  dir: "--dir",
-  count: "--count",
-  profiles: "--profiles",
-  out: "--out",
-  name: "--name",
-  baseRef: "--base-ref",
-  batch: "--batch",
-  candidate: "--candidate",
-  archiveRoot: "--archive-root",
-  tgz: "--tgz",
-  method: "--method",
-  provider: "--provider",
-  model: "--model",
-  apiKeyEnv: "--api-key-env",
-  concurrency: "--concurrency",
-  keepBatches: "--keep-batches",
-  keepHomes: "--keep-homes",
-};
-
-const MULTI_VALUE_FLAGS = new Map<string, MultiValueFlag>([
-  ["--file", "file"],
-  ["--check", "check"],
-]);
-
-const MULTI_VALUE_CANONICAL: Readonly<Record<MultiValueFlag, string>> = {
-  file: "--file",
-  check: "--check",
-};
-
-type BooleanFlag =
-  | "json"
-  | "help"
-  | "version"
-  | "screen"
-  | "keep"
-  | "dryRun"
-  | "all"
-  | "fix"
-  | "failFast"
-  | "collectAll"
-  | "yes"
-  | "includePkg"
-  | "allowDirty"
-  | "allowStale";
-
-const BOOLEAN_FLAGS = new Map<string, BooleanFlag>([
-  ["--json", "json"],
-  ["--screen", "screen"],
-  ["--keep", "keep"],
-  ["--dry-run", "dryRun"],
-  ["--all", "all"],
-  ["--fix", "fix"],
-  ["--fail-fast", "failFast"],
-  ["--collect-all", "collectAll"],
-  ["--yes", "yes"],
-  ["--include-pkg", "includePkg"],
-  ["--allow-dirty", "allowDirty"],
-  ["--allow-stale", "allowStale"],
-  ["--help", "help"],
-  ["-h", "help"],
-  ["--version", "version"],
-  ["-v", "version"],
-]);
-
-const BOOLEAN_CANONICAL: Readonly<Record<BooleanFlag, string>> = {
-  json: "--json",
-  help: "--help",
-  version: "--version",
-  screen: "--screen",
-  keep: "--keep",
-  dryRun: "--dry-run",
-  all: "--all",
-  fix: "--fix",
-  failFast: "--fail-fast",
-  collectAll: "--collect-all",
-  yes: "--yes",
-  includePkg: "--include-pkg",
-  allowDirty: "--allow-dirty",
-  allowStale: "--allow-stale",
-};
+const VALUE_CANONICAL = canonicalRecord(VALUE_FLAG_SPECS);
+const MULTI_VALUE_FLAGS = lookupMap(MULTI_VALUE_FLAG_SPECS);
+const MULTI_VALUE_CANONICAL = canonicalRecord(MULTI_VALUE_FLAG_SPECS);
+const BOOLEAN_FLAGS = lookupMap(BOOLEAN_FLAG_SPECS);
+const BOOLEAN_CANONICAL = canonicalRecord(BOOLEAN_FLAG_SPECS);
 
 /**
  * Parse one argv array.
@@ -227,24 +178,13 @@ const BOOLEAN_CANONICAL: Readonly<Record<BooleanFlag, string>> = {
  * enough that rejecting one would only produce a confusing "unknown option".
  */
 export function parseArgs(argv: readonly string[]): ParsedArgs {
-  const booleans: Record<BooleanFlag, boolean> = {
-    json: false,
-    help: false,
-    version: false,
-    screen: false,
-    keep: false,
-    dryRun: false,
-    all: false,
-    fix: false,
-    failFast: false,
-    collectAll: false,
-    yes: false,
-    includePkg: false,
-    allowDirty: false,
-    allowStale: false,
-  };
+  const booleans = Object.fromEntries(
+    BOOLEAN_FLAG_SPECS.map((spec) => [spec.key, false]),
+  ) as Record<BooleanFlag, boolean>;
   const values: Partial<Record<ValueFlag, string>> = {};
-  const multi: Record<MultiValueFlag, string[]> = { file: [], check: [] };
+  const multi = Object.fromEntries(
+    MULTI_VALUE_FLAG_SPECS.map((spec) => [spec.key, [] as string[]]),
+  ) as Record<MultiValueFlag, string[]>;
   const positional: string[] = [];
   const unknown: string[] = [];
   const problems: string[] = [];
@@ -323,44 +263,18 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     positional.push(argument);
   }
 
+  // Only flags that were given become fields: with exactOptionalPropertyTypes,
+  // an absent flag must stay absent rather than become an explicit undefined.
+  const definedValues: Partial<Record<ValueFlag, string>> = {};
+  for (const key of Object.keys(values) as ValueFlag[]) {
+    const value = values[key];
+    if (value !== undefined) definedValues[key] = value;
+  }
+
   return {
     command: positional[0] ?? null,
-    json: booleans.json,
-    help: booleans.help,
-    version: booleans.version,
-    screen: booleans.screen,
-    keep: booleans.keep,
-    dryRun: booleans.dryRun,
-    all: booleans.all,
-    fix: booleans.fix,
-    failFast: booleans.failFast,
-    collectAll: booleans.collectAll,
-    yes: booleans.yes,
-    includePkg: booleans.includePkg,
-    allowDirty: booleans.allowDirty,
-    allowStale: booleans.allowStale,
-    ...(values.declaration === undefined ? {} : { declaration: values.declaration }),
-    ...(values.profile === undefined ? {} : { profile: values.profile }),
-    ...(values.workRoot === undefined ? {} : { workRoot: values.workRoot }),
-    ...(values.port === undefined ? {} : { port: values.port }),
-    ...(values.id === undefined ? {} : { id: values.id }),
-    ...(values.dir === undefined ? {} : { dir: values.dir }),
-    ...(values.count === undefined ? {} : { count: values.count }),
-    ...(values.profiles === undefined ? {} : { profiles: values.profiles }),
-    ...(values.out === undefined ? {} : { out: values.out }),
-    ...(values.name === undefined ? {} : { name: values.name }),
-    ...(values.baseRef === undefined ? {} : { baseRef: values.baseRef }),
-    ...(values.batch === undefined ? {} : { batch: values.batch }),
-    ...(values.candidate === undefined ? {} : { candidate: values.candidate }),
-    ...(values.archiveRoot === undefined ? {} : { archiveRoot: values.archiveRoot }),
-    ...(values.tgz === undefined ? {} : { tgz: values.tgz }),
-    ...(values.method === undefined ? {} : { method: values.method }),
-    ...(values.provider === undefined ? {} : { provider: values.provider }),
-    ...(values.model === undefined ? {} : { model: values.model }),
-    ...(values.apiKeyEnv === undefined ? {} : { apiKeyEnv: values.apiKeyEnv }),
-    ...(values.concurrency === undefined ? {} : { concurrency: values.concurrency }),
-    ...(values.keepBatches === undefined ? {} : { keepBatches: values.keepBatches }),
-    ...(values.keepHomes === undefined ? {} : { keepHomes: values.keepHomes }),
+    ...booleans,
+    ...definedValues,
     files: multi.file,
     checks: multi.check,
     positional,

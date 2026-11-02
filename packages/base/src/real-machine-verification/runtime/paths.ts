@@ -32,6 +32,23 @@ export function parentPath(value: string): string | null {
   return normalized.slice(0, index);
 }
 
+/**
+ * Parent path for walking the file system, preserving the separator style of
+ * the input; `null` at a drive root such as `C:/` or `/`.
+ *
+ * `parentPath` normalizes to `/` because artifacts are compared across
+ * machines; that is the wrong spelling for an `fs.exists` walk (`C:/repo` must
+ * yield `C:/`, not `C:`). This helper keeps the input style so the walk can
+ * hand every result straight back to the file-system port.
+ */
+export function parentFsPath(value: string): string | null {
+  const normalized = value.replace(/[\\/]+$/, "");
+  const index = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  if (index <= 0) return null;
+  const parent = normalized.slice(0, index);
+  return /^[A-Za-z]:$/.test(parent) ? `${parent}/` : parent;
+}
+
 /** How many segments a path has; used by the delete guard, never by business rules. */
 export function depthOf(value: string): number {
   return pathSegments(value).length;

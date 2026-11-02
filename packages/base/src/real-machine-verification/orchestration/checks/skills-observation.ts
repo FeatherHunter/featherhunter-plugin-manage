@@ -15,7 +15,7 @@ import type { FsPort } from "../../contracts/ports";
 import { ok, type Result } from "../../contracts/result";
 import type { ShippedSkill, SkillObservation } from "../../contracts/skills-rules";
 import { readFrontmatterName } from "../../contracts/skills-rules";
-import { baseName, joinFsPath, resolveAgainst, samePath } from "../../runtime/paths";
+import { baseName, joinFsPath, parentFsPath, resolveAgainst, samePath } from "../../runtime/paths";
 
 /** One discoverable host root and the registry rank the host gives it. */
 export interface SkillRootSpec {
@@ -54,15 +54,6 @@ export interface SkillRootObservation {
 /** The host gives up after this many ancestors when looking for the project root. */
 const MAX_PROJECT_DEPTH = 64;
 
-/** Parent path preserving separators; handles C:\\repo without losing the drive. */
-function parentOf(path: string): string | null {
-  const normalized = path.replace(/[\\/]+$/, "");
-  const index = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
-  if (index <= 0) return null;
-  const parent = normalized.slice(0, index);
-  return /^[A-Za-z]:$/.test(parent) ? parent + "/" : parent;
-}
-
 /**
  * The host's project root: the nearest ancestor (including cwd) with a .git
  * entry, falling back to cwd when the checkout is not a git repository.
@@ -71,7 +62,7 @@ export async function findProjectRoot(fs: FsPort, cwd: string): Promise<string> 
   let current: string | null = cwd;
   for (let depth = 0; current !== null && depth < MAX_PROJECT_DEPTH; depth += 1) {
     if (await fs.exists(joinFsPath(current, ".git"))) return current;
-    current = parentOf(current);
+    current = parentFsPath(current);
   }
   return cwd;
 }
