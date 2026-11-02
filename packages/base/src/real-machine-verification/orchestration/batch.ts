@@ -284,7 +284,7 @@ export interface ResolvedCandidate {
   readonly manifest: CandidateManifest;
   readonly manifestPath: string;
   readonly dir: string;
-  /** sha256 of the candidate.json bytes; this is the identity's package hash. */
+  /** sha256 of the candidate.json bytes; binds evidence to the manifest, not to the tarball. */
   readonly manifestSha256: Sha256Hex;
   readonly identity: CandidateIdentity;
 }
@@ -686,7 +686,10 @@ export async function openBatch(options: OpenBatchOptions): Promise<Result<OpenB
   const identity: IdentityBinding = {
     batchName: name,
     commit: candidate.manifest.git.commit,
-    packageSha256: candidate.manifestSha256,
+    // The identity line names the candidate *package* digest (the tarball), which
+    // is what a release check can recompute from candidate.json on another
+    // machine. The manifest file digest is a different value: it binds evidence.
+    packageSha256: candidate.identity.tgzSha256,
   };
   const identityLine = formatIdentityLine(identity);
   if (!identityLine.ok) {
@@ -1454,7 +1457,8 @@ function identityLineOf(record: BatchRecord): string {
   const line = formatIdentityLine({
     batchName: record.batchName,
     commit: record.candidate.commit,
-    packageSha256: record.candidate.sha256,
+    // The tarball digest, not the manifest file digest; see `openBatch`.
+    packageSha256: record.candidate.tgzSha256,
   });
   return line.ok ? line.value : "";
 }

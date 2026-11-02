@@ -285,6 +285,7 @@ describe("runPageChecks with an injected adapter", () => {
     expect(outcome.status).toBe("blocked");
     expect(outcome.detail).toContain("could not open a page");
     expect(outcome.detail).toContain("no page target available");
+    expect(outcome.blockedReason?.code).toBe("adapter-missing");
     expect(browser.sessionsClosed).toBe(1);
   });
 
@@ -296,6 +297,7 @@ describe("runPageChecks with an injected adapter", () => {
     expect(outcome.status).toBe("blocked");
     expect(outcome.detail).toContain("could not launch a browser");
     expect(outcome.detail).toContain("the browser binary is missing");
+    expect(outcome.blockedReason?.code).toBe("adapter-missing");
   });
 });
 
@@ -306,6 +308,7 @@ describe("runPageChecks without an adapter", () => {
     expect(outcome.status).toBe("blocked");
     expect(outcome.adapter.source).toBe("none");
     expect(outcome.viewport).toBeNull();
+    expect(outcome.blockedReason?.code).toBe("adapter-missing");
     expect(outcome.hint).toContain("browser: { module:");
     expect(outcome.hint).toContain("verify/browser.mjs");
     expect(outcome.hint).toContain("newPage()");

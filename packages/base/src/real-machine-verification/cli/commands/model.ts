@@ -22,6 +22,8 @@ import { formatFailure, type Failure } from "../../contracts/result";
 import type { ModelSelection, VerificationProfile } from "../../contracts/verification-profile";
 import type { DeclarationLoadResult, LoadDeclarationOptions } from "../../declaration/loader";
 import { loadDeclarationContext } from "../../orchestration/context";
+import { resolveRealHome } from "../../runtime/dsh/home";
+import { samePath } from "../../runtime/paths";
 import {
   fixModelConfig,
   modelPatchPath,
@@ -652,6 +654,19 @@ export async function runModelCommand(args: ParsedArgs, deps: ModelCommandDeps):
       );
     }
     return EXIT_CODES.ok;
+  }
+
+  // --fix is the only writer in this command. The real user home is read-only
+  // for this tool: an edit to the patch layer there is an edit to the developer's
+  // actual install, so refuse before planning it (a dry run writes nothing and
+  // may still plan).
+  if (args.fix && samePath(context.value.dshHome, resolveRealHome(ports.env))) {
+    return reject(args, io, "fix", {
+      code: "prerequisite",
+      message: `refusing to edit the real DSH home ${context.value.dshHome}`,
+      hint: "copy the profile into a batch home and set DSH_HOME to that copy, then rerun with --fix",
+      details: { dshHome: context.value.dshHome, patchPath },
+    });
   }
 
   let checks = buildChecks(before.state, selection, credential);

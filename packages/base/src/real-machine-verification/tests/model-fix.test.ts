@@ -12,6 +12,7 @@ import { parseArgs } from "../cli/args";
 import { runModelCommand } from "../cli/commands/model";
 import { ok } from "../contracts/result";
 import {
+  MODEL_DSH_HOME,
   MODEL_ID,
   MODEL_KEY_ENV,
   MODEL_PATCH_PATH,
@@ -221,6 +222,40 @@ describe("model command, --fix", () => {
     expect(doc.fix.notes).toEqual(["already conforming; nothing written"]);
     expect(check(doc, "model-fix")?.status).toBe("ok");
     expect(result.err).toContain("ok model-fix already conforming; nothing written");
+  });
+
+  it("refuses --fix when DSH_HOME is the real user home", async () => {
+    const patch = mismatchedPatch();
+    const fixture = createModelFixture({ patch, envValues: { DSH_REAL_HOME: MODEL_DSH_HOME } });
+
+    const result = await runModel(fixture, ["--fix", "--json"]);
+
+    expect(result.code).toBe(2);
+    expect(fixture.fs.writes).toEqual([]);
+    expect(fixture.fs.readFileSync(MODEL_PATCH_PATH)).toBe(patch);
+    const doc = JSON.parse(result.out) as {
+      ok: boolean;
+      error?: { code: string; stage: string; message: string; hint?: string };
+    };
+    expect(doc.ok).toBe(false);
+    expect(doc.error?.code).toBe("prerequisite");
+    expect(doc.error?.stage).toBe("fix");
+    expect(doc.error?.message).toContain("refusing to edit the real DSH home");
+    expect(doc.error?.hint).toContain("DSH_HOME");
+    expect(result.err).toContain("refusing to edit the real DSH home");
+  });
+
+  it("still plans --fix for the real home under --dry-run, which writes nothing", async () => {
+    const patch = mismatchedPatch();
+    const fixture = createModelFixture({ patch, envValues: { DSH_REAL_HOME: MODEL_DSH_HOME } });
+
+    const result = await runModel(fixture, ["--fix", "--dry-run", "--json"]);
+
+    expect(result.code).toBe(0);
+    expect(fixture.fs.writes).toEqual([]);
+    const doc = JSON.parse(result.out) as { dryRun: boolean; plan: { wouldWrite: boolean } };
+    expect(doc.dryRun).toBe(true);
+    expect(doc.plan.wouldWrite).toBe(true);
   });
 
   it("adds a missing apiKeyEnv and leaves every other line byte-identical", async () => {

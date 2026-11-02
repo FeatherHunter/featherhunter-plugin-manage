@@ -43,6 +43,8 @@ node_modules/.bin/dsh-verify describe --json
 
 用 `--json` 时的三种结果词：`pass` / `fail` / `skip` / `blocked`。人话行格式固定为 `ok|fail|skip|blocked <id> <detail>`，fail 行追加缩进的 `expected:` / `actual:` / `hint:`，blocked 至少带 `hint:`（有的 blocked 没有 expected/actual）；解析日志时按行首词判定，别按位置。
 
+run.json 里每一条 blocked 检查还带结构化原因 `blockedReason: { code, message, hint? }`，`code` 是 `adapter-missing`（缺适配器）/ `prerequisite-missing`（缺前置）/ `platform-unsupported`（平台不支持）三选一。机器要判断「缺什么、能不能补」时读这个字段；人话行不重复渲染它。
+
 命令层的失败（参数、声明、路径、前置命令）用 `FailureCode` 词表，稳定可编程：
 
 `invalid-input` / `prerequisite` / `identity-mismatch` / `not-found` / `io` / `timeout` / `conflict` / `unsupported` / `internal`，渲染为 `[code] message — hint`。给用户复述失败时保留 code 与 hint 原文。
@@ -69,7 +71,7 @@ node_modules/.bin/dsh-verify describe --json
 - 验证基线：本地 <ref> <tip>；目标版本 <version>
 ```
 
-Cookie-cutter 规则：身份行里的「候选包 sha256」绑定候选 manifest 的摘要，tgz 的 sha256 不参与；没有基线时 batch 不会假装通过（新鲜度判 blocked），`--allow-stale` 只降级「HEAD 已移动」这一项，不豁免「没有基线」。
+Cookie-cutter 规则：身份行里的「候选包 sha256」就是候选 tgz 的 sha256（`candidate.json` 的 `package.tgzSha256`），发布前检查拿它和候选清单逐字比对；**证据绑定用的是另一个值**——`evidence.json` 的 candidate 块记录 `candidate.json` 文件本身的摘要，防的是清单被改写，两者不要混用。没有基线时 batch 不会假装通过（新鲜度判 blocked），`--allow-stale` 只降级「HEAD 已移动」这一项，不豁免「没有基线」。
 
 文件摘要算法（跨语言可复核）：拒绝反斜杠与坏 sha；路径按 UTF-16 排序；每行 `<sha256>  <path>`；行间 join 后再整体 sha256；无尾换行；路径不做归一化。
 

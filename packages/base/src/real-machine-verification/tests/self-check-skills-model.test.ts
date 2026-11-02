@@ -211,6 +211,33 @@ describe("self-check skill and model checks", () => {
     expect(combined).toContain("27");
   });
 
+  it("fails when the installed copy drops a skill even if a host root still ships it", async () => {
+    const fixture = createFixture({ profileOverrides: { bundledSkills: { dir: "bundled-skills", expected: 27 } } });
+    seedSkillTree(fixture, repoSkillsDir(fixture), SKILL_NAMES);
+    seedSkillTree(fixture, installedSkillsDir(fixture), SKILL_NAMES.slice(0, 26));
+    // The developer's user-level root still ships the dropped skill. A host root
+    // is a fallback the host would use, but the package did not ship it: letting
+    // the merge satisfy the set would hide the packaging regression.
+    seedSkill(fixture, fixture.paths.dshHome + "\\skills", "skill-27");
+
+    const result = await runSelfCheck(fixture);
+    expect(result.code).toBe(1);
+    expect(result.report.state).toBe("failed");
+    const check = checkOf(result.report, "skills-set");
+    expect(check?.status).toBe("fail");
+    const combined = JSON.stringify(check);
+    expect(combined).toContain("missing 1 skill");
+    expect(combined).toContain("skill-27");
+    expect(check?.hint).toContain("host user/project skill roots do not count");
+
+    const run = readRunDirectory(fixture.fs, fixture.paths.workRoot);
+    const skillsFile = run.evidenceFiles.find((file) => file.includes("skills-set"));
+    expect(skillsFile).toBeDefined();
+    if (skillsFile === undefined) return;
+    const skills = JSON.parse(fixture.fs.readFileSync(skillsFile)) as { missingInstalled: string[] };
+    expect(skills.missingInstalled).toEqual(["skill-27"]);
+  });
+
   it("fails when a skill directory and its frontmatter name disagree, naming the directory", async () => {
     const fixture = createFixture({ profileOverrides: { bundledSkills: { dir: "bundled-skills", expected: 27 } } });
     seedSkillTree(fixture, repoSkillsDir(fixture), SKILL_NAMES.filter((name) => name !== "skill-17"));

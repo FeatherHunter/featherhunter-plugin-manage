@@ -10,7 +10,7 @@
  *   be a false red — and false reds are how a gate stops being read.
  */
 import type { CheckId } from "./branding";
-import type { EvidenceItemRef } from "./evidence-contract";
+import type { BlockedReason, EvidenceItemRef } from "./evidence-contract";
 
 /** Outcome of one check. */
 export type CheckStatus = "pass" | "fail" | "skip" | "blocked";
@@ -31,6 +31,15 @@ export interface CheckResult {
   readonly actual?: string;
   /** What the reader should do next. */
   readonly hint?: string;
+  /**
+   * Why a `blocked` check could not observe the product: the missing adapter,
+   * the missing prerequisite, or the unsupported platform.
+   *
+   * Present on every blocked result — the runner fills a `prerequisite-missing`
+   * default, and the browser adapter paths say `adapter-missing` explicitly —
+   * so a report reader never has to parse the sentence to learn the cause.
+   */
+  readonly blockedReason?: BlockedReason;
   readonly evidence: readonly EvidenceItemRef[];
   readonly durationMs: number;
   /**

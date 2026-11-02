@@ -21,6 +21,8 @@ export const FIXTURE_HEAD = "0123456789abcdef0123456789abcdef01234567";
 export const OTHER_HEAD = "89abcdef0123456789abcdef0123456789abcdef";
 export const BASE_TIP = "abcdef0123456789abcdef0123456789abcdef01";
 export const NEW_BASE_TIP = "2222222222222222222222222222222222222222";
+/** The tarball digest the fixture candidate manifest declares (`package.tgzSha256`). */
+export const CANDIDATE_TGZ_SHA256 = "a".repeat(64);
 
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);
@@ -50,6 +52,8 @@ export interface CandidateFixture {
   readonly path: string;
   readonly text: string;
   readonly sha256: string;
+  /** `manifest.package.tgzSha256`; the value the identity line names. */
+  readonly tgzSha256: string;
   readonly commit: string;
   readonly version: string;
 }
@@ -107,7 +111,7 @@ function candidateManifest(
     package: {
       tgzPath: joinFsPath(options.dir, `fixture-plugin-${options.version}.tgz`),
       tgzBytes: 256,
-      tgzSha256: SHA_A,
+      tgzSha256: CANDIDATE_TGZ_SHA256,
       filename: `fixture-plugin-${options.version}.tgz`,
       files: [{ path: "package.json", bytes: 48, sha256: SHA_B }],
       fileCount: 1,
@@ -224,7 +228,15 @@ export class FakeBatchWorld {
     const path = joinFsPath(dir, "candidate.json");
     this.fs.seedJson(path, manifest);
     const text = this.fs.readFileSync(path);
-    return { dir, path, text, sha256: sha256Text(text), commit, version };
+    return {
+      dir,
+      path,
+      text,
+      sha256: sha256Text(text),
+      tgzSha256: CANDIDATE_TGZ_SHA256,
+      commit,
+      version,
+    };
   }
 
   /** Seed an `evidence.json` inside a batch directory. */

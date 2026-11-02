@@ -233,6 +233,56 @@ export function createSkillsSetCheck(): CheckModule<SelfCheckContext> {
         );
       }
 
+      // The installed copy is the only source for a bundled skill. Host roots
+      // (project/user) are lower-ranked fallbacks the developer's own tree fills,
+      // so letting them satisfy a skill the package dropped would hide exactly
+      // the regression this check exists to catch. Compare against the installed
+      // copy alone before any root is merged in.
+      const missingInstalled = repo.names.filter((name) => !installed.names.includes(name));
+      if (missingInstalled.length > 0) {
+        const missingEvidence = await recordEvidence(
+          context.evidence,
+          "skills-set",
+          {
+            dir: declaration.dir,
+            expected: declaration.expected,
+            repo: {
+              path: repoPath,
+              names: [...repo.names],
+              count: repo.names.length,
+              mismatches: repo.mismatches,
+              missingFrontmatter: repo.missingFrontmatter,
+              ignored: [...repoDiscovery.ignored],
+            },
+            installed: {
+              path: installedDir,
+              resolution: lookup.resolution,
+              tried: lookup.tried,
+              names: [...installed.names],
+              count: installed.names.length,
+              ignored: [...installedDiscovery.ignored],
+            },
+            missingInstalled,
+            modelCatalogUsed: false,
+            caveat: MODEL_CATALOG_CAVEAT,
+          },
+          "the installed package is missing skills the repository declares",
+          context.note,
+        );
+        return failed(
+          "the installed " + packageName + " is missing " + missingInstalled.length +
+            " skill(s) the repository ships: " + missingInstalled.join(", "),
+          "the installed copy under " + installedDir + " ships all " + repo.names.length +
+            " declared skill(s)",
+          "missing from the installed copy: " + missingInstalled.join(", ") +
+            "; installed: " + (installed.names.length === 0 ? "(none)" : installed.names.join(", ")),
+          "rebuild the package so " + declaration.dir + " includes " +
+            (missingInstalled.length === 1 ? "the missing skill" : "the missing skills") +
+            ", then reinstall it into the profile; host user/project skill roots do not count as the package shipping a skill",
+          missingEvidence,
+        );
+      }
+
       const roots = await observeSkillRoots(fs, {
         cwd: context.cwd,
         dshHome: context.dshHome,

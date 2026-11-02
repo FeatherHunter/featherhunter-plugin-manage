@@ -849,13 +849,16 @@ async function runOne(
   const disposed = await primitives.dispose();
   let cleanupCheck: CheckResult | null = null;
   if (!disposed.ok) {
+    const detail = `could not stop every instance: ${disposed.error.message}`;
+    const hint = disposed.error.hint ?? "run dsh-verify cleanup and stop the residual process";
     cleanupCheck = {
       id: checkId("teardown-clean"),
       title: "scenario teardown leaves no process",
       hard: true,
       status: "blocked",
-      detail: `could not stop every instance: ${disposed.error.message}`,
-      hint: disposed.error.hint ?? "run dsh-verify cleanup and stop the residual process",
+      detail,
+      hint,
+      blockedReason: { code: "prerequisite-missing", message: detail, hint },
       evidence: [],
       durationMs: 0,
       source: "builtin",

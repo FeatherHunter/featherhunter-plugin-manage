@@ -75,7 +75,28 @@ export default defineVerificationProfile({
 
 工具会按 `verify/profile.ts` → `verify/profile.js` → `verify/profile.mjs` 的顺序自动发现，也可以用 `--declaration <file>` 显式指定（相对路径按当前目录解析）。声明只描述事实，不要在里面做副作用。
 
-## 第三步：运行
+## 第三步：把两条命令写进 package.json
+
+接入仓只需要两条 script：一条给人跑（人类可读的逐项结果走 stderr），一条给 CI 或 agent 取 JSON。
+
+```json
+{
+  "scripts": {
+    "verify": "node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js self-check",
+    "verify:json": "node node_modules/dsh-featherhunter-plugin-base/dist/real-machine-verification/cli/main.js self-check --json"
+  }
+}
+```
+
+不写 script、直接敲下面的长命令也能跑；写进去是为了让接入仓自己的 README 可以只写 `npm run verify`，而且不必每个人记住 dist 路径。
+
+打包白名单 0–1 行：插件仓的发布包通常不该带上 `verify/`（声明、场景、浏览器适配器是开发期验证资产）。仓里已有 `files` 白名单时**不用改**——白名单没列 `verify/` 就不会被打进包；没有白名单的仓加一行 `.npmignore`：
+
+```text
+verify/
+```
+
+## 第四步：运行
 
 ```bash
 # 推荐：直接跑装好的构建产物（在插件仓根目录；不经过 npx，不依赖 PATH）
@@ -111,7 +132,7 @@ dsh-verify self-check [--profile <p>] [--declaration <file>] [--work-root <dir>]
 
 全部命令都支持 `--json`；写操作类命令都支持 `--dry-run`，且 dry-run 打印的计划与真实执行是同一份结论。冻结与批次身份还要求插件仓是 git 工作树：`freeze` 用 `HEAD`、工作区状态与文件摘要定位候选。命令的完整 usage、写入物与退出码见文末参考段。
 
-## 第四步：读报告
+## 第五步：读报告
 
 人话模式每个检查一行，`ok|fail|skip|blocked <检查id> <说明>`；fail 行带缩进的 expected / actual / hint，blocked 至少带 hint：
 
@@ -158,7 +179,7 @@ $after = $files | ForEach-Object { (Get-FileHash $_ -Algorithm SHA256).Hash }
 Compare-Object $before $after   # 无输出 = 未变
 ```
 
-`install` 的默认目标是 `DSH_HOME` 指向的 profile。命令按**解析后的目标 DSH home** 判断隔离：只要它等于真实 home（`~/.dsh`，含 `DSH_HOME` 被显式指到真实 home 的情况），就会在 stderr 打印警告，提示先复制成批次 home 再装——不能只看 `DSH_HOME` 有没有设。
+`install`（和 `model --fix`）的默认目标是 `DSH_HOME` 指向的 profile。命令按**解析后的目标 DSH home** 判断隔离：只要它等于真实 home（`~/.dsh`，含 `DSH_HOME` 被显式指到真实 home 的情况），真实安装/写盘会直接**拒绝**（exit 2、`[prerequisite]`，hint 指向复制成批次 home 再装）；`--dry-run` 仍会出计划但只警告、不写盘。不能只看 `DSH_HOME` 有没有设。
 
 ## self-check 检查了什么
 
@@ -187,6 +208,7 @@ Compare-Object $before $after   # 无输出 = 未变
 | `fail node-version` | 用 Node 22.6+ 跑，或者把声明预编译成 `.js`（`--declaration verify/profile.js`） |
 | `blocked model-configured` | profile 的 `cordis.patch.yml` 里没有对应 provider/model 条目——`model --fix` 只改已有条目不新建；插件不装模型时在声明里写 `model: false` |
 | `blocked instance-pages` / 页面检查 | 没注入浏览器适配器；声明 `browser: { module: "verify/browser.mjs" }`，模块默认导出 `{ launch({ headless }) }` 工厂 |
+| `fail package-installed` 还点名「installed copy is missing N skill(s)」 | 发布包的 `bundledSkills` 目录掉了技能；宿主自己的技能树不算包带上了它，重建包再装（`skills-set` 的 hint 给了要重建的目录） |
 | 退出码 2 但检查全绿感 | 2 是 blocked：本次运行有前置缺失，什么都没证明；修前置再跑，不要把它当成插件的失败 |
 
 更细的失败分型、错误码词表、证据与身份链、以及「哪些场景不用改核心就能表达」见 [AGENTS-USAGE.md](AGENTS-USAGE.md)。

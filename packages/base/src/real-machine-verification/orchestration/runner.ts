@@ -92,7 +92,14 @@ export async function executePlan<TContext>(
         `provide a ${names} adapter (see the capability description) so this check can observe the machine`;
       const status = check.onMissing === "blocked" ? "blocked" : "skip";
       const outcome: CheckOutcome =
-        status === "blocked" ? { status: "blocked", detail, hint } : { status: "skip", detail, hint };
+        status === "blocked"
+          ? {
+              status: "blocked",
+              detail,
+              hint,
+              blockedReason: { code: "adapter-missing", message: detail, hint },
+            }
+          : { status: "skip", detail, hint };
       results.push(toCheckResult(check, outcome, 0));
       options.note?.(`${check.id}: ${status} (${names} unavailable)`);
       continue;

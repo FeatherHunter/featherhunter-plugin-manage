@@ -652,6 +652,7 @@ export function observationToCheck(
     ...(normalized.expected === undefined ? {} : { expected: normalized.expected }),
     ...(normalized.actual === undefined ? {} : { actual: normalized.actual }),
     ...(normalized.hint === undefined ? {} : { hint: normalized.hint }),
+    ...(normalized.blockedReason === undefined ? {} : { blockedReason: normalized.blockedReason }),
     evidence: normalized.evidence ?? [],
     durationMs: 0,
     source: observation.source ?? fallback.source,

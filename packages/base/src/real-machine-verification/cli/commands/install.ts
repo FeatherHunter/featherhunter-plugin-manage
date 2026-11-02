@@ -145,12 +145,22 @@ export async function runInstallCommand(args: ParsedArgs, deps: InstallCommandDe
   // Installing mutates the profile's node_modules. The isolation rule is about
   // the resolved target, not about whether DSH_HOME happens to be set: a host
   // can export DSH_HOME pointing at the real user home, and writing there is
-  // still writing the real home. Warn before the first byte is written.
+  // still writing the real home. Refuse before the first byte is written; a
+  // dry run writes nothing, so it may still plan and warn.
   const realHome = resolveRealHome(ports.env);
-  if (samePath(context.dshHome, realHome)) {
+  const targetsRealHome = samePath(context.dshHome, realHome);
+  if (targetsRealHome && !args.dryRun) {
+    return emitFailure(io, args.json, "install", "prerequisite", {
+      code: "prerequisite",
+      message: `refusing to install into the real DSH home ${context.dshHome}`,
+      hint: "copy the profile into a batch home and set DSH_HOME to that copy; this tool never writes the real user home",
+      details: { dshHome: context.dshHome, profileDir: context.profileDir, realHome },
+    });
+  }
+  if (targetsRealHome) {
     note(
       `warning: the target DSH home ${context.dshHome} is the real user home, so ${context.profileDir} belongs to it; ` +
-        "copy the profile into a batch home and set DSH_HOME to that copy to keep the real home untouched",
+        "a real install would be refused; copy the profile into a batch home and set DSH_HOME to that copy",
     );
   }
 

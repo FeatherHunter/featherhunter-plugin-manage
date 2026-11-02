@@ -1,8 +1,9 @@
 /**
  * The README is the document the adopting repository actually follows, so its
- * first section is asserted like an interface: the four steps in order, the exact
- * declaration template the loader looks for, and a command line that matches
- * `describe` rather than a memory of it.
+ * first sections are asserted like an interface: the five steps in order (install,
+ * declaration, two npm scripts, run, read), the exact declaration template the
+ * loader looks for, and a command line that matches `describe` rather than a
+ * memory of it.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,9 +27,9 @@ const SELF_CHECK_CHECKS = [
   "screen-present",
 ] as const;
 
-describe("README: the four-step entry", () => {
-  it("starts from install, then declaration, then the command, then the report", () => {
-    const headings = ["第一步：安装", "第二步：写", "第三步：运行", "第四步：读报告"];
+describe("README: the five-step entry", () => {
+  it("starts from install, then declaration, then scripts, then the command, then the report", () => {
+    const headings = ["第一步：安装", "第二步：写", "第三步：把两条命令写进", "第四步：运行", "第五步：读报告"];
     const indexes = headings.map((heading) => README.indexOf(heading));
     for (const index of indexes) expect(index).toBeGreaterThanOrEqual(0);
     expect(indexes).toEqual([...indexes].sort((left, right) => left - right));
@@ -36,6 +37,15 @@ describe("README: the four-step entry", () => {
       indexes[0] ?? 0,
     );
     expect(README.indexOf("npm install --save-dev dsh-featherhunter-plugin-base")).toBeLessThan(indexes[1] ?? 0);
+  });
+
+  it("documents the two scripts and the 0-1 line packaging whitelist", () => {
+    expect(README).toContain("npm run verify");
+    expect(README).toContain('"verify:json"');
+    expect(README).toContain("self-check --json");
+    expect(README).toContain(".npmignore");
+    expect(README).toContain("verify/");
+    expect(README).toContain("files");
   });
 
   it("carries the exact declaration template the loader accepts", () => {

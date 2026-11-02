@@ -294,4 +294,22 @@ describe("install: environment prerequisites", () => {
     expect(result.code).toBe(0);
     expect(result.err).toContain("real user home");
   });
+
+  it("refuses a real install into the real user home without writing", async () => {
+    const fake = fixture();
+    fake.fs.seedFile(TGZ_PATH, tgzFor());
+    fake.env.set("DSH_HOME", joinFsPath(fake.env.homeDir(), ".dsh"));
+    const realProfileDir = joinFsPath(fake.env.homeDir(), ".dsh", "profiles", "web");
+    const result = await run(fake, ["install", "--tgz", TGZ_PATH, "--json"]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("[prerequisite]");
+    expect(result.err).toContain("refusing to install into the real DSH home");
+    const payload = JSON.parse(result.out) as InstallJson;
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.code).toBe("prerequisite");
+    expect(payload.error?.stage).toBe("prerequisite");
+    expect(payload.error?.hint).toContain("DSH_HOME");
+    expect(await fake.fs.exists(joinFsPath(realProfileDir, "node_modules"))).toBe(false);
+  });
 });

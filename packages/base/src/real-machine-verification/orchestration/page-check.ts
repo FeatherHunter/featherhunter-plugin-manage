@@ -26,7 +26,7 @@
  * is a shared file owned by another ticket.
  */
 import { asEvidencePath } from "../contracts/branding";
-import type { EvidenceItem, EvidenceItemRef } from "../contracts/evidence-contract";
+import type { BlockedReason, EvidenceItem, EvidenceItemRef } from "../contracts/evidence-contract";
 import { isSafeEvidencePath } from "../contracts/evidence-contract";
 import type {
   BrowserPageHandle,
@@ -430,8 +430,9 @@ function blockedOutcome(
   hint: string,
   adapter: PageAdapterReport,
   viewport: PageViewportReport | null,
+  code: BlockedReason["code"],
 ): PageCheckOutcome {
-  return { ...blocked(detail, hint), adapter, viewport };
+  return { ...blocked(detail, hint, undefined, { code, message: detail, hint }), adapter, viewport };
 }
 
 /**
@@ -464,7 +465,7 @@ export async function runPageChecks(
     const hint = [resolvedAdapter.failure?.hint, missingBrowserAdapterHint()]
       .filter((part): part is string => part !== undefined && part.length > 0)
       .join("\n\n");
-    return blockedOutcome(detail, hint, resolvedAdapter.report, null);
+    return blockedOutcome(detail, hint, resolvedAdapter.report, null, "adapter-missing");
   }
 
   const adapter = resolvedAdapter.factory;
@@ -488,6 +489,7 @@ export async function runPageChecks(
       "run on a machine with a display, or omit the fullscreen expectation; page checks never infer fullscreen from a resized viewport",
       adapterReport,
       baseViewport,
+      "platform-unsupported",
     );
   }
 
@@ -497,6 +499,7 @@ export async function runPageChecks(
       "run this check with a headed browser (a display is required), or omit the fullscreen expectation",
       adapterReport,
       baseViewport,
+      "platform-unsupported",
     );
   }
 
@@ -509,6 +512,7 @@ export async function runPageChecks(
         launched.error.hint ?? missingBrowserAdapterHint(),
         adapterReport,
         baseViewport,
+        "adapter-missing",
       );
     }
     session = launched.value;
@@ -520,6 +524,7 @@ export async function runPageChecks(
         opened.error.hint ?? "the adapter's newPage() must return a BrowserPageHandle",
         adapterReport,
         baseViewport,
+        "adapter-missing",
       );
     }
     const page = opened.value as BrowserPageHandle;
@@ -692,11 +697,9 @@ export async function runPageChecks(
       }
 
       if (blockers.length > 0) {
-        const outcome = blocked(
-          `the page could not be fully observed: ${blockers.map((item) => item.detail).join("; ")}`,
-          blockers[0]?.hint ?? "the adapter could not complete the measurement",
-          evidence,
-        );
+        const detail = `the page could not be fully observed: ${blockers.map((item) => item.detail).join("; ")}`;
+        const hint = blockers[0]?.hint ?? "the adapter could not complete the measurement";
+        const outcome = blocked(detail, hint, evidence, { code: "adapter-missing", message: detail, hint });
         return {
           ...outcome,
           adapter: adapterReport,
@@ -729,6 +732,7 @@ export async function runPageChecks(
       "this is an adapter defect: launch(), newPage() and the page handle must return Result values instead of throwing",
       adapterReport,
       baseViewport,
+      "adapter-missing",
     );
   } finally {
     if (session !== undefined) {

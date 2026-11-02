@@ -26,6 +26,7 @@ interface CheckJson {
   readonly expected?: string;
   readonly actual?: string;
   readonly hint?: string;
+  readonly blockedReason?: { readonly code: string; readonly message: string; readonly hint?: string };
 }
 
 interface RunJson {
@@ -505,6 +506,8 @@ describe("run command", () => {
     const check = report.checks.find((item) => item.id === "launch-host");
     expect(check?.status).toBe("blocked");
     expect(check?.actual).toContain("beforeStart hook failed: the seed refused to write");
+    expect(check?.blockedReason?.code).toBe("prerequisite-missing");
+    expect(check?.blockedReason?.message).toContain("beforeStart hook failed: the seed refused to write");
     expect(fixture.process.spawns).toHaveLength(0);
   });
 });

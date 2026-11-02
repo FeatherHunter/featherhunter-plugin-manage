@@ -15,7 +15,7 @@
 import type { CheckId } from "../contracts/branding";
 import { parseCheckId } from "../contracts/branding";
 import type { CheckResult, CheckStatus } from "../contracts/check";
-import type { EvidenceItemRef } from "../contracts/evidence-contract";
+import type { BlockedReason, EvidenceItemRef } from "../contracts/evidence-contract";
 import { formatFailure, unwrapOrThrow } from "../contracts/result";
 
 /** Narrow a hard-coded id at module load, so a typo fails loudly in tests. */
@@ -50,6 +50,8 @@ export interface CheckOutcome {
   readonly expected?: string;
   readonly actual?: string;
   readonly hint?: string;
+  /** Why the check is blocked; filled by the runner when the caller omits it. */
+  readonly blockedReason?: BlockedReason;
   readonly evidence?: readonly EvidenceItemRef[];
 }
 
@@ -80,8 +82,19 @@ export function skipped(detail: string, hint?: string, evidence?: readonly Evide
  * `blocked` is the honest answer here: the run proved nothing about the plugin,
  * so a green report would be a lie and a failure would be a false alarm.
  */
-export function blocked(detail: string, hint: string, evidence?: readonly EvidenceItemRef[]): CheckOutcome {
-  return { status: "blocked", detail, hint, ...(evidence === undefined ? {} : { evidence }) };
+export function blocked(
+  detail: string,
+  hint: string,
+  evidence?: readonly EvidenceItemRef[],
+  reason?: BlockedReason,
+): CheckOutcome {
+  return {
+    status: "blocked",
+    detail,
+    hint,
+    ...(evidence === undefined ? {} : { evidence }),
+    ...(reason === undefined ? {} : { blockedReason: reason }),
+  };
 }
 
 /**
@@ -123,6 +136,15 @@ export function toCheckResult<TContext>(
     ...(normalized.expected === undefined ? {} : { expected: normalized.expected }),
     ...(normalized.actual === undefined ? {} : { actual: normalized.actual }),
     ...(normalized.hint === undefined ? {} : { hint: normalized.hint }),
+    ...(normalized.status === "blocked"
+      ? {
+          blockedReason: normalized.blockedReason ?? {
+            code: "prerequisite-missing",
+            message: normalized.detail,
+            ...(normalized.hint === undefined ? {} : { hint: normalized.hint }),
+          },
+        }
+      : {}),
     evidence: normalized.evidence ?? [],
     durationMs,
   };
@@ -144,7 +166,16 @@ export function normalizeOutcome(outcome: CheckOutcome): CheckOutcome {
     };
   }
   if (outcome.status === "blocked") {
-    return { ...outcome, hint: outcome.hint ?? "install or enable the missing prerequisite, then rerun" };
+    const hint = outcome.hint ?? "install or enable the missing prerequisite, then rerun";
+    return {
+      ...outcome,
+      hint,
+      blockedReason: outcome.blockedReason ?? {
+        code: "prerequisite-missing",
+        message: outcome.detail,
+        hint,
+      },
+    };
   }
   return outcome;
 }

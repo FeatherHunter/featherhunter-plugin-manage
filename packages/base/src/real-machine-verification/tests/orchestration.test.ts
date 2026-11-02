@@ -83,6 +83,11 @@ describe("executePlan", () => {
     expect(outcome.results[0]?.status).toBe("blocked");
     expect(outcome.results[0]?.hard).toBe(true);
     expect(outcome.results[0]?.hint).toContain("browser");
+    expect(outcome.results[0]?.blockedReason).toEqual({
+      code: "adapter-missing",
+      message: "required capability unavailable: browser",
+      hint: outcome.results[0]?.hint,
+    });
   });
 
   it("reports a missing capability as skip when the plan says so", async () => {
@@ -109,6 +114,11 @@ describe("executePlan", () => {
     const outcome = await runPlan(plan);
     expect(outcome.results.map((result) => result.id)).toEqual(["first", "second", "third"]);
     expect(outcome.results.map((result) => result.status)).toEqual(["pass", "fail", "blocked"]);
+    expect(outcome.results[2]?.blockedReason).toEqual({
+      code: "prerequisite-missing",
+      message: "three",
+      hint: "install three",
+    });
     expect(outcome.steps).toEqual([]);
   });
 

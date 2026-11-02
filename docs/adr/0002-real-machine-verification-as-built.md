@@ -72,6 +72,24 @@ DESIGN.md §11 只定义候选必带。发布门禁实现（`orchestration/relea
 
 理由：发布门禁有两条使用路径（发布流水线与人工预检）。人工预检可以先跑票面一致性、候选身份稍后补；把缺候选当成 blocked 会让「票面检查」永远无法单独跑。缺候选时**不能**给 pass，skip 正是「未验证」的语义（四态里已定义）。
 
+### 8. 会话建立只发 `token`，不显式带 `interactions=none`
+
+spec.md:87 写字面形式 `GET /connect?token=…&interactions=none`；实现（`runtime/dsh/http-session.ts:96`）只发 `token`，`tests/http-session.test.ts:70` 还断言 URL 里没有 `interactions`。
+
+依据：宿主调研文档 `docs/DSH宿主可观测面-真机验证调研.md:81-82` 明确纠正过这一点——宿主代码是 `declarations = url.searchParams.getAll("interactions"); interactions = declarations[0] ?? "none"`，**省略即 none**，而重复声明或非法值会直接 400。显式带上参数反而把一个合法默认值写成了必须逐字匹配的协议，且给「重复声明」留了错误面。spec 的这句是调研前的旧写法，实现按宿主事实执行；不改代码。
+
+### 9. 自定义技能根（rank 300）在只读枚举里是声明字段，不参与观察
+
+spec.md:91 写「六个根 × 已知 rank 100/200/300/400/500/600」。`orchestration/checks/skills-observation.ts:78-83` 的 `planSkillRoots` 把 rank 300（custom）声明为 `path: null` 并注明 `customSkillDirs` 无法在只读条件下枚举：它在宿主配置里，不在文件系统固定位置。
+
+实现保留「六根」这个模型（证据里仍列 300 这个 rank，标 ignored），实际观察 project-dsh 100 / project-agents 200 / user-dsh 400 / user-agents 500 / bundled-env 600 五个可观察根；插件若必须证明 custom 根，可在 `verify/profile.ts` 的 `checks` 里注入一个读宿主 HTTP API（`skills/list` 或插件自开只读端点）的自定义检查，把结果作为补充证据。spec 的「六根」是模型完整性，不是「六个都能只读取到」。
+
+### 10. 发布门禁不新增 CLI 命令
+
+spec.md:166 把票面协议的实现划给适配器层，Out of Scope 也写「具体实现属适配器层，另有规格」。ticket 16 因此在 base 交付：`contracts/ticket-face.ts`（`TicketFaceAdapter` 四方法）、`contracts/release-gate.ts`（报告/发现/检查 id）、`orchestration/release-gate/{plan,run,report}.ts`（纯规则 + 编排）、`adapters/ticket-face/loader.ts`（校验并加载适配器），由 `index.ts` 导出，但 **不增加 `dsh-verify gate` 命令**（`describe` 的 15 条命令不含它）。
+
+理由：门禁消费的是发布仓自己的票面协议（GitHub/GitLab 的清单票与评论格式）和候选清单，没有与插件无关的通用 CLI 形态；强行做成命令会把「读哪个仓的哪张票、用 gh 还是 glab」的接线塞进核心。实际形态是接入仓写一个组合根（matt 的 `scripts/lib/release-preflight-gate.mts` 是全仓唯一 `import { runReleaseGate }` 的地方）+ 自己的适配器（`verify/ticket-face.mts`），再把「缺适配器/缺环境」映射成 `PREFLIGHT-BLOCKED`。ticket 16 的验收（同一个组合根、两条发布路径同一份代码、无跳过开关）就是在这个形态下证明的。
+
 ## 影响
 
 - 这些决定都写进了代码、测试或本 ADR；回退其中任何一条都会改变对外行为或让门禁变红，需要新 ADR 覆盖本文件。

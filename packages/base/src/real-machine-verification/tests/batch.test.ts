@@ -123,7 +123,7 @@ function recordOf(world: FakeBatchWorld, name: string): Record<string, unknown> 
 }
 
 function identityLineFor(name: string, world: FakeBatchWorld): string {
-  return `- 验证身份：批次 ${name}；候选提交 ${world.candidate.commit}；候选包 sha256 ${world.candidate.sha256}`;
+  return `- 验证身份：批次 ${name}；候选提交 ${world.candidate.commit}；候选包 sha256 ${world.candidate.tgzSha256}`;
 }
 
 function baseLineFor(ref: string, tip: string, version: string): string {
