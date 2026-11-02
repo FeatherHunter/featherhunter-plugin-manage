@@ -78,11 +78,14 @@
 ## 收口记录（规格关闭，2026-11-03 02:47 +08:00）
 - **关闭动作**：实施票 08–15 全关后，按本工作区收口协议用 `deck_issue_patch({key:"00", feature:"base-package-rollout", comment, progress:{percent:100}, close:true})` 一次写入收尾评论、进度 100% 与关闭；本文件 `## Comments` 与 `## 进度` 由工具写回，状态 `closed`。
 - **收尾评论要点**：逐票核对 01–15（08–15 附文件/测试/命令证据）、验收口径逐条证据、本会话检查命令与结果（base gate 5/5；五仓聚合 readme:sync --check --all 与 doctor --offline exit 0；五仓 HEAD==upstream）、交付证明（manage `5f59f21` + 五仓提交 + base `83e2b0a`）、遗留处置（新票 16）、关闭前自检。
-- **关闭后补充**：规格关闭写回的文件改动（收尾评论、状态 closed、进度 100%、本节）单独提交并推送 `origin/main`，提交号在 `## Comments` 的「关闭后补充」条目回填。
+- **关闭后补充**：规格关闭写回的文件改动（收尾评论、状态 closed、进度 100%、本节）已单独提交 `ad35aab` 并推送 `origin/main`；补充条目见 `## Comments` 末尾。
 - **遗留（不阻塞）**：新票 16 承接五仓换钉 base 0.1.8、五仓发版与真实插件页 C4/C6 复验；已发布 npm 版本仍内联 0.1.5 旧弹窗。
 ## Comments
 ### local — 2026-11-02T18:47:34.852Z
 按本工作区收口协议：实施票全关是触发条件；本评论逐条给出验证证据、交付证明、检查命令与遗留处置，并与关闭同一次调用写入。
+
+### local — 2026-11-02T18:49:59.950Z
+关闭后补充（2026-11-03T02:5x+08:00）：规格关闭写回的文件改动已单独提交 `ad35aab`（仅 `.scratch/base-package-rollout/spec.md`：收口评论、状态 closed、进度 100%、收口记录），已推送 `origin/main`。此前两笔 spec 相关提交 `5f59f21`（状态修订 + 新票 16）与 `4646fb0`（§7.8 徽标证据）亦已在 origin/main。
 
 ## 一、逐票核对（01–07 为重复票；08–15 为实施票，均已关闭）
 - 00 本规格：五仓接入 + 整体验收 + HUMAN-GATE；子票 08–15 全部 closed（本会话 `deck_issue_list({state:"all", type:"all", feature:"base-package-rollout"})` 16 行核验）。
@@ -109,7 +112,7 @@
 - 说明：用本仓本地 base 0.1.8 CLI 跑同一聚合会报 16 项 fail（readme-blocks/readme-images @0.1.7 期望 @0.1.8、dependency-version、deck inline-bundle v0.1.7→v0.1.8），属版本轮次差、不是五仓门禁回归；换钉与发版转票 16。
 
 ## 四、交付证明
-- manage 仓（本规格文档 / 证据 / 收口写回）：`main` 分支，关闭时 HEAD `5f59f21`（含本次状态修订与新票 16），已推送 origin/main；关闭动作写回 spec.md 的提交随后单独推送（提交号见「关闭后补充」）。
+- manage 仓（本规格文档 / 证据 / 收口写回）：`main` 分支，关闭时 HEAD `5f59f21`（含状态修订与新票 16）、写回提交 `ad35aab`，均已推送 origin/main；关闭前证据提交 `4646fb0` 亦在 origin/main。
 - 五仓接入提交（各自默认分支，已推送）：prompt `944905c`（0.0.2 接入；0.1.7 换钉 `5b3a402`）、deck `42280a82`（后续 `f70be720`）、palette `862a4c2`（后续 `b1d1243`）、im `76dd0f6d`（后续 `f4c38eb`）、ilife `d7cdda30`（后续 `59d32ae4`）。
 - base 仓：0.1.8 发布提交 `83e2b0a`（main 与 feat/real-machine-verification 同 tip），tarball 校验 8/8 PASS。
 
