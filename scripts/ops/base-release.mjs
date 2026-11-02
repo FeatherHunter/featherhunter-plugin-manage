@@ -148,8 +148,16 @@ async function main() {
     return;
   }
   if (mode === "verify" && !alreadyPublished) {
-    die(PKG + "@" + version + " is not on the registry; drop --skip-publish to publish it", 2);
-    return;
+    // npm publish can return before every registry read path serves the version.
+    // Waiting here keeps the CI verification from mistaking propagation lag for a
+    // failed publish; only a version that never appears is a prerequisite error.
+    console.log(dim("registry does not serve " + PKG + "@" + version + " yet; polling up to " + Math.round(timeoutMs / 1000) + "s"));
+    try {
+      await pollPublished(registry, version, timeoutMs, pollMs);
+    } catch {
+      die(PKG + "@" + version + " is not on the registry after " + Math.round(timeoutMs / 1000) + "s (last: 404); drop --skip-publish to publish it", 2);
+      return;
+    }
   }
   if (mode === "publish") {
     const who = await runCommandLine("npm whoami", { cwd: packageDir, echo: false });

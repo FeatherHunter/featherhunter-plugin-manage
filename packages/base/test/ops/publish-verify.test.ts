@@ -138,6 +138,8 @@ interface RegistrySpec {
   integrity?: string;
   /** When false every request answers 404 (the version is not on the registry). */
   published?: boolean;
+  /** Answer the manifest with 404 this many times first (registry propagation lag). */
+  failFirstManifest?: number;
 }
 
 interface FakeRegistry {
@@ -156,6 +158,7 @@ function stopServer(server: Server): Promise<void> {
 
 async function startRegistry(spec: RegistrySpec): Promise<FakeRegistry> {
   const requests: string[] = [];
+  let manifestMisses = spec.failFirstManifest ?? 0;
   let baseUrl = "";
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const route = request.url || "";
@@ -169,6 +172,11 @@ async function startRegistry(spec: RegistrySpec): Promise<FakeRegistry> {
       return;
     }
     if (route === "/" + PKG + "/" + VERSION) {
+      if (manifestMisses > 0) {
+        manifestMisses -= 1;
+        notFound();
+        return;
+      }
       const manifest = {
         name: PKG,
         "dist-tags": { latest: VERSION },
@@ -201,6 +209,10 @@ interface VerifyOptions {
   registry: string;
   version?: string;
   keepDownload?: boolean;
+  /** Minutes the verifier may spend waiting for registry propagation. */
+  timeoutMin?: number;
+  /** Seconds between propagation polls. */
+  pollSec?: number;
 }
 
 /** Run the shared verification entry point exactly as the publish workflow does. */
@@ -216,6 +228,8 @@ async function verify(options: VerifyOptions): Promise<OpsRunResult> {
     "--json",
   ];
   if (options.keepDownload) args.push("--keep-download");
+  if (options.timeoutMin !== undefined) args.push("--timeout-min", String(options.timeoutMin));
+  if (options.pollSec !== undefined) args.push("--poll-sec", String(options.pollSec));
   return await runOps("scripts/ops/base-release.mjs", args, { timeoutMs: 120_000 });
 }
 
@@ -290,12 +304,31 @@ describe("base-release --skip-publish verifies a published tarball", () => {
     const tarball = buildTarball(root);
     const registry = await startRegistry({ tarball, published: false });
     try {
-      const run = await verify({ repo, download, registry: registry.url });
+      const run = await verify({ repo, download, registry: registry.url, timeoutMin: 0.02, pollSec: 0.1 });
 
       expect(run.code, "stdout: " + run.stdout + " stderr: " + run.stderr).toBe(2);
       expect(run.stdout.trim(), "prerequisite errors must not emit a JSON report").toBe("");
       expect(run.stderr).toContain(PKG + "@" + VERSION + " is not on the registry");
       expect(registry.requests).toContain("/" + PKG + "/" + VERSION);
+    } finally {
+      await registry.close();
+    }
+  }, 60_000);
+
+  it("waits through registry propagation lag instead of failing the publish (exit 0)", async () => {
+    const root = tempDir("fh-publish-lag-");
+    const { repo, download } = makeRepoFixture(root);
+    const tarball = buildTarball(root);
+    const registry = await startRegistry({ tarball, failFirstManifest: 2 });
+    try {
+      const run = await verify({ repo, download, registry: registry.url, timeoutMin: 0.1, pollSec: 0.1 });
+
+      expect(run.code, "stdout: " + run.stdout + " stderr: " + run.stderr).toBe(0);
+      const report = parseReport(run);
+      expect(report.ok).toBe(true);
+      expect(report.download!.bytes).toBe(tarball.length);
+      const manifestRequests = registry.requests.filter((route) => route === "/" + PKG + "/" + VERSION);
+      expect(manifestRequests.length, "the verifier polled until the manifest appeared").toBeGreaterThanOrEqual(3);
     } finally {
       await registry.close();
     }
