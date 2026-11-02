@@ -12,7 +12,7 @@ const HELP = [
   "",
   "Options:",
   "  --repo <path>      Repo root (default: current working directory).",
-  "  --effort <name>    Only tickets in this .scratch/<effort> directory.",
+  "  --effort <name>    Limit to one .scratch/<effort> directory (exact name wins).",
   "  --state <s>        open | closed | all (default: all).",
   "  --key <k>          Exact ticket key (accepts 1, 01, 001).",
   "  --find <text>      Case-insensitive substring in title / body.",
@@ -21,7 +21,7 @@ const HELP = [
   "  --json             Machine-readable output.",
   "  --help             This message.",
   "",
-  "Exit codes: 0 success, 1 key not found, 2 prerequisite error.",
+  "Exit codes: 0 success, 1 key not found / ambiguous / filtered out, 2 prerequisite error.",
 ];
 
 function headerMap(text) {
@@ -48,6 +48,13 @@ function normalizeState(raw) {
   return s;
 }
 
+// Ticket keys are numbered, and "8", "08" and the spec's "00" must all mean the
+// same ticket. Normalising once at the edge keeps the later comparison exact.
+function normalizeKey(raw) {
+  const s = String(raw === undefined || raw === null ? "" : raw).trim();
+  return s.replace(/^0+(\d)/, "$1");
+}
+
 function parseBlockedBy(text, headers) {
   const fromHeader = headers["BLOCKED-BY"];
   let raw = fromHeader;
@@ -66,29 +73,31 @@ function parseBlockedBy(text, headers) {
 }
 
 function parseProgress(text) {
-  const lines = text.split("\n");
+  const lines = text.split(/\r?\n/);
   let inProgress = false;
   let last = null;
   for (const line of lines) {
-    if (/^##\s+进度/.test(line)) { inProgress = true; continue; }
-    if (inProgress && /^##\s+/.test(line)) break;
+    const trimmed = line.trim();
+    if (/^##\s+进度/.test(trimmed)) { inProgress = true; continue; }
+    if (inProgress && /^##\s+/.test(trimmed)) break;
     if (!inProgress) continue;
-    const m = /^-\s*进度：\s*(\d+)%(.*)$/.exec(line.trim());
+    const m = /^-\s*进度[：:]\s*(\d+)\s*%(.*)$/.exec(trimmed);
     // Deck writes the newest progress entry at the TOP of the section; keep the first one.
-    if (m && last === null) last = { percent: Number(m[1]), raw: line.trim(), rest: m[2].trim() };
+    if (m && last === null) last = { percent: Number(m[1]), raw: trimmed, rest: m[2].trim() };
   }
   return last;
 }
 
 function parseComments(text) {
-  const lines = text.split("\n");
+  const lines = text.split(/\r?\n/);
   let inComments = false;
   const comments = [];
   for (const line of lines) {
-    if (/^##\s+Comments/.test(line)) { inComments = true; continue; }
-    if (inComments && /^##\s+/.test(line)) break;
+    const trimmed = line.trim();
+    if (/^##\s+(Comments|评论)/i.test(trimmed)) { inComments = true; continue; }
+    if (inComments && /^##\s+/.test(trimmed)) break;
     if (!inComments) continue;
-    const m = /^###\s+(.+)$/.exec(line.trim());
+    const m = /^###\s+(.+)$/.exec(trimmed);
     if (m) comments.push({ heading: m[1], lines: [] });
     else if (comments.length) comments[comments.length - 1].lines.push(line);
   }
@@ -104,7 +113,8 @@ function parseSpecTicket(effortDir, effortName) {
   const statusRaw = headers.STATUS || (/\*\*Status:\*\*\s*(.+)/.exec(text) || [])[1] || "";
   return {
     effort: effortName,
-    key: "00",
+    key: "0",
+    displayKey: "00",
     type: "spec",
     title,
     state: normalizeState(statusRaw),
@@ -126,9 +136,11 @@ function parseIssue(issuePath, effortName) {
   if (!text) return null;
   const headers = headerMap(text);
   const fileKey = (/^(\d{1,3})-/.exec(fileName) || [])[1];
-  const headingKey = (/^#\s*(\d{1,3})\b/.exec(firstHeading(text)) || [])[1];
+  // firstHeading() already dropped the leading "# ", so the heading key must
+  // match both "# 08: title" and "08: title".
+  const headingKey = (/^(?:#\s*)?(\d{1,3})\b/.exec(firstHeading(text)) || [])[1];
   const keyRaw = fileKey || headingKey || "?";
-  const key = String(keyRaw).replace(/^0+(\d)/, "$1");
+  const key = normalizeKey(keyRaw);
   const statusRaw = headers.STATUS || (/\*\*Status:\*\*\s*(.+)/.exec(text) || [])[1] || "";
   const comments = parseComments(text);
   return {
@@ -180,6 +192,47 @@ function fmtProgress(p) {
   return String(p.percent).padStart(3, " ") + "%";
 }
 
+function compareCandidates(a, b) {
+  if (a.effort !== b.effort) return a.effort < b.effort ? -1 : 1;
+  if (a.file !== b.file) return a.file < b.file ? -1 : 1;
+  return 0;
+}
+
+function candidateJson(t) {
+  return {
+    key: t.key,
+    displayKey: t.displayKey,
+    type: t.type,
+    effort: t.effort,
+    state: t.state,
+    stateRaw: t.stateRaw,
+    title: t.title,
+    parent: t.parent,
+    file: t.file,
+  };
+}
+
+// Key resolution never guesses. An ambiguous or filtered-out key exits 1 and
+// lists every candidate with its effort and state; --json gets the same list
+// in structured form on stdout while stderr stays readable for humans.
+function reportKeyFailure(reason, wanted, candidates, json) {
+  if (reason === "not-found") {
+    if (json) emitJson({ error: "not-found", key: wanted, candidates: [] });
+    die("ticket not found: " + wanted, 1);
+    return;
+  }
+  const list = candidates.slice().sort(compareCandidates);
+  const header = reason === "ambiguous-key"
+    ? "ambiguous key " + wanted + ": " + list.length + " candidate(s)"
+    : "ticket " + wanted + " is filtered out by --effort/--state/--find: " + list.length + " candidate(s)";
+  const lines = [header];
+  for (const c of list) {
+    lines.push("  - effort=" + c.effort + " state=" + c.state + " title=" + c.title + " file=" + c.file);
+  }
+  if (json) emitJson({ error: reason, key: wanted, candidates: list.map(candidateJson) });
+  die(lines.join("\n"), 1);
+}
+
 async function main() {
   const parsed = parseArgs(process.argv.slice(2), {
     flags: {
@@ -197,7 +250,20 @@ async function main() {
   if (discovered.problems.length && !discovered.tickets.length) { die(discovered.problems.join("; "), 2); return; }
   let tickets = discovered.tickets;
   const state = (options.state || "all").toLowerCase();
-  if (options.effort) tickets = tickets.filter((t) => t.effort === options.effort || t.effort.indexOf(options.effort) >= 0);
+  if (options.effort) {
+    // Exact directory names win: base-package and base-package-rollout both
+    // exist, and a plain substring match would turn a unique key into a
+    // false ambiguity. Substring stays as a convenience only when no effort
+    // directory matches exactly.
+    const wantedEffort = String(options.effort);
+    const lower = wantedEffort.toLowerCase();
+    const effortNames = Array.from(new Set(discovered.tickets.map((t) => t.effort)));
+    let chosen = effortNames.filter((name) => name === wantedEffort);
+    if (!chosen.length) chosen = effortNames.filter((name) => name.toLowerCase() === lower);
+    if (!chosen.length) chosen = effortNames.filter((name) => name.toLowerCase().indexOf(lower) >= 0);
+    const keep = new Set(chosen);
+    tickets = tickets.filter((t) => keep.has(t.effort));
+  }
   if (state !== "all") tickets = tickets.filter((t) => t.state === state);
   if (options.find) {
     const needle = String(options.find).toLowerCase();
@@ -206,21 +272,16 @@ async function main() {
   tickets.sort((a, b) => (a.effort === b.effort ? Number(a.key) - Number(b.key) : a.effort.localeCompare(b.effort)));
 
   if (options.key !== undefined) {
-    const wanted = String(options.key).replace(/^0+(\d)/, "$1");
+    const wanted = normalizeKey(options.key);
+    const json = Boolean(options.json);
     const matches = tickets.filter((t) => t.key === wanted);
     if (!matches.length) {
-      const all = discovered.tickets.filter((t) => t.key === wanted);
-      if (all.length) {
-        process.stderr.write("ticket " + wanted + " exists only in other efforts/states: " + all.map((t) => t.effort + "/" + t.state).join(", ") + "\n");
-        process.exitCode = 1;
-        return;
-      }
-      die("ticket not found: " + wanted, 1);
+      const elsewhere = discovered.tickets.filter((t) => t.key === wanted);
+      reportKeyFailure(elsewhere.length ? "filtered-out" : "not-found", wanted, elsewhere, json);
       return;
     }
     if (matches.length > 1) {
-      process.stderr.write("ambiguous key " + wanted + " in efforts: " + matches.map((t) => t.effort).join(", ") + "\n");
-      process.exitCode = 1;
+      reportKeyFailure("ambiguous-key", wanted, matches, json);
       return;
     }
     const t = matches[0];
