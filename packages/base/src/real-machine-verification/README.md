@@ -9,30 +9,21 @@
 
 ## 第一步：安装
 
-在插件仓里把 base 装成 devDependency。**先看版本现实**：npm registry 上当前发布的 base（`0.1.5`）**还没有**本能力——`./real-machine-verification` 导出与 `dsh-verify` bin 是这一版才加的。它随下一版 base 发布之前，必须先把本仓的 `packages/base` 链接进插件仓：
+在插件仓里把 base 装成 devDependency，**钉精确版本**（`0.1.6` 起 `./real-machine-verification` 导出与 `dsh-verify` bin 已随 npm 发布，当前 `0.1.7`）：
 
 ```bash
-# 现在（能力还没发上 npm）：链接本仓库的 packages/base
-npm install --save-dev file:D:/dsh-plugin/featherhunter-plugin-manage/packages/base
+npm install --save-dev dsh-featherhunter-plugin-base@0.1.7
 ```
 
 base 的核心零运行时依赖（只用 Node 内建模块，副作用全走可注入端口），装进任何插件仓都不会改变它的依赖树。
 
-npm 会把绝对路径归一化成相对路径写进 `package.json`（例如 `file:../../dsh-plugin/featherhunter-plugin-manage/packages/base`），这是正常的：它相对插件仓解析，仓不挪就仍指向同一份；挪仓/换机器后重跑一次上面的命令。也可以手写进插件仓的 `package.json`：
-
-```json
-{
-  "devDependencies": {
-    "dsh-featherhunter-plugin-base": "file:D:/dsh-plugin/featherhunter-plugin-manage/packages/base"
-  }
-}
-```
-
-**发布之后**（npm 上已有本能力时）换成常规装法即可，其余步骤不变：
+只有要试**尚未发布**的本地 base 改动时才用 `file:` 链接本仓（开发期临时用，别提交；发布后改回精确版本）：
 
 ```bash
-npm install --save-dev dsh-featherhunter-plugin-base@^<版本>
+npm install --save-dev file:D:/dsh-plugin/featherhunter-plugin-manage/packages/base
 ```
+
+npm 会把绝对路径归一化成相对路径写进 `package.json`（例如 `file:../../dsh-plugin/featherhunter-plugin-manage/packages/base`），这是正常的：它相对插件仓解析，仓不挪就仍指向同一份；挪仓/换机器后重跑一次上面的命令。
 
 ### 装对了吗：只信 `--version` 的 capability 行
 
