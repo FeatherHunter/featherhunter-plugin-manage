@@ -8,6 +8,7 @@ import {
   parseArgs, runCommandLine, runLogged, exists, resolveRepoSpec, DEFAULT_REPOS, routeLogsToStderrWhenJson,
   green, red, yellow, dim, emitJson, printHelp, die, formatDuration, ensureDir, nowStamp, tail, bin,
 } from "./lib/common.mjs";
+import { scanSources, formatScanText } from "./scan-sources.mjs";
 
 const HELP = [
   "Usage: node scripts/ops/base-verify.mjs [options]",
@@ -16,7 +17,7 @@ const HELP = [
   "  --repo <name|path>   Publisher repo (default: base).",
   "  --package <dir>      Base package dir relative to repo (default: packages/base).",
   "  --quick              Only typecheck + tests.",
-  "  --only <ids>         Comma list: typecheck,tests,docs,build (implies non-quick).",
+  "  --only <ids>         Comma list: typecheck,tests,docs,scan,build (implies non-quick).",
   "  --filter <text>      Substring filter for vitest (only with the tests step).",
   "  --keep-going         Run every step even after a failure (default: stop at first).",
   "  --no-log             Do not write per-step logs.",
@@ -25,10 +26,13 @@ const HELP = [
   "  --json               Machine-readable summary.",
   "  --help               This message.",
   "",
+  "Steps run in a fixed order: typecheck -> tests -> docs -> scan -> build.",
+  "The scan step rejects NUL bytes and undecodable UTF-8 in repo text sources.",
+  "",
   "Exit codes: 0 all green, 1 a step failed, 2 prerequisite error.",
 ];
 
-const ALL_STEPS = ["typecheck", "tests", "docs", "build"];
+const ALL_STEPS = ["typecheck", "tests", "docs", "scan", "build"];
 
 function summaryOf(id, text) {
   if (id === "tests") {
@@ -91,6 +95,7 @@ async function main() {
     if (id === "typecheck") line = "npm run typecheck";
     else if (id === "docs") line = "npm run docs:check";
     else if (id === "build") line = "npm run build";
+    else if (id === "scan") line = "node scripts/ops/scan-sources.mjs --repo " + repo.path;
     else if (id === "tests") {
       if (exists(vitestEntry)) {
         useNode = true;
@@ -103,11 +108,33 @@ async function main() {
     console.log("");
     console.log("== " + id + "  " + dim(line));
     const started = Date.now();
-    // Spawn node directly for vitest: going through cmd.exe mangles quoted absolute paths.
-    const run = useNode
-      ? await runLogged(process.execPath, [vitestEntry, "run"].concat(options.filter ? [String(options.filter)] : []), { cwd: packageDir, logFile, echo: !options.json })
-      : await runCommandLine(line, { cwd: packageDir, logFile, echo: !options.json });
-    const step = { id, command: line, exitCode: run.code, durationMs: run.durationMs, logFile, summary: summaryOf(id, run.stdout + "\n" + run.stderr) };
+    let run;
+    let scan = null;
+    if (id === "scan") {
+      // Scanned in-process: the walk is read-only and fast, and keeping the
+      // structured issues lets the JSON report list every offending path.
+      try {
+        scan = scanSources({ repoRoot: repo.path });
+      } catch (error) {
+        scan = {
+          repo: repo.path, roots: [], scanned: 0, ok: false,
+          issues: [{ file: repo.path, path: ".", reason: "scan-error", message: String(error && error.message ? error.message : error) }],
+        };
+      }
+      const text = formatScanText(scan);
+      if (logFile) fs.appendFileSync(logFile, text + "\n");
+      console.log(text);
+      run = { code: scan.ok ? 0 : 1, durationMs: Date.now() - started, stdout: text + "\n", stderr: "" };
+    } else {
+      // Spawn node directly for vitest: going through cmd.exe mangles quoted absolute paths.
+      run = useNode
+        ? await runLogged(process.execPath, [vitestEntry, "run"].concat(options.filter ? [String(options.filter)] : []), { cwd: packageDir, logFile, echo: !options.json })
+        : await runCommandLine(line, { cwd: packageDir, logFile, echo: !options.json });
+    }
+    const step = {
+      id, command: line, exitCode: run.code, durationMs: run.durationMs, logFile,
+      summary: scan ? { scanned: scan.scanned, issues: scan.issues } : summaryOf(id, run.stdout + "\n" + run.stderr),
+    };
     step.ok = run.code === 0;
     report.steps.push(step);
     console.log("-- " + id + " " + (step.ok ? green("OK") : red("FAILED exit " + run.code)) + "  " + formatDuration(run.durationMs));

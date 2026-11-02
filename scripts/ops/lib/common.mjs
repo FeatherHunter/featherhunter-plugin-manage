@@ -97,11 +97,15 @@ export function runCapture(command, args, options) {
   };
 }
 
-// Run a shell-free single command line through cmd.exe. Use this for npm/pnpm scripts:
-// on Windows their .cmd shims cannot be spawned without a shell.
+// Run a single command line through the platform shell. Use this for npm/pnpm
+// scripts: on Windows their .cmd shims cannot be spawned without a shell, and on
+// POSIX the same line is a plain /bin/sh command line (CI runs ubuntu-latest).
 export async function runCommandLine(line, options) {
-  const comspec = process.env.ComSpec || "cmd.exe";
-  return runLogged(comspec, ["/d", "/s", "/c", line], options);
+  if (IS_WIN) {
+    const comspec = process.env.ComSpec || "cmd.exe";
+    return runLogged(comspec, ["/d", "/s", "/c", line], options);
+  }
+  return runLogged("/bin/sh", ["-c", line], options);
 }
 
 export function git(repo, args) {
