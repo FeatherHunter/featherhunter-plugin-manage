@@ -10,10 +10,10 @@
 
 ## 第一步：安装
 
-在插件仓里把 base 装成 devDependency，**钉精确版本**（`0.1.6` 起 `./real-machine-verification` 导出与 `dsh-verify` bin 随 npm 发布；当前 `0.1.7`）：
+在插件仓里把 base 装成 devDependency，**钉精确版本**（`0.1.6` 起 `./real-machine-verification` 导出与 `dsh-verify` bin 随 npm 发布；当前 `0.1.8`）：
 
 ```bash
-npm install --save-dev dsh-featherhunter-plugin-base@0.1.7
+npm install --save-dev dsh-featherhunter-plugin-base@0.1.8
 ```
 
 base 的核心零运行时依赖（只用 Node 内建模块，副作用全走可注入端口），装进任何插件仓都不会改变它的依赖树。要试**尚未发布**的本地 base 改动时，用 `file:` 链接本仓，只在本地开发期用，提交前改回精确版本：

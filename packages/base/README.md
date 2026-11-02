@@ -37,7 +37,7 @@ export default defineVerificationProfile({
 
 ```bash
 # 在插件仓里：钉精确版本，并核对 --version 第二行是 capability 行（唯一判据）
-npm install --save-dev dsh-featherhunter-plugin-base@0.1.7
+npm install --save-dev dsh-featherhunter-plugin-base@0.1.8
 node_modules/.bin/dsh-verify --version        # 第二行必须是 capability real-machine-verification (schema 1)
 
 # 之后用不经过 npx 的长命令：npx 可能命中另一个同名包 dsh-verify@0.9.6
