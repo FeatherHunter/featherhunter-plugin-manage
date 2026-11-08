@@ -278,7 +278,7 @@ describe("generateData", () => {
     writeFileSync(join(contact, "plugins.json"), JSON.stringify(realPlugins()));
     writeFileSync(join(contact, "src", "card-feishu.png"), makeQrCard({ blank: true }));
     writeFileSync(join(contact, "src", "card-qq.jpg"), makeQrCard());
-    writeFileSync(join(contact, "src", "card-wechat-2026-10-31.png"), makeQrCard());
+    writeFileSync(join(contact, "src", "card-wechat-2026-11-08.png"), makeQrCard());
     writeFileSync(join(blankRoot, "package.json"), JSON.stringify({ name: "blank", version: "0.0.0" }));
     expect(() =>
       generateData({ rootDir: blankRoot, dataDir: join(blankRoot, "data"), baselineFile: join(blankRoot, "baseline.ts"), packageJsonPath: join(blankRoot, "package.json") }),
