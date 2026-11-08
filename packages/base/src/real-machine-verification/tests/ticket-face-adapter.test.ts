@@ -21,7 +21,9 @@ import {
 import { fakeTicketFace } from "./support/fake-ticket-face";
 import { FakeFs } from "./support/fake-fs";
 
-const REPO = "C:\\repo";
+// The loader turns the resolved path into a real file URL, so the fake repo root
+// must be a path the host (including the Linux CI runner) can convert.
+const REPO = process.platform === "win32" ? "C:\\repo" : "/repo";
 
 function brokenAdapter(): Record<string, unknown> {
   return {
@@ -76,7 +78,7 @@ describe("loadTicketFaceAdapter", () => {
       },
     });
 
-    expect(seen).toBe(pathToFileURL("C:/repo/verify/adapters/github.mjs").href);
+    expect(seen).toBe(pathToFileURL(`${REPO.replace(/\\/g, "/")}/verify/adapters/github.mjs`).href);
     expect(loaded.ok).toBe(true);
     if (!loaded.ok) return;
     expect(loaded.value.adapter).toBe(adapter);

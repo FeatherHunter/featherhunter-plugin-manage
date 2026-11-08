@@ -25,6 +25,10 @@ import {
 import { FakeFs } from "./support/fake-fs";
 import { FAKE_PNG_BYTES } from "./support/fake-browser";
 
+// The loader turns the resolved path into a real file URL, so the fake repo root
+// must be a path the host (including the Linux CI runner) can convert.
+const REPO_ROOT = process.platform === "win32" ? "C:/repo" : "/repo";
+
 function fakeFactory(): BrowserProbeFactory {
   return {
     async launch() {
@@ -34,7 +38,7 @@ function fakeFactory(): BrowserProbeFactory {
 }
 
 function seedAdapter(fs: FakeFs, module = "verify/browser.mjs"): void {
-  fs.seedFile(`C:/repo/${module}`, "export default {};\n");
+  fs.seedFile(`${REPO_ROOT}/${module}`, "export default {};\n");
 }
 
 function loaderFor(
@@ -42,12 +46,12 @@ function loaderFor(
   declaration: { readonly module: string; readonly exportName?: string },
   importModule: BrowserAdapterImport,
 ) {
-  return loadBrowserAdapter({ fs, repoRoot: "C:/repo", declaration, importModule });
+  return loadBrowserAdapter({ fs, repoRoot: REPO_ROOT, declaration, importModule });
 }
 
 describe("loadBrowserAdapter", () => {
   it("imports a repository-relative module through a file URL", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs);
     const factory = fakeFactory();
     const specifiers: string[] = [];
@@ -57,7 +61,7 @@ describe("loadBrowserAdapter", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(specifiers).toEqual([pathToFileURL("C:/repo/verify/browser.mjs").href]);
+    expect(specifiers).toEqual([pathToFileURL(`${REPO_ROOT}/verify/browser.mjs`).href]);
     if (result.ok) {
       expect(result.value.factory).toBe(factory);
       expect(result.value.exportName).toBe("default");
@@ -66,7 +70,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("uses the named export the profile asks for", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs);
     const factory = fakeFactory();
     const result = await loaderFor(
@@ -80,7 +84,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("accepts a CommonJS module whose namespace is the factory", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs);
     const factory = fakeFactory();
     const result = await loaderFor(fs, { module: "verify/browser.mjs" }, async () => factory);
@@ -93,7 +97,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("blocks a missing relative module without importing anything", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     let imports = 0;
     const result = await loaderFor(fs, { module: "verify/missing.mjs" }, async () => {
       imports += 1;
@@ -111,7 +115,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("blocks a module resolution failure and names the missing package", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     const result = await loaderFor(fs, { module: "@scope/browser-adapter" }, async () => {
       throw Object.assign(new Error("Cannot find package '@scope/browser-adapter'"), {
         code: "ERR_MODULE_NOT_FOUND",
@@ -128,7 +132,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("blocks an unsupported module format with a Node upgrade hint", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs, "verify/browser.ts");
     const result = await loaderFor(fs, { module: "verify/browser.ts" }, async () => {
       throw Object.assign(new Error("Unknown file extension .ts"), {
@@ -145,7 +149,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("fails a module that throws while loading, and keeps the injection hint", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs);
     const result = await loaderFor(fs, { module: "verify/browser.mjs" }, async () => {
       throw new SyntaxError("Unexpected token");
@@ -162,7 +166,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("fails a module whose named export does not exist", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs);
     const result = await loaderFor(
       fs,
@@ -178,7 +182,7 @@ describe("loadBrowserAdapter", () => {
   });
 
   it("fails an export that is not a BrowserProbeFactory", async () => {
-    const fs = new FakeFs("C:/repo");
+    const fs = new FakeFs(REPO_ROOT);
     seedAdapter(fs);
     const result = await loaderFor(fs, { module: "verify/browser.mjs" }, async () => ({
       default: { launch: "not a function" },
