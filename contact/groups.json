@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "revision": 3,
-  "updatedAt": "2026-11-01",
+  "revision": 4,
+  "updatedAt": "2026-11-08",
   "fallbackUrl": "https://github.com/FeatherHunter/featherhunter-plugin-manage",
   "groups": [
     {
@@ -70,13 +70,13 @@
         "zh": "DSH 插件交流群微信群二维码",
         "en": "DSH plugin community group WeChat QR code"
       },
-      "card": "card-wechat-2026-10-31.png",
-      "qr": "qr-wechat-2026-10-31.png",
+      "card": "card-wechat-2026-11-08.png",
+      "qr": "qr-wechat-2026-11-08.png",
       "title": {
         "zh": "DSH 插件交流群",
         "en": "DSH Plugin Community"
       },
-      "validUntil": "2026-11-07"
+      "validUntil": "2026-11-15"
     }
   ]
 }
