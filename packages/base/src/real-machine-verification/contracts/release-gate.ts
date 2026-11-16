@@ -63,7 +63,7 @@ export interface ReleaseGateFinding {
  * spaces are allowed because the line lives in a markdown list.
  */
 export const AUDIT_LINE_RE =
-  /^\s*-\s*候选提交\s+([0-9a-f]{40})\s*(?:→|->)\s*发布提交\s+([0-9a-f]{40})\s*[:：]\s*(\S[^\r\n]*)$/u;
+  /^\s*-\s*(?:候选提交|Candidate commit)\s+([0-9a-f]{40})\s*(?:→|->)\s*(?:发布提交|release commit)\s+([0-9a-f]{40})\s*[:：]\s*(\S[^\r\n]*)$/iu;
 
 export interface AuditLine {
   readonly candidateCommit: string;
@@ -191,7 +191,12 @@ export interface IdentityScan {
 }
 
 const BATCH_START_MARKER = "批次开始";
-const LOCALIZED_STATUS_WORDS = ["通过", "失败", "豁免", "未测", "阻塞", "作废", "已验证", "待验证"];
+// Fallback words recognised even when a custom vocabulary omits them: the shipped
+// Chinese ones plus their English twins, so a translated checklist is understood.
+const LOCALIZED_STATUS_WORDS = [
+  "通过", "失败", "豁免", "未测", "阻塞", "作废", "已验证", "待验证",
+  "passed", "failed", "exempt", "not tested", "blocked", "void", "already verified", "to be verified",
+];
 
 function scenarioIdFull(format: ChecklistFormat): RegExp {
   const flags = format.scenarioIdPattern.flags.replace(/[gy]/gu, "");
@@ -215,12 +220,12 @@ function containsStatusWord(text: string, format: ChecklistFormat): boolean {
  * what comments actually contain.
  */
 export function requiresIdentity(body: string, format: ChecklistFormat): boolean {
-  if (new RegExp(`${BATCH_START_MARKER}\\s*[:：]`, "u").test(body)) return true;
+  if (new RegExp(`(?:${BATCH_START_MARKER}|Batch start)\\s*[:：]`, "u").test(body)) return true;
   const full = scenarioIdFull(format);
   for (const raw of body.split(/\r?\n/u)) {
     const line = raw.trim();
     if (line.length === 0) continue;
-    const scenarioLine = /^场景\s+([^：:\n]+)[：:]/u.exec(line);
+    const scenarioLine = /^(?:场景|Scenario)\s+([^：:\n]+?)\s*[：:]/u.exec(line);
     if (scenarioLine !== null && scenarioIdsIn(scenarioLine[1] as string, format).length > 0) return true;
     if (line.startsWith("|")) {
       const cells = line.split("|").slice(1, -1).map((cell) => cell.trim().replace(/^\*\*|\*\*$/gu, ""));

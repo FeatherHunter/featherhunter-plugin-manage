@@ -119,6 +119,14 @@ export function digestOfFiles(entries: readonly FileDigestEntry[]): Result<Sha25
   return ok(sha256Text(lines.join("\n")));
 }
 
+/**
+ * Language a machine-readable line is written in.
+ *
+ * Both languages are always read back; the language only decides what a writer
+ * emits. Default stays Chinese so re-writing an existing record is a no-op.
+ */
+export type RecordLanguage = "zh" | "en";
+
 /** The values a batch comment must carry so a release check can re-verify it. */
 export interface IdentityBinding {
   readonly batchName: BatchName;
@@ -128,17 +136,30 @@ export interface IdentityBinding {
 
 /** The literal prefix of the identity line. Changing it breaks every stored comment. */
 export const IDENTITY_LINE_PREFIX = "- 验证身份：";
+/** English twin of {@link IDENTITY_LINE_PREFIX}; parsed on read, never written by the default writers. */
+export const IDENTITY_LINE_PREFIX_EN = "- Verification identity: ";
+// Both languages are read: a checklist ticket may be written in either, and the
+// comments already stored on the tracker are Chinese. Writers keep emitting the
+// Chinese form so an existing record never changes on a re-write.
 const IDENTITY_LINE_RE =
-  /^- 验证身份：批次 (\S+)；候选提交 ([0-9a-f]{40})；候选包 sha256 ([0-9a-f]{64})$/;
+  /^(?:- 验证身份：批次|- Verification identity: batch) (\S+)(?:；候选提交|; candidate commit) ([0-9a-f]{40})(?:；候选包 sha256|; candidate package sha256) ([0-9a-f]{64})$/;
 
 /** Render the identity line. Rejects values that cannot round-trip through `parseIdentityLine`. */
-export function formatIdentityLine(binding: IdentityBinding): Result<string> {
+export function formatIdentityLine(
+  binding: IdentityBinding,
+  language: RecordLanguage = "zh",
+): Result<string> {
   const name = parseBatchName(binding.batchName);
   if (!name.ok) return name;
   const commit = parseCommitSha(binding.commit);
   if (!commit.ok) return commit;
   const sha = parseSha256Hex(binding.packageSha256);
   if (!sha.ok) return sha;
+  if (language === "en") {
+    return ok(
+      `${IDENTITY_LINE_PREFIX_EN}batch ${name.value}; candidate commit ${commit.value}; candidate package sha256 ${sha.value}`,
+    );
+  }
   return ok(
     `${IDENTITY_LINE_PREFIX}批次 ${name.value}；候选提交 ${commit.value}；候选包 sha256 ${sha.value}`,
   );
@@ -180,10 +201,13 @@ export interface VerificationBase {
 
 /** The literal prefix of the base line. */
 export const BASE_LINE_PREFIX = "- 验证基线：";
-const BASE_LINE_RE = /^- 验证基线：本地 (\S+) ([0-9a-f]{40})；目标版本 (\S+)$/;
+/** English twin of {@link BASE_LINE_PREFIX}; parsed on read, never written by the default writers. */
+export const BASE_LINE_PREFIX_EN = "- Verification baseline: ";
+const BASE_LINE_RE =
+  /^(?:- 验证基线：本地|- Verification baseline: local) (\S+) ([0-9a-f]{40})(?:；目标版本|; target version) (\S+)$/;
 
 /** Render the base line (`- 验证基线：本地 main <tip>；目标版本 1.2.3`). */
-export function formatBaseLine(base: VerificationBase): Result<string> {
+export function formatBaseLine(base: VerificationBase, language: RecordLanguage = "zh"): Result<string> {
   if (base.ref.length === 0 || /\s/.test(base.ref)) {
     return err(failure("invalid-input", `base ref must be non-empty and space-free: ${base.ref}`));
   }
@@ -194,6 +218,9 @@ export function formatBaseLine(base: VerificationBase): Result<string> {
   }
   const tip = parseCommitSha(base.tip);
   if (!tip.ok) return tip;
+  if (language === "en") {
+    return ok(`${BASE_LINE_PREFIX_EN}local ${base.ref} ${tip.value}; target version ${base.expectedVersion}`);
+  }
   return ok(`${BASE_LINE_PREFIX}本地 ${base.ref} ${tip.value}；目标版本 ${base.expectedVersion}`);
 }
 

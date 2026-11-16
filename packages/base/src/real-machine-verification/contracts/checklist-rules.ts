@@ -32,8 +32,7 @@ export interface ConsistencyReport {
   };
 }
 
-/** Statuses whose row needs a matching conclusion in a comment. */
-const NEEDS_COMMENT: readonly string[] = ["通过", "失败"];
+/** Statuses whose row needs a matching conclusion in a comment: supplied by the format. */
 
 function finding(
   message: string,
@@ -120,7 +119,7 @@ function parseComment(
     const lineNumber = index + 1;
     if (line.length === 0) return;
 
-    const scenarioLine = /^场景\s+([^：:\n]+)[：:]\s*(.+)$/u.exec(line);
+    const scenarioLine = /^(?:场景|Scenario)\s+([^：:\n]+?)\s*[：:]\s*(.+)$/u.exec(line);
     if (scenarioLine !== null) {
       const status = statusIn(scenarioLine[2] as string, format);
       if (status !== null) {
@@ -317,8 +316,8 @@ function registeredIds(body: string, rows: readonly ScenarioRow[], format: Check
   for (const row of rows) add(row.id);
 
   const full = fullIdPattern(format);
-  const blockPattern = /^#{2,6}\s*场景块[:：]\s*#?([A-Za-z0-9]{1,10})(?![\d-])/u;
-  const headingPattern = /^#{2,6}\s*场景\s+(.+?)\s*$/u;
+  const blockPattern = /^#{2,6}\s*(?:场景块|Scenario block)\s*[:：]\s*#?([A-Za-z0-9]{1,10})(?![\d-])/u;
+  const headingPattern = /^#{2,6}\s*(?:场景|Scenario)\s+(.+?)\s*$/u;
   let currentTicket: string | null = null;
   let explicitInBlock = false;
   for (const raw of body.split(/\r?\n/u)) {
@@ -377,7 +376,7 @@ export function judgeChecklistConsistency(input: {
     for (const [id, conclusion] of conclusions) latest.set(id, conclusion);
   }
 
-  const needs = rows.filter((row) => NEEDS_COMMENT.includes(row.status));
+  const needs = rows.filter((row) => format.statusRoles.needsComment.includes(row.status));
   for (const row of needs) {
     const conclusion = latest.get(row.id);
     if (conclusion === undefined) {
@@ -419,11 +418,12 @@ export function judgeChecklistConsistency(input: {
   // Counts in the publish-ready comment must describe the same result set.
   const counts = { passed: 0, exempted: 0, failed: 0 };
   for (const conclusion of latest.values()) {
-    if (conclusion.status === "通过" || conclusion.status === "已验证") counts.passed += 1;
-    else if (conclusion.status === "失败") counts.failed += 1;
-    else if (conclusion.status === "豁免") counts.exempted += 1;
+    if (format.statusRoles.passed.includes(conclusion.status)) counts.passed += 1;
+    else if (format.statusRoles.failed.includes(conclusion.status)) counts.failed += 1;
+    else if (format.statusRoles.exempt.includes(conclusion.status)) counts.exempted += 1;
   }
-  const publishPattern = /\[发布就绪\]\s*通过\s*(\d+)\s*\/\s*失败\s*(\d+)\s*\/\s*豁免\s*(\d+)/u;
+  const publishPattern =
+    /\[(?:发布就绪|Ready to release)\]\s*(?:通过|passed)\s*(\d+)\s*\/\s*(?:失败|failed)\s*(\d+)\s*\/\s*(?:豁免|exempt)\s*(\d+)/iu;
   let claim: { passed: number; failed: number; exempted: number } | null = null;
   for (const { comment } of sortComments(comments)) {
     for (const line of comment.body.split(/\r?\n/u)) {
@@ -450,7 +450,7 @@ export function judgeChecklistConsistency(input: {
     }
   }
 
-  const scenarioCount = /(\d+)\s*条场景/u.exec(body);
+  const scenarioCount = /(\d+)\s*(?:条场景|scenarios?)/iu.exec(body);
   if (scenarioCount !== null && Number(scenarioCount[1]) !== rows.length) {
     findings.push(
       finding(
